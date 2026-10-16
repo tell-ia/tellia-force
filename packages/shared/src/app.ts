@@ -2,22 +2,26 @@ import { z } from "zod";
 import { IsoDateSchema } from "./irrigation";
 
 // ---------------------------------------------------------------------------
-// TelliaForce app view-models (v0-draft).
+// TelliaForce app view-models — the render-ready shapes the mobile UI consumes.
 //
-// These are the shapes the mobile UI renders. They are a thin, screen-shaped
-// projection of the engine contracts in ./irrigation (FieldReport, FarmAdvice,
-// DayBalance…). Ids match the backend: a parcel id IS a `fieldId`, a farm id IS
-// the backend farm id — so the mock→live swap is mechanical.
+// A thin, screen-shaped projection of the engine contracts in ./irrigation
+// (FieldReport, FarmAdvice, DayBalance…). Ids match the backend: a parcel id IS
+// a `fieldId`, a farm id IS the backend farm id.
 //
-// v0-draft: formalized in Phase 4 (render-ready widget props + pure mappers
-// from the real get_parcel_report). Kept minimal — enough for the screens.
+// `ParcelReport` is the contract the data endpoint `get_parcel_report` returns
+// (see docs/parcel-report-contract.md). Each sub-object doubles as a widget's
+// props; `widgetJsonSchemas()` exports them as JSON Schema for the chat agent's
+// `show_widget` tool, so the LLM can only emit valid widgets.
 // ---------------------------------------------------------------------------
+
+/** Current ParcelReport contract version. Bump on a breaking shape change. */
+export const PARCEL_REPORT_VERSION = "v0";
 
 // --- Persona / farm ------------------------------------------------------
 
 /** A farm the persona switch can select. Curated app config, not a raw DB row. */
 export const FarmSummarySchema = z.object({
-  id: z.number().int(), // v0-draft: backend farm id
+  id: z.number().int(), // backend farm id
   code: z.string(), // source_holding_id, e.g. "FARM-02580"
   name: z.string(),
   region: z.string(),
@@ -141,9 +145,9 @@ export const NextDaySchema = z.object({
   pctWatered: z.number().int(),
 });
 
-/** Everything the parcel detail screen needs. v0-draft; mirror get_parcel_report in P4. */
+/** Everything the parcel detail screen needs = the `get_parcel_report` contract. */
 export const ParcelReportSchema = z.object({
-  schemaVersion: z.literal("v0"), // bump + fallback for unknown versions in P4
+  schemaVersion: z.literal(PARCEL_REPORT_VERSION), // consumers fall back on a mismatch
   id: z.number().int(), // fieldId
   farmId: z.number().int(),
   name: z.string(),
@@ -194,3 +198,35 @@ export const ChatMessageSchema = z.object({
   at: z.string(), // "07:00"
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+
+// --- Widgets: registry + JSON Schema (for the chat agent's show_widget tool) --
+
+/** Each render-ready widget's props schema, keyed by widget name. */
+export const widgetSchemas = {
+  recommendation: RecommendationSchema,
+  reserve: ReserveSchema,
+  waterBalance: z.array(BalancePointSchema),
+  cropStage: CropTimelineSchema,
+  nextDays: z.array(NextDaySchema),
+  seasonBalance: SeasonBalanceSchema,
+  soil: SoilSchema,
+  parcelReport: ParcelReportSchema,
+} as const;
+export type WidgetName = keyof typeof widgetSchemas;
+
+/** JSON Schema for every widget — feed to the LLM's show_widget tool so it can
+ *  only emit valid widget props (numbers come from the engine, never invented). */
+export function widgetJsonSchemas(): Record<WidgetName, unknown> {
+  return Object.fromEntries(
+    Object.entries(widgetSchemas).map(([k, s]) => [k, z.toJSONSchema(s)]),
+  ) as Record<WidgetName, unknown>;
+}
+
+/** Version-tolerant parse: unknown schemaVersion → null so the UI can fall back
+ *  instead of throwing. */
+export function parseParcelReport(data: unknown): ParcelReport | null {
+  if (!data || typeof data !== "object") return null;
+  if ((data as { schemaVersion?: unknown }).schemaVersion !== PARCEL_REPORT_VERSION) return null;
+  const r = ParcelReportSchema.safeParse(data);
+  return r.success ? r.data : null;
+}

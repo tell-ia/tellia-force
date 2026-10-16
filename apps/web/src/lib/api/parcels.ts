@@ -16,13 +16,16 @@ export async function getFarmToday(farmId: number): Promise<FarmToday> {
   // REAL: return toFarmToday(await http.get("/irrigation/advice", FarmAdviceSchema));
 }
 
-// MOCK: replace with GET /irrigation/fields/:fieldId/report (+ balance series),
-// mapped FieldReport + DayBalance[] → ParcelReport by a pure mapper (Phase 4).
+// MOCK: replace with GET /farms/:farmId/parcels/:parcelId/report (the data
+// teammate's `get_parcel_report`, which returns the full ParcelReport shape —
+// see docs/parcel-report-contract.md). Validate the live response with the
+// version-tolerant `parseParcelReport` so a schema bump degrades gracefully.
 export async function getParcelReport(parcelId: number): Promise<ParcelReport> {
   if (parcelId !== 101) throw new Error(`No fixture for parcel ${parcelId}`);
   return mock(ParcelReportSchema, valleyReport);
-  // REAL: return toParcelReport(
-  //   await http.get(`/irrigation/fields/${parcelId}/report`, FieldReportSchema),
-  //   await getBalanceSeries(parcelId), // open question for Imad: simulate [] vs GET .../balance
-  // );
+  // REAL:
+  //   const raw = await http.getRaw(`/.../${parcelId}/report`);
+  //   const report = parseParcelReport(raw);
+  //   if (!report) throw new Error("parcel report: unsupported schema version");
+  //   return report;
 }
