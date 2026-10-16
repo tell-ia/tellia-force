@@ -122,7 +122,8 @@ console.log(
 );
 
 // 3. Phone number -> assistant, for calls and texts. smsEnabled makes VAPI point the Twilio
-// number's SMS webhook at itself (US-to-US only, needs a 10DLC-registered number).
+// number's SMS webhook at itself. VAPI documents SMS for US numbers; French carriers rewrite
+// the sender of texts from foreign numbers, so French farmers need a French number.
 const phone = (await vapi<VapiPhoneNumber[]>("GET", "/phone-number?limit=1000"))
   .find((p) => p.number === env.VAPI_PHONE_NUMBER);
 if (!phone) throw new Error(`phone number ${env.VAPI_PHONE_NUMBER} is not in this VAPI account`);

@@ -14,9 +14,12 @@
 - 2026-10-17 Assistant renamed "Jean" (name, prompt, first message) on VAPI and in the script.
 - 2026-10-17 Jean: female voice Emma (v2), background sound off, Krisp denoising on. Pushed to VAPI.
 - 2026-10-17 Voice call works (user). SMS: smsEnabled on the number (VAPI built-in SMS, US-to-US only). Setup script keeps it on.
+- 2026-10-17 SMS from a French phone to the US number: Jean replied, but French carriers rewrote the
+  sender (Twilio FR: international long code sender not preserved). Switched VAPI_PHONE_NUMBER to
+  +33757599216 ("French Ag", already in VAPI), linked to Jean, SMS on. US number still linked to Jean.
 
 ## In progress
-- SMS test from a US phone (user). Unknown: 10DLC status of the Twilio number.
+- SMS test on the French number +33 7 57 59 92 16 (user).
 
 ## Key decisions
 - English only (user choice).

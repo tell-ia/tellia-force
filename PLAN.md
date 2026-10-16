@@ -1,6 +1,6 @@
 # PLAN — VAPI phone assistant (branch `feat/vapi`)
 
-Goal: a farmer calls the VAPI number (+1 218 845 6415) and talks in English with an
+Goal: a farmer calls the VAPI number (+33 7 57 59 92 16) and talks in English with an
 irrigation assistant. The assistant answers with numbers from our FAO-56 engine, through
 tools that call our API.
 
