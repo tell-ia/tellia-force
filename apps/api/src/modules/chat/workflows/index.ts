@@ -199,6 +199,25 @@ export function createAdvisorWorkflows(
       const settled = await Promise.allSettled(
         fields.map((f) => service.getFieldReport(f.id, asOf)),
       );
+      const firstFailure = settled.find((s) => s.status === "rejected") as
+        | PromiseRejectedResult
+        | undefined;
+      if (firstFailure && settled.every((s) => s.status === "rejected")) {
+        const r = firstFailure.reason;
+        throw new Error(
+          `morning warmup failed for all ${settled.length} fields: ${
+            r instanceof Error ? r.message : String(r)
+          }`,
+        );
+      }
+      if (firstFailure) {
+        console.warn(
+          `morning warmup: ${
+            settled.filter((s) => s.status === "rejected").length
+          } of ${settled.length} fields failed`,
+          firstFailure.reason,
+        );
+      }
       const ok = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
       return {
         fields: ok.length,

@@ -144,9 +144,15 @@ Deno.test("record-irrigation: confirming twice leaves one confirmed record", opt
   const { data, mastra } = await setup();
   const { run } = await startRecord(mastra);
   await resume(mastra, run.runId, true, 1);
+  let second: Awaited<ReturnType<typeof resume>> | undefined;
   try {
-    await resume(mastra, run.runId, true, 1);
-  } catch { /* a second resume may reject; either way nothing is duplicated */ }
+    second = await resume(mastra, run.runId, true, 1);
+  } catch { /* a rejected second resume is fine */ }
+  if (second) {
+    // It must not report a second `saved`.
+    // deno-lint-ignore no-explicit-any
+    assertNotEquals((second as any).result?.status === "saved" && second.status, "success");
+  }
   assertEquals((await drafts(data)).filter((o) => o.mm === 25).length, 1);
   assertEquals((await drafts(data, "confirmed")).filter((o) => o.mm === 25).length, 1);
 });
@@ -201,4 +207,23 @@ Deno.test("morning-warmup: declares the 05:00 Europe/Paris schedule", opts, asyn
   assertEquals(schedules.length, 1);
   assertEquals(schedules[0].cron, "0 5 * * *");
   assertEquals(schedules[0].timezone, "Europe/Paris");
+});
+
+Deno.test("morning-warmup: every field failing fails the run", opts, async () => {
+  const data = createMemoryFarmData(makeFarmFixture());
+  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
+  const real = createIrrigationService({ data, weather, today: () => "2026-07-05" });
+  const service = {
+    ...real,
+    getFieldReport: () => Promise.reject(new Error("weather offline")),
+  };
+  const mastra = await makeTestMastra({ service, data });
+  const run = await mastra.getWorkflow("morning-warmup").createRun();
+  const res = await run.start({ inputData: {} });
+  assertEquals(res.status, "failed");
+  // deno-lint-ignore no-explicit-any
+  assertStringIncludes(
+    String((res as any).error?.message ?? (res as any).error),
+    "weather offline",
+  );
 });

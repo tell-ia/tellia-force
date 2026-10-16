@@ -127,6 +127,44 @@ Deno.test("confirmIrrigation from another member rejects and confirms nothing", 
   );
   const mine = (await data.listIrrigations(10, { includeDrafts: true })).filter((o) => o.mm === 25);
   assertEquals(mine.map((o) => o.status), ["draft"]);
+  // The run stayed suspended: the owner can still confirm, exactly once.
+  const done = await run(tools.confirmIrrigation, { runId: started.runId, confirmed: true }, 1);
+  assertEquals(done.status, "saved");
+  const after = (await data.listIrrigations(10, { includeDrafts: true })).filter((o) =>
+    o.mm === 25
+  );
+  assertEquals(after.map((o) => o.status), ["confirmed"]);
+  // Answering again is refused and adds nothing.
+  await assertRejects(() =>
+    run(tools.confirmIrrigation, { runId: started.runId, confirmed: true }, 1)
+  );
+  assertEquals(
+    (await data.listIrrigations(10, { includeDrafts: true })).filter((o) => o.mm === 25).length,
+    1,
+  );
+});
+
+Deno.test("confirmIrrigation with an unknown runId rejects", opts, async () => {
+  const { tools, run } = await setup();
+  await assertRejects(
+    () => run(tools.confirmIrrigation, { runId: "nope", confirmed: true }, 1),
+    Error,
+    "unknown confirmation",
+  );
+});
+
+Deno.test("record/confirm reject without a member in the request context", opts, async () => {
+  const { tools, run } = await setup();
+  await assertRejects(
+    () => run(tools.recordIrrigation, { fieldId: 10, date: "2026-07-04", mm: 25 }),
+    Error,
+    "member",
+  );
+  await assertRejects(
+    () => run(tools.confirmIrrigation, { runId: "x", confirmed: true }),
+    Error,
+    "member",
+  );
 });
 
 Deno.test("the member id is never a tool input", opts, async () => {

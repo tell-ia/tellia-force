@@ -149,6 +149,19 @@ export function createAdvisorTools(service: IrrigationService) {
     },
   });
 
+  const RecordOutput = z.object({
+    runId: z.string(),
+    status: z.literal("awaiting_confirmation"),
+    summary: z.string(),
+    fieldName: z.string(),
+    date: IsoDateSchema,
+    mm: z.number(),
+  });
+  const ConfirmOutput = z.object({
+    status: z.enum(["saved", "cancelled"]),
+    record: IrrigationRecordSchema.optional(),
+  });
+
   const recordIrrigation = createTool({
     id: "record_irrigation",
     description:
@@ -158,14 +171,7 @@ export function createAdvisorTools(service: IrrigationService) {
       date: IsoDateSchema.describe("Day the irrigation happened, YYYY-MM-DD."),
       mm: z.number().positive().max(200).describe("Water applied, in mm."),
     }),
-    outputSchema: z.object({
-      runId: z.string(),
-      status: z.literal("awaiting_confirmation"),
-      summary: z.string(),
-      fieldName: z.string(),
-      date: IsoDateSchema,
-      mm: z.number(),
-    }),
+    outputSchema: RecordOutput,
     execute: async ({ fieldId, date, mm }, ctx) => {
       const memberId = memberIdFrom(ctx);
       if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
@@ -176,14 +182,14 @@ export function createAdvisorTools(service: IrrigationService) {
       });
       if (result.status !== "suspended") throw new Error(failureMessage(result));
       const p = result.suspendPayload?.confirm ?? result.suspendPayload;
-      return {
-        runId: run.runId as string,
-        status: "awaiting_confirmation" as const,
+      return RecordOutput.parse({
+        runId: run.runId,
+        status: "awaiting_confirmation",
         summary: p.summary,
         fieldName: p.fieldName,
         date: p.date,
         mm: p.mm,
-      };
+      });
     },
   });
 
@@ -195,21 +201,26 @@ export function createAdvisorTools(service: IrrigationService) {
       runId: z.string().describe("runId returned by record_irrigation."),
       confirmed: z.boolean(),
     }),
-    outputSchema: z.object({
-      status: z.enum(["saved", "cancelled"]),
-      record: IrrigationRecordSchema.optional(),
-    }),
+    outputSchema: ConfirmOutput,
     execute: async ({ runId, confirmed }, ctx) => {
-      memberIdFrom(ctx);
+      const memberId = memberIdFrom(ctx);
       if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
-      const run = await ctx.mastra.getWorkflow("record-irrigation").createRun({ runId });
+      const workflow = ctx.mastra.getWorkflow("record-irrigation");
+      // Refuse before resuming, so a foreign attempt leaves the run suspended for its owner.
+      const state = await workflow.getWorkflowRunById(runId);
+      if (!state) throw new Error("unknown confirmation");
+      if (state.payload?.memberId !== memberId) {
+        throw new Error("this confirmation belongs to another member");
+      }
+      if (state.status !== "suspended") throw new Error("this confirmation is no longer pending");
+      const run = await workflow.createRun({ runId });
       const result = await run.resume({
         step: "confirm",
         resumeData: { confirmed },
         requestContext: ctx.requestContext,
       });
       if (result.status !== "success") throw new Error(failureMessage(result));
-      return result.result;
+      return ConfirmOutput.parse(result.result);
     },
   });
 
