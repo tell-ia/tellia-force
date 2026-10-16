@@ -12,6 +12,7 @@
   (0daa12f7-facf-4d97-a37d-80dde93bd92f), linked +12188456415. Secret header kept by VAPI.
 - 2026-10-17 Task 6: `apps/api/src/modules/vapi/README.md`.
 - 2026-10-17 Assistant renamed "Jean" (name, prompt, first message) on VAPI and in the script.
+- 2026-10-17 Jean: female voice Emma (v2), background sound off, Krisp denoising on. Pushed to VAPI.
 
 ## In progress
 

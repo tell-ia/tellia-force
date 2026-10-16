@@ -93,7 +93,7 @@ for (const fn of vapiFunctions()) {
   console.log(`tool ${fn.name}: ${found ? "updated" : "created"} (${tool.id})`);
 }
 
-// 2. Assistant. Voice and transcriber are the ones of VAPI's English demo assistant.
+// 2. Assistant. The transcriber is the one of VAPI's English demo assistant.
 const assistantBody = {
   name: ASSISTANT_NAME,
   firstMessage: "Hi, this is Jean, your irrigation assistant. What can I check for you today?",
@@ -104,8 +104,13 @@ const assistantBody = {
     messages: [{ role: "system", content: SYSTEM_PROMPT }],
     toolIds,
   },
-  voice: { provider: "vapi", voiceId: "Elliot" },
+  // Female VAPI voice. Other female voices with version 2: Clara, Layla, Savannah.
+  voice: { provider: "vapi", voiceId: "Emma", version: "2" },
   transcriber: { provider: "soniox", model: "stt-rt-v5", language: "en" },
+  // VAPI plays an office ambience on phone calls by default: keep the line silent.
+  backgroundSound: "off",
+  // Krisp denoising: removes the caller's background noise (tractor, wind) before transcription.
+  backgroundSpeechDenoisingPlan: { smartDenoisingPlan: { enabled: true } },
   endCallFunctionEnabled: true,
 };
 const existingAssistant = (await vapi<VapiAssistant[]>("GET", "/assistant?limit=1000"))

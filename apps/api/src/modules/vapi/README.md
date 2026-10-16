@@ -35,6 +35,6 @@ The VAPI wallet needs credits, or calls fail with `insufficient_credits`.
 
 ## Change the assistant
 
-The system prompt, first message, model, voice and transcriber are in
+The system prompt, first message, model, voice, transcriber and noise settings are in
 `apps/api/scripts/vapiSetup.ts`. Edit there and re-run `deno task vapi:setup`, not in the VAPI
 dashboard: the script overwrites dashboard edits.
