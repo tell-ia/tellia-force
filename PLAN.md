@@ -24,7 +24,7 @@ tools that call our API.
 ## Tasks
 - [x] 1. Env: `VAPI_PRIVATE_KEY`, `VAPI_WEBHOOK_SECRET`, `VAPI_SERVER_URL` (API, optional),
       `VITE_VAPI_PUBLIC_KEY` (web, optional); `.env.example` files; web `env.ts`.
-- [ ] 2. VAPI module: tool table, `POST /vapi/tools`, member lookup by phone, mount in `main.ts`,
+- [x] 2. VAPI module: tool table, `POST /vapi/tools`, member lookup by phone, mount in `main.ts`,
       unit tests on in-memory farms.
 - [ ] 3. frp tunnel: `frpc.example.toml`, ignore `frpc.toml`, root `pnpm tunnel` script.
 - [ ] 4. Setup script `apps/api/scripts/vapiSetup.ts` + `deno task vapi:setup`.
