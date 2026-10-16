@@ -1,4 +1,4 @@
-# Tellia Force
+# Tellia Force — EU Ag Hackathon
 
 Hackathon monorepo — mobile-first app.
 
@@ -40,4 +40,4 @@ pnpm cap:sync
 pnpm cap:open            # opens Android Studio
 ```
 
-See `CLAUDE.md` (root + each package) for conventions.
+See `CLAUDE.md` (root + each package) for conventions. Plans live in `plans/`.
