@@ -175,3 +175,10 @@ Deno.test("rankReports", () => {
   ]);
   assertEquals(ranked[2].depletionPct >= ranked[3].depletionPct, true);
 });
+
+Deno.test("report: frost tmin is rounded to 1 decimal in warning and reason", () => {
+  const r = report({ over: { "2026-07-05": { tmin: -1.25 } } });
+  assertEquals(r.decision, "frost_hold");
+  assertEquals(r.warnings.includes("Frost forecast today (min -1.2 °C)."), true);
+  assertEquals(r.reason.includes("(min -1.2 °C)"), true);
+});

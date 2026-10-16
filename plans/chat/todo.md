@@ -3,7 +3,7 @@
 The detailed behavior is in [plan.md](plan.md), and the log is in [progress.md](progress.md).
 
 ## Setup / accounts
-- [x] OpenAI key (`apps/api/.env` → `OPENAI_API_KEY`), used by the default model `openai/gpt-5-mini`
+- [x] OpenAI key (`apps/api/.env` → `OPENAI_API_KEY`), used by the default model `openai/gpt-6.1-sol`
 - [x] Supabase tables and data exist (read on 2026-10-16)
 - [x] Open-Meteo needs no account
 - [x] Mastra needs no account (OSS, local LibSQL)

@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import {
   AdviceQuerySchema,
+  IsoDateSchema,
   DecisionSchema,
   FieldReportSchema,
   RecordIrrigationBodySchema,
@@ -55,7 +56,8 @@ Deno.test("env: DEMO_DATE optional ISO, defaults", () => {
   };
   const ok = parseEnv(ServerEnvSchema, base);
   assertEquals(ok.DEMO_DATE, undefined);
-  assertEquals(ok.MODEL, "openai/gpt-5-mini");
+  assertEquals(ok.MODEL, "openai/gpt-6.1-sol");
+  assertEquals(ok.MODEL_MINI, "openai/gpt-6-luna");
   assertEquals(ok.MASTRA_DB_URL, "file:./data/mastra.db");
   assertEquals(ok.TIMEZONE, "Europe/Paris");
   assertEquals(
@@ -69,4 +71,12 @@ Deno.test("env: DEMO_DATE optional ISO, defaults", () => {
     threw = true;
   }
   assert(threw);
+});
+
+Deno.test("IsoDateSchema rejects impossible calendar dates", () => {
+  assert(IsoDateSchema.safeParse("2026-07-05").success);
+  assert(IsoDateSchema.safeParse("2028-02-29").success);
+  for (const bad of ["2026-13-45", "2026-02-30", "2027-02-29", "2026-00-10", "2026-04-31"]) {
+    assert(!IsoDateSchema.safeParse(bad).success, bad);
+  }
 });

@@ -38,7 +38,7 @@ export function buildFieldReport(input: ReportInput): FieldReport {
   const today = input.days.find((d) => d.date === asOf);
   const warnings = [...(input.extraWarnings ?? [])];
   const frost = today !== undefined && today.tmin < 0;
-  if (frost) warnings.push(`Frost forecast today (min ${today.tmin} °C).`);
+  if (frost) warnings.push(`Frost forecast today (min ${round1(today.tmin)} °C).`);
 
   const rain3 = round1(
     input.days
@@ -63,7 +63,7 @@ export function buildFieldReport(input: ReportInput): FieldReport {
       decision = "frost_hold";
       irrigateMm = need;
       reason =
-        `Frost is forecast today (min ${today.tmin} °C): irrigate ${need} mm once temperatures are above 0 °C.`;
+        `Frost is forecast today (min ${round1(today.tmin)} °C): irrigate ${need} mm once temperatures are above 0 °C.`;
     } else if (rain3 >= need / 2) {
       decision = "wait_for_rain";
       reason =

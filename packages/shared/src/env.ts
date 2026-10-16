@@ -18,7 +18,9 @@ export const ServerEnvSchema = z.object({
   // comma-separated allowed origins for CORS; "*" in dev.
   CORS_ORIGINS: z.string().default("*"),
   // Chat / irrigation advisor (Mastra). Model router id; uses OPENAI_API_KEY.
-  MODEL: z.string().min(1).default("openai/gpt-5-mini"),
+  MODEL: z.string().min(1).default("openai/gpt-6.1-sol"),
+  // Cheaper model for light helper work (thread titles, etc.).
+  MODEL_MINI: z.string().min(1).default("openai/gpt-6-luna"),
   // Mastra memory + workflow storage (LibSQL). Local file by default.
   MASTRA_DB_URL: z.string().min(1).default("file:./data/mastra.db"),
   // Pin "today" for demos (YYYY-MM-DD); unset = real today.

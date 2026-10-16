@@ -6,7 +6,14 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 /** Calendar date, `YYYY-MM-DD`. */
-export const IsoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+export const IsoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
+  .refine((s) => {
+    const [y, m, d] = s.split("-").map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d));
+    return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+  }, "not a real calendar date");
 export type IsoDate = z.infer<typeof IsoDateSchema>;
 
 export const DecisionSchema = z.enum([
