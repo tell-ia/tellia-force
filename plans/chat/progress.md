@@ -10,11 +10,11 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 |---|---|---|---|---|
 | 0 | Research, verification spikes, real-data check | ✅ done | 2026-10-16 | see below |
 | 1 | Setup, shared contracts, FarmData interface, utils | ✅ done | 2026-10-16 | deps pinned + locked, env vars, `@tellia/shared/irrigation`, `FarmData` types, `engine/util.ts`; 8 tests |
-| 2 | Engine: soil water (Saxton–Rawls), crop Kc, season fraction | ⬜ todo | | |
-| 3 | Engine: water balance, field report, ranking | ⬜ todo | | |
-| 4 | Engine: scenario events + comparison | ⬜ todo | | |
-| 5 | Data: Supabase FarmData + in-memory twin + fixture | ⬜ todo | | |
-| 6 | Weather service: DB + Open-Meteo gap/forecast, GDD, climatology | ⬜ todo | | |
+| 2 | Engine: soil water (Saxton–Rawls), crop Kc, season fraction | ✅ done | 2026-10-16 | 7854e9b; review clean |
+| 3 | Engine: water balance, field report, ranking | ✅ done | 2026-10-16 | e6b880d; review clean |
+| 4 | Engine: scenario events + comparison | ✅ done | 2026-10-16 | 051b837; events with no weather day (including irrigation) are ignored with a warning |
+| 5 | Data: Supabase FarmData + in-memory twin + fixture | 🟡 re-review | 2026-10-16 | 2582776 + fix 9556cf8 (status/delete scoped to irrigation ops, 404). Read-only DB test passed. Write path not yet run against the DB |
+| 6 | Weather service: DB + Open-Meteo gap/forecast, GDD, climatology | ✅ done | 2026-10-16 | 8830372 + 332adbf (stored-GDD test, Feb 29 fallback) |
 | 7 | Irrigation service (use cases) | ⬜ todo | | |
 | 8 | REST `/irrigation` | ⬜ todo | | |
 | 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ⬜ todo | | |
@@ -22,6 +22,7 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | 11 | Advisor agent | ⬜ todo | | |
 | 12 | Chat module: `/chat`, member identity, history, workers | ⬜ todo | | |
 | 13 | Docs, smoke test, latency | ⬜ todo | | |
+| 14 | Live end-to-end tests (real LLM, real data read-only) | ⬜ todo | | |
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked
 
@@ -62,7 +63,7 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 | 2026-10-16 | The assistant writes `operation` rows as `status: draft`, and confirms them by resuming a suspended `record-irrigation` workflow. Only confirmed rows count | The `operation` table defines "draft" this way; suspend/resume is verified |
 | 2026-10-16 | Use Mastra workflows: farm-advice, simulate-scenario, record-irrigation and morning-warmup | User's choice; durable confirmations and step traces |
 | 2026-10-16 | The REST `/irrigation` module is the fast path for VAPI, with no LLM and no workflow | The 2 s call budget |
-| 2026-10-16 | Default model is `openai/gpt-5-mini` (env `MODEL`) | The repo already has an OpenAI key |
+| 2026-10-16 | Models: `MODEL=openai/gpt-6.1-sol` (main) and `MODEL_MINI=openai/gpt-6-luna` (mini tasks). Both are in Mastra 1.78's model router under the openai provider | User's choice; the repo already has an OpenAI key |
 | 2026-10-16 | `DEMO_DATE=2026-07-05` | Maize mid-season, with real weather and irrigations; today is near harvest |
 | 2026-10-16 | Build with the Workflow tool using Sonnet agents, on branch `feat/chat-backend` (root CLAUDE.md says to work on main; we merge when it's done) | User's choice; earlier instruction to use only Sonnet for sub-agents |
 | 2026-10-16 | The plan contains no code | User's instruction |
@@ -86,4 +87,6 @@ Filled in by Task 13. The target is first text under 2 s for chat; voice uses `/
 ## Log
 
 - 2026-10-16: research and spikes done; the plan was adapted to the monorepo and the real Supabase data.
+- 2026-10-16: Tasks 1-6 implemented by Sonnet subagents (2-4, 5 and 6 in parallel), each reviewed. Suite: 51 passed, 1 ignored (the opt-in DB test). Added Task 14 (live LLM tests) and the gpt-6.1-sol / gpt-6-luna models at the user's request.
+- 2026-10-16: the operation schema (PostgREST OpenAPI) shows status/source/origin as text with defaults confirmed/import/agent and no enum. Draft rows are likely accepted; CHECK constraints are not visible, so a human verifies one insert.
 - 2026-10-16: Task 1 done (setup, contracts, FarmData interface, util).

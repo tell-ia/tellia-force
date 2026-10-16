@@ -10,17 +10,18 @@ The detailed behavior is in [plan.md](plan.md), and the log is in [progress.md](
 
 ## MVP (plan tasks)
 - [x] 1. Setup: deno.json (Mastra deps, permissions), env (`MODEL`, `MASTRA_DB_URL`, `DEMO_DATE`, `TIMEZONE`), shared `irrigation.ts` contracts, `FarmData` interface, utils
-- [ ] 2. Engine: Saxton–Rawls soil water, root depth and p, Kc from `crop_stage` by GDD fraction (falling back to `crop_ref`)
-- [ ] 3. Engine: water balance, field report (decision and a one-sentence reason), ranking
-- [ ] 4. Engine: scenario events (drought, flood, frost, hail, rain, irrigation) and comparison
+- [x] 2. Engine: Saxton–Rawls soil water, root depth and p, Kc from `crop_stage` by GDD fraction (falling back to `crop_ref`)
+- [x] 3. Engine: water balance, field report (decision and a one-sentence reason), ranking
+- [x] 4. Engine: scenario events (drought, flood, frost, hail, rain, irrigation) and comparison
 - [ ] 5. Data: Supabase `FarmData` (paginated reads, irrigation writes), the in-memory twin, the fixture
-- [ ] 6. Weather: DB history plus Open-Meteo gap and forecast, GDD, climatology, cache
+- [x] 6. Weather: DB history plus Open-Meteo gap and forecast, GDD, climatology, cache
 - [ ] 7. Irrigation service: report, advice, simulate, weather, preview, draft, confirm, cancel, record
 - [ ] 8. REST `/irrigation/*` (the fast path for VAPI)
 - [ ] 9. Mastra workflows: farm-advice, simulate-scenario, record-irrigation (suspend/resume), morning-warmup (05:00)
 - [ ] 10. Mastra tools: the 7 keys that make up the UI contract
 - [ ] 11. Advisor agent: no invented numbers, memory per member, two-turn confirmation
 - [ ] 12. Chat module: `POST /chat` (v7), `GET /chat/history`, `x-member-id` middleware, `startWorkers`
+- [ ] 14. Live end-to-end tests: real OpenAI model (`deno task test:live`), mm-grounded check, two-turn confirmation, latency, read-only real-data advice
 - [ ] 13. Docs (module README, api CLAUDE.md), smoke script, latency
 
 ## Hand-offs to teammates

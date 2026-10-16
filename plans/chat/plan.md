@@ -143,7 +143,7 @@ These failure modes are the most likely to hurt a real user. Each one is pinned 
   - Make `check` type-check `src` and `tests`.
   - Run `deno install`, so `deno.lock` holds every new dependency. The lock file is committed.
 - **Env:** extend the shared `ServerEnvSchema` with:
-  - `MODEL` (default `openai/gpt-5-mini`; Mastra's model router uses the existing `OPENAI_API_KEY`);
+  - `MODEL` (default `openai/gpt-6.1-sol`, the main chat model) and `MODEL_MINI` (default `openai/gpt-6-luna`, for light helper work such as thread titles, if Mastra Memory supports it). Mastra's model router uses the existing `OPENAI_API_KEY` for both;
   - `MASTRA_DB_URL` (default `file:./data/mastra.db`);
   - `DEMO_DATE` (optional, `YYYY-MM-DD`);
   - `TIMEZONE` (default `Europe/Paris`).
@@ -629,7 +629,7 @@ Steps call the irrigation service, never the FAO maths directly.
   - Dynamic instructions that read `memberId` from the request context.
   - The seven tools.
   - Mastra Memory with the last 20 messages and working memory in **template** mode: language, field nicknames, preferences. Template mode is the one verified on Deno.
-  - The model is the `MODEL` router string, or the scripted mock in tests.
+  - The model is the `MODEL` router string (`openai/gpt-6.1-sol`), or the scripted mock in tests. `MODEL_MINI` (`openai/gpt-6-luna`) is wired through `createMastra` for light helper work.
 - **Test helper `scriptedModel(steps)`:** a `MockLanguageModelV3` from `ai/test` that serves both generate and stream. Each call consumes the next step, either some tool calls or a text. It records the prompts, and answers "OK." once the script runs out.
 
 **Tests**
@@ -723,6 +723,41 @@ Steps call the irrigation service, never the FAO maths directly.
 Do **not** smoke the record/confirm flow, because it writes to the shared DB. Leave it for a human. Write the timings into progress.md.
 
 **Done when:** the docs are committed and the latency is recorded.
+
+---
+
+## Task 14: Live end-to-end tests (real LLM, real data read-only)
+
+**Why:** the user wants proof that the whole thing works, including real model calls. The `OPENAI_API_KEY` in `apps/api/.env` may be used.
+
+**Build**
+- A separate live suite, `apps/api/tests/live/*_test.ts`, run with a new `test:live` task.
+  - The task loads `.env` and sets `RUN_LIVE_TESTS=1`.
+  - Every live test is skipped unless that variable is set, so `deno task test` stays offline and free.
+- **The live app:**
+  - The full app from Task 12, with the **real model** (`MODEL`, default `openai/gpt-6.1-sol`) and the in-memory `FarmData` fixture.
+  - The fixture means the chat can create and confirm irrigation records without touching Supabase.
+  - Weather comes from the fixture, so Open-Meteo is not needed.
+  - The temp LibSQL store is used for memory and workflow snapshots.
+- **One helper** posts a chat turn and parses the v7 SSE stream into `{ toolCalls: [{ name, input, output }], text, msFirstText, msTotal }`.
+
+**Tests.** Assertions are on tool behavior and numbers, never on exact wording.
+1. **Advice.** Ask "Quel champ dois-je arroser aujourd'hui ?".
+   - getFarmAdvice is called.
+   - The reply is non-empty.
+   - Every "N mm" in the reply text equals an `irrigateMm`, `depletionMm` or `rainNext3DaysMm` value from the tool output, to ±0.5. This is the mm-grounded check.
+   - The reply mentions "La Vallée".
+2. **Scenario.** Ask "Et si une sécheresse de 5 jours commence aujourd'hui sur La Vallée ?".
+   - simulateScenario is called with fieldId 10 and a `drought` event.
+   - The reply is non-empty.
+3. **Two-turn confirmation**, both turns in the same member thread.
+   - Turn 1: "J'ai arrosé La Vallée hier, 25 mm". recordIrrigation is called with fieldId 10, mm 25 and yesterday's date. confirmIrrigation is **not** called. Exactly one draft exists, and the reply asks a question.
+   - Turn 2: "oui". confirmIrrigation is called with confirmed true. The fixture now holds a confirmed 25 mm record, and the field report's depletion went down.
+4. **Memory.** After test 3, a new question in the same thread ("Et pour Le Puits ?") gets an answer without error. Chat history has at least 4 messages.
+5. **Latency.** Record `msFirstText` and `msTotal` for test 1 and write them to progress.md (Latency table). Don't assert under 2 s; chat isn't the voice path.
+6. **Real data, read-only.** Only when `RUN_DB_TESTS=1` too: GET `/irrigation/advice?date=2026-07-05` against the real Supabase FarmData returns a report for field 10, with crop MAIZ and a stage label.
+
+**Done when:** `deno task test:live` passes twice in a row, the latency is recorded, and the offline suite is still green. Live tests may make about 10 model calls per run.
 
 ---
 
