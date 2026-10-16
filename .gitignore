@@ -21,3 +21,6 @@ coverage/
 
 # Mastra local LibSQL storage
 apps/api/data/
+
+# Local planning notes (not shared)
+plans/chat/
