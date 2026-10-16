@@ -11,7 +11,10 @@ export async function initNative(): Promise<void> {
   if (!isNative) return;
   try {
     await StatusBar.setStyle({ style: Style.Dark });
-    Keyboard.setAccessoryBarVisible?.({ isVisible: true });
+    // setAccessoryBarVisible is iOS-only — it throws "not implemented" on Android.
+    if (platform === "ios") {
+      await Keyboard.setAccessoryBarVisible({ isVisible: true });
+    }
   } catch {
     // Plugin not available on this platform — ignore for the hackathon.
   }

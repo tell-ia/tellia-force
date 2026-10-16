@@ -8,6 +8,14 @@ const config: CapacitorConfig = {
   //   server: { url: "http://YOUR-LAN-IP:5173", cleartext: true }
   server: {
     androidScheme: "https",
+    // Dev only: allow plain-http calls to the dev API (10.0.2.2 / LAN IP).
+    cleartext: true,
+  },
+  android: {
+    // Dev only: the app is served over https://localhost, so let the WebView
+    // call the plain-http dev API without blocking it as mixed content.
+    // Remove for a prod build that hits an https API.
+    allowMixedContent: true,
   },
 };
 

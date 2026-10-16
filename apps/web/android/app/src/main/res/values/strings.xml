@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tellia Force</string>
+    <string name="title_activity_main">Tellia Force</string>
+    <string name="package_name">com.tellia.force</string>
+    <string name="custom_url_scheme">com.tellia.force</string>
+</resources>
