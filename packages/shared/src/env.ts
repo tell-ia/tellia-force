@@ -17,6 +17,14 @@ export const ServerEnvSchema = z.object({
   VAPI_PHONE_NUMBER: z.string().min(1),
   // comma-separated allowed origins for CORS; "*" in dev.
   CORS_ORIGINS: z.string().default("*"),
+  // Chat / irrigation advisor (Mastra). Model router id; uses OPENAI_API_KEY.
+  MODEL: z.string().min(1).default("openai/gpt-5-mini"),
+  // Mastra memory + workflow storage (LibSQL). Local file by default.
+  MASTRA_DB_URL: z.string().min(1).default("file:./data/mastra.db"),
+  // Pin "today" for demos (YYYY-MM-DD); unset = real today.
+  DEMO_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD").optional(),
+  // IANA time zone used to compute "today".
+  TIMEZONE: z.string().min(1).default("Europe/Paris"),
 });
 export type ServerEnv = z.infer<typeof ServerEnvSchema>;
 

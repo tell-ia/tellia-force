@@ -9,7 +9,7 @@ The detailed behavior is in [plan.md](plan.md), and the log is in [progress.md](
 - [x] Mastra needs no account (OSS, local LibSQL)
 
 ## MVP (plan tasks)
-- [ ] 1. Setup: deno.json (Mastra deps, permissions), env (`MODEL`, `MASTRA_DB_URL`, `DEMO_DATE`, `TIMEZONE`), shared `irrigation.ts` contracts, `FarmData` interface, utils
+- [x] 1. Setup: deno.json (Mastra deps, permissions), env (`MODEL`, `MASTRA_DB_URL`, `DEMO_DATE`, `TIMEZONE`), shared `irrigation.ts` contracts, `FarmData` interface, utils
 - [ ] 2. Engine: Saxton–Rawls soil water, root depth and p, Kc from `crop_stage` by GDD fraction (falling back to `crop_ref`)
 - [ ] 3. Engine: water balance, field report (decision and a one-sentence reason), ranking
 - [ ] 4. Engine: scenario events (drought, flood, frost, hail, rain, irrigation) and comparison

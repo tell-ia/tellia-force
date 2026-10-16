@@ -9,7 +9,7 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | # | Task | Status | Date | Notes |
 |---|---|---|---|---|
 | 0 | Research, verification spikes, real-data check | ✅ done | 2026-10-16 | see below |
-| 1 | Setup, shared contracts, FarmData interface, utils | ⬜ todo | | |
+| 1 | Setup, shared contracts, FarmData interface, utils | ✅ done | 2026-10-16 | deps pinned + locked, env vars, `@tellia/shared/irrigation`, `FarmData` types, `engine/util.ts`; 8 tests |
 | 2 | Engine: soil water (Saxton–Rawls), crop Kc, season fraction | ⬜ todo | | |
 | 3 | Engine: water balance, field report, ranking | ⬜ todo | | |
 | 4 | Engine: scenario events + comparison | ⬜ todo | | |
@@ -66,6 +66,9 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 | 2026-10-16 | `DEMO_DATE=2026-07-05` | Maize mid-season, with real weather and irrigations; today is near harvest |
 | 2026-10-16 | Build with the Workflow tool using Sonnet agents, on branch `feat/chat-backend` (root CLAUDE.md says to work on main; we merge when it's done) | User's choice; earlier instruction to use only Sonnet for sub-agents |
 | 2026-10-16 | The plan contains no code | User's instruction |
+| 2026-10-16 | Test files are `apps/api/tests/*_test.ts`, run by `deno task test` (the shared package has no tests; vitest unused). Keep util/contract tests pure: never import `src/config.ts` without setting env first | `deno test` only picks up `*_test.ts`; config parses env at import |
+| 2026-10-16 | Lock resolves a single zod (4.6.7, required by Mastra). The lock's `@hono/zod-validator` peer was hand-edited from zod 4.4.3 to 4.6.7 so `deno task check` passes (two zod copies broke `zValidator` types). Re-run `deno install` after any dep change and confirm `grep "zod@4.4.3" apps/api/deno.lock` is empty | Duplicate zod versions are type-incompatible |
+| 2026-10-16 | `check` now type-checks `src/main.ts tests/`; hono floor not bumped (resolves 4.13.13) | Mastra did not need a newer hono |
 
 ## Open questions
 
@@ -83,3 +86,4 @@ Filled in by Task 13. The target is first text under 2 s for chat; voice uses `/
 ## Log
 
 - 2026-10-16: research and spikes done; the plan was adapted to the monorepo and the real Supabase data.
+- 2026-10-16: Task 1 done (setup, contracts, FarmData interface, util).
