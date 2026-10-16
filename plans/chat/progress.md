@@ -15,7 +15,7 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | 4 | Engine: scenario events + comparison | ✅ done | 2026-10-16 | 051b837; events with no weather day (including irrigation) are ignored with a warning |
 | 5 | Data: Supabase FarmData + in-memory twin + fixture | 🟡 re-review | 2026-10-16 | 2582776 + fix 9556cf8 (status/delete scoped to irrigation ops, 404). Read-only DB test passed. Write path not yet run against the DB |
 | 6 | Weather service: DB + Open-Meteo gap/forecast, GDD, climatology | ✅ done | 2026-10-16 | 8830372 + 332adbf (stored-GDD test, Feb 29 fallback) |
-| 7 | Irrigation service (use cases) | ⬜ todo | | |
+| 7 | Irrigation service (use cases) | ✅ done | 2026-10-16 | `irrigation.service.ts`, 11 tests; adds `listIrrigations`, `defaultMemberId`; cancel only deletes drafts (409 otherwise) |
 | 8 | REST `/irrigation` | ⬜ todo | | |
 | 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ⬜ todo | | |
 | 10 | Mastra tools (7) | ⬜ todo | | |
