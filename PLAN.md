@@ -26,7 +26,7 @@ tools that call our API.
       `VITE_VAPI_PUBLIC_KEY` (web, optional); `.env.example` files; web `env.ts`.
 - [x] 2. VAPI module: tool table, `POST /vapi/tools`, member lookup by phone, mount in `main.ts`,
       unit tests on in-memory farms.
-- [ ] 3. frp tunnel: `frpc.example.toml`, ignore `frpc.toml`, root `pnpm tunnel` script.
+- [x] 3. frp tunnel: `frpc.example.toml`, ignore `frpc.toml`, root `pnpm tunnel` script.
 - [ ] 4. Setup script `apps/api/scripts/vapiSetup.ts` + `deno task vapi:setup`.
 - [ ] 5. Run it: secret in `.env`, tunnel + API up, smoke test through the tunnel, run setup,
       test the assistant with the VAPI chat API.

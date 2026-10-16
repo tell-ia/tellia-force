@@ -1,0 +1,14 @@
+# Team frp tunnel (self-hosted ngrok): exposes the local API over HTTPS so VAPI can call it.
+# Copy to frpc.toml (git-ignored), replace "yourname", then `pnpm tunnel`.
+# Needs FRP_TOKEN in your shell (ask the team). URL: https://yourname-tellia-api.dev.review-time.info
+serverAddr = "34.62.32.239"
+serverPort = 7000
+auth.method = "token"
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+
+# Subdomains are shared by the whole team: keep them unique ({yourname}-{service}).
+[[proxies]]
+name = "yourname-tellia-api"
+type = "http"
+localPort = 8000 # the API's PORT
+subdomain = "yourname-tellia-api"

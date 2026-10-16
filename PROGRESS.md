@@ -5,6 +5,7 @@
   VAPI account had: demo assistant "Riley" (no tools), Twilio number not linked, no tools.
 - 2026-10-17 Task 1: VAPI env vars (optional) in shared env schema, examples, web env.ts.
 - 2026-10-17 Task 2: `POST /vapi/tools` (7 tools, x-vapi-secret, caller by phone), 9 tests; suite 139 pass.
+- 2026-10-17 Task 3: `frpc.example.toml` + `pnpm tunnel`; local `frpc.toml` → vincent-tellia-api → :8001.
 
 ## In progress
 
