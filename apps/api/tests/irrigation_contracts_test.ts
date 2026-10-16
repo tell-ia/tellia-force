@@ -64,6 +64,13 @@ Deno.test("env: DEMO_DATE optional ISO, defaults", () => {
     parseEnv(ServerEnvSchema, { ...base, DEMO_DATE: "2026-07-05" }).DEMO_DATE,
     "2026-07-05",
   );
+  assertEquals(parseEnv(ServerEnvSchema, { ...base, DEMO_DATE: "" }).DEMO_DATE, undefined);
+  assertEquals(ok.OPEN_MASTRA_API, false);
+  assertEquals(parseEnv(ServerEnvSchema, { ...base, OPEN_MASTRA_API: "" }).OPEN_MASTRA_API, false);
+  assertEquals(
+    parseEnv(ServerEnvSchema, { ...base, OPEN_MASTRA_API: "true" }).OPEN_MASTRA_API,
+    true,
+  );
   let threw = false;
   try {
     parseEnv(ServerEnvSchema, { ...base, DEMO_DATE: "05/07/2026" });

@@ -25,7 +25,12 @@ export const ServerEnvSchema = z.object({
   // Mastra memory + workflow storage (LibSQL). Local file by default.
   MASTRA_DB_URL: z.string().min(1).default("file:./data/mastra.db"),
   // Pin "today" for demos (YYYY-MM-DD); unset = real today.
-  DEMO_DATE: IsoDateSchema.optional(),
+  DEMO_DATE: z.preprocess((v) => (v === "" ? undefined : v), IsoDateSchema.optional()),
+  // Expose Mastra's built-in /api/* routes (open, no auth). Off by default.
+  OPEN_MASTRA_API: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  ),
   // IANA time zone used to compute "today".
   TIMEZONE: z.string().min(1).default("Europe/Paris"),
 });
