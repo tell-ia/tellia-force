@@ -4,32 +4,20 @@ import type { UIMessage } from "ai";
 import { Mic, Send } from "lucide-react";
 import { useFarm } from "../../app/FarmContext";
 import { createChatTransport, getChatHistory } from "../../lib/api/chat";
-import { font, radius, v } from "../../theme/tokens";
+import { font, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
-import demoConvo from "../../fixtures/oakfield/chat-demo.json";
-
-const MIC_DEMO_PHRASE = "Should I water The Valley?"; // MOCK: voice capture → text
+const MIC_PHRASE = "Should I water my fields today?"; // voice capture is mocked → sends this text
 
 export function ChatScreen() {
-  // Default to the offline demo so the screen always works; Live connects to the
-  // advisor backend (POST /chat). Phase 3 wires Live; the playground unblocks UI.
-  const [mode, setMode] = useState<"demo" | "live">("demo");
   const { farm } = useFarm();
-
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-          <Label>Assistant</Label>
-          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 30 }}>Chat</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, background: v("sunk"), borderRadius: radius.tile, padding: 3 }}>
-          <Seg on={mode === "demo"} onClick={() => setMode("demo")}>Demo</Seg>
-          <Seg on={mode === "live"} onClick={() => setMode("live")}>Live</Seg>
-        </div>
+      <div style={{ padding: "16px 20px 10px", display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+        <Label>Assistant</Label>
+        <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 30 }}>Chat</span>
       </div>
-      {mode === "demo" ? <DemoChat /> : <LiveChat key={farm?.memberId ?? "none"} />}
+      <LiveChat key={farm?.memberId ?? "none"} />
     </div>
   );
 }
@@ -57,15 +45,9 @@ function LiveChat() {
   return (
     <ChatLayout
       onSend={reply}
-      onMic={() => reply(MIC_DEMO_PHRASE)}
+      onMic={() => reply(MIC_PHRASE)}
       disabled={busy}
-      banner={
-        offline
-          ? "Backend offline — start the API or use Demo."
-          : error
-            ? `Error: ${error.message}`
-            : null
-      }
+      banner={offline ? "Can't reach the advisor — check the connection." : error ? `Error: ${error.message}` : null}
     >
       {messages.length === 0 && !offline && <Empty />}
       {messages.map((m) => (
@@ -76,39 +58,7 @@ function LiveChat() {
   );
 }
 
-// ---- Demo chat (scripted, offline) ---------------------------------------
-
-interface DemoPart {
-  type: "text" | "widget";
-  text?: string;
-  key?: string;
-  output?: unknown;
-}
-interface DemoMessage {
-  role: "assistant" | "farmer";
-  parts: DemoPart[];
-}
-
-function DemoChat() {
-  const convo = demoConvo as { messages: DemoMessage[] };
-  return (
-    <ChatLayout disabled banner="Scripted demo — switch to Live to chat with the backend.">
-      {convo.messages.map((m, i) => (
-        <Block key={i} role={m.role}>
-          {m.parts.map((p, j) =>
-            p.type === "text" ? (
-              <TextBubble key={j} role={m.role}>{p.text}</TextBubble>
-            ) : (
-              <WidgetRenderer key={j} toolKey={p.key ?? ""} state="output-available" output={p.output} />
-            ),
-          )}
-        </Block>
-      ))}
-    </ChatLayout>
-  );
-}
-
-// ---- rendering shared by both --------------------------------------------
+// ---- rendering -----------------------------------------------------------
 
 function MessageBlock({ message, onReply }: { message: UIMessage; onReply: (t: string) => void }) {
   const role = message.role === "user" ? "farmer" : "assistant";
@@ -235,12 +185,6 @@ function Empty() {
       <div style={{ fontFamily: font.display, fontWeight: 600, fontSize: 20, color: v("ink") }}>Ask the advisor</div>
       <div style={{ fontSize: 13, maxWidth: 260 }}>“Should I water The Valley?” · tap the mic to try it.</div>
     </div>
-  );
-}
-
-function Seg({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" aria-pressed={on} onClick={onClick} style={{ minWidth: 60, height: 34, border: 0, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: on ? v("surface") : "transparent", color: on ? v("ink") : v("ink2"), boxShadow: on ? "0 1px 2px rgba(15, 24, 19, 0.12)" : "none" }}>{children}</button>
   );
 }
 

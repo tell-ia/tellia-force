@@ -1,4 +1,4 @@
-import type { FieldReport, ParcelReport, Reserve } from "@tellia/shared";
+import type { BalancePoint, DayBalance, FieldReport, ParcelReport, Reserve } from "@tellia/shared";
 
 // Pure domain→view mappers + the small computations the screens need. Tested in
 // parcel.test.ts on the demo numbers. No rendering, no side effects.
@@ -78,16 +78,38 @@ function headlineFor(r: FieldReport): string {
   }
 }
 
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+const dayOfMonth = (iso: string): string => String(Number(iso.split("-")[2] ?? 0));
+
+/** Engine DayBalance → chart BalancePoint. reserve = TAW − depletion. */
+function toBalancePoint(d: DayBalance, asOf: string): BalancePoint {
+  return {
+    date: d.date,
+    dayLabel: dayOfMonth(d.date),
+    rain: round1(d.rain),
+    irrigation: round1(d.irrigation),
+    cropUse: round1(d.etc),
+    reserveMm: round1(d.taw - d.depletion),
+    forecast: d.date > asOf,
+  };
+}
+
 /**
- * Lightweight live ParcelReport from the engine's FieldReport (reco + reserve +
- * reason). The rich sections (series/soil/season/stage) are left out until the
- * full get_parcel_report endpoint is available.
+ * Engine FieldReport → ParcelReport. The v2 report carries the detail (series,
+ * season, soil, stage) so this is a full live report: recommendation + reserve +
+ * water-balance series + season totals. Sections the report omits stay undefined
+ * and the UI hides them.
  */
 export function fieldReportToParcelReport(
   r: FieldReport,
   opts: { farmId: number; areaHa?: number },
 ): ParcelReport {
-  return {
+  const efficiency =
+    r.irrigateMm > 0 && r.irrigateGrossMm > 0
+      ? Math.round((r.irrigateMm / r.irrigateGrossMm) * 100) / 100
+      : 0.8;
+
+  const report: ParcelReport = {
     schemaVersion: "v0",
     id: r.fieldId,
     farmId: opts.farmId,
@@ -97,14 +119,27 @@ export function fieldReportToParcelReport(
     asOf: r.asOf,
     recommendation: {
       decision: r.decision,
-      headline: headlineFor(r),
+      headline: r.headline || headlineFor(r),
       netMm: r.irrigateMm,
-      grossMm: grossFromNet(r.irrigateMm),
-      efficiency: 0.8,
+      grossMm: r.irrigateGrossMm,
+      efficiency,
       reason: r.reason,
       secondPass: null,
     },
     reserve: fieldReportToReserve(r),
-    method: "FAO-56 water balance (live summary). Full history & soil come from get_parcel_report.",
+    method: "FAO-56 soil water balance (live). Weather from AgERA5; stages from degree-days.",
   };
+
+  if (r.series?.length) report.series = r.series.map((d) => toBalancePoint(d, r.asOf));
+  if (r.season) {
+    report.seasonBalance = {
+      rainMm: round1(r.season.rainMm),
+      irrigatedMm: round1(r.season.irrigationNetMm),
+      cropUseMm: round1(r.season.etcMm),
+      drainedMm: round1(r.season.drainageMm),
+      stressDays: r.season.stressDays,
+      cropDays: r.season.daysSinceSowing,
+    };
+  }
+  return report;
 }
