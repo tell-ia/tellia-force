@@ -198,21 +198,35 @@ export function createSupabaseFarmData(db: SupabaseClient): FarmData {
     return r[0] ?? null;
   }
 
+  // Several farms share the database (farm_id on every farm table). Until the API takes a farm per
+  // request, it serves the first farm (lowest id) and reads only its members, fields and region weather.
+  let servedFarmP: Promise<Row> | null = null;
+  function servedFarm(): Promise<Row> {
+    if (!servedFarmP) {
+      servedFarmP = one(db.from("farm").select("*").order("id").limit(1)).then((r) => {
+        if (!r) fail("no farm found");
+        return r!;
+      });
+      servedFarmP.catch(() => (servedFarmP = null));
+    }
+    return servedFarmP;
+  }
+
   return {
     async getFarm() {
-      const r = await one(db.from("farm").select("*").order("id").limit(1));
-      if (!r) fail("no farm found");
-      return mapFarm(r!);
+      return mapFarm(await servedFarm());
     },
     async listMembers() {
-      return (await rows(db.from("member").select("*").order("id"))).map(mapMember);
+      const farm = await servedFarm();
+      return (await rows(db.from("member").select("*").eq("farm_id", farm.id).order("id"))).map(mapMember);
     },
     async getMember(id) {
       const r = await one(db.from("member").select("*").eq("id", id).limit(1));
       return r ? mapMember(r) : null;
     },
     async listFields() {
-      return (await rows(db.from("field").select("*").order("id"))).map(mapField);
+      const farm = await servedFarm();
+      return (await rows(db.from("field").select("*").eq("farm_id", farm.id).order("id"))).map(mapField);
     },
     async getSeasonAt(fieldId, date) {
       const r = await one(
@@ -240,8 +254,9 @@ export function createSupabaseFarmData(db: SupabaseClient): FarmData {
       return r.map(mapCropStage);
     },
     async getWeather(from, to) {
+      const farm = await servedFarm();
       const r = await paged((a, b) =>
-        db.from("weather_daily").select("*").gte("date", from).lte("date", to)
+        db.from("weather_daily").select("*").eq("nuts3_id", farm.nuts3_id).gte("date", from).lte("date", to)
           .order("date").range(a, b)
       );
       return r.map(mapWeatherDay);
@@ -250,10 +265,12 @@ export function createSupabaseFarmData(db: SupabaseClient): FarmData {
       let p = climCache.get(base);
       if (!p) {
         const col = `gdd_base${base}`;
-        p = paged((a, b) =>
-          db.from("weather_daily").select(`date,${col}`)
-            .gte("date", "2015-01-01").lte("date", "2024-12-31")
-            .order("date").range(a, b)
+        p = servedFarm().then((farm) =>
+          paged((a, b) =>
+            db.from("weather_daily").select(`date,${col}`).eq("nuts3_id", farm.nuts3_id)
+              .gte("date", "2015-01-01").lte("date", "2024-12-31")
+              .order("date").range(a, b)
+          )
         ).then((r) =>
           averageByDay(r.map((x) => ({ date: x.date as string, value: x[col] as number | null })))
         );
