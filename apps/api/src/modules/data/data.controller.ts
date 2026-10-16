@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { tableSchemas, type TableName } from "@tellia/shared/db";
+import { type TableName, tableSchemas } from "@tellia/shared/db";
 import { PaginationQuerySchema } from "@tellia/shared/api";
+import { validate } from "../../core/validate";
 import { db } from "../../supabase";
 
 // Generic read access to the Supabase tables, validated with the SHARED schemas.
@@ -21,8 +21,8 @@ export const data = new Hono();
 // on the first text-ish column when present).
 data.get(
   "/:table",
-  zValidator("param", TableParam),
-  zValidator("query", PaginationQuerySchema),
+  validate("param", TableParam),
+  validate("query", PaginationQuerySchema),
   async (c) => {
     const table = c.req.valid("param").table as TableName;
     const { limit, offset } = c.req.valid("query");

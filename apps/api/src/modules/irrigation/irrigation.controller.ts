@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import {
   AdviceQuerySchema,
@@ -7,6 +6,7 @@ import {
   RecordIrrigationBodySchema,
   SimulateBodySchema,
 } from "@tellia/shared/irrigation";
+import { validate } from "../../core/validate";
 import type { IrrigationService } from "./irrigation.service";
 
 // Fast path for the web UI and the VAPI tool webhooks: no LLM, no workflow.
@@ -22,15 +22,15 @@ const OperationsQuery = z.object({
 export function createIrrigationController(service: IrrigationService) {
   const app = new Hono();
 
-  app.get("/advice", zValidator("query", AdviceQuerySchema), async (c) => {
+  app.get("/advice", validate("query", AdviceQuerySchema), async (c) => {
     const { date } = c.req.valid("query");
     return c.json({ data: await service.getFarmAdvice(date) });
   });
 
   app.get(
     "/fields/:fieldId/report",
-    zValidator("param", FieldParam),
-    zValidator("query", AdviceQuerySchema),
+    validate("param", FieldParam),
+    validate("query", AdviceQuerySchema),
     async (c) => {
       const { fieldId } = c.req.valid("param");
       const { date } = c.req.valid("query");
@@ -40,8 +40,8 @@ export function createIrrigationController(service: IrrigationService) {
 
   app.get(
     "/fields/:fieldId/weather",
-    zValidator("param", FieldParam),
-    zValidator("query", AdviceQuerySchema),
+    validate("param", FieldParam),
+    validate("query", AdviceQuerySchema),
     async (c) => {
       const { fieldId } = c.req.valid("param");
       const { date } = c.req.valid("query");
@@ -51,8 +51,8 @@ export function createIrrigationController(service: IrrigationService) {
 
   app.post(
     "/fields/:fieldId/simulate",
-    zValidator("param", FieldParam),
-    zValidator("json", SimulateBodySchema),
+    validate("param", FieldParam),
+    validate("json", SimulateBodySchema),
     async (c) => {
       const { fieldId } = c.req.valid("param");
       const { events, date } = c.req.valid("json");
@@ -60,12 +60,12 @@ export function createIrrigationController(service: IrrigationService) {
     },
   );
 
-  app.get("/operations", zValidator("query", OperationsQuery), async (c) => {
+  app.get("/operations", validate("query", OperationsQuery), async (c) => {
     const { fieldId, from, to } = c.req.valid("query");
     return c.json({ data: await service.listIrrigations(fieldId, { from, to }) });
   });
 
-  app.post("/operations", zValidator("json", RecordIrrigationBodySchema), async (c) => {
+  app.post("/operations", validate("json", RecordIrrigationBodySchema), async (c) => {
     const body = c.req.valid("json");
     const memberId = body.memberId ?? await service.defaultMemberId();
     const record = await service.recordIrrigation({

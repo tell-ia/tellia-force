@@ -80,3 +80,19 @@ Deno.test("operations: POST validation, 201 confirmed, GET lists it", async () =
   assertEquals((await app.request("/irrigation/operations")).status, 400);
   assertEquals((await app.request("/irrigation/operations?fieldId=999")).status, 404);
 });
+
+Deno.test("validation errors use the ApiError envelope (http_400)", async () => {
+  const { app } = makeTestApp();
+  const bad = [
+    await app.request("/irrigation/advice?date=2026-13-45"),
+    await post(app, "/irrigation/fields/10/simulate", { events: [] }),
+    await post(app, "/irrigation/operations", { fieldId: 10, date: "2026-07-04", mm: -5 }),
+  ];
+  for (const res of bad) {
+    assertEquals(res.status, 400);
+    const json = await res.json();
+    assertEquals(json.error.code, "http_400");
+    assert(typeof json.error.message === "string" && json.error.message.length > 0);
+    assertEquals(json.success, undefined);
+  }
+});
