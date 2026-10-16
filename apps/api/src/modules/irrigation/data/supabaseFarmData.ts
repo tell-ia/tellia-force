@@ -16,6 +16,9 @@ import type {
 
 const PAGE = 1000;
 
+export const notFound = (id: number) =>
+  new HTTPException(404, { message: `irrigation operation ${id} not found` });
+
 type Row = Record<string, unknown>;
 
 // ---- pure row mappers (snake_case -> camelCase), unit-tested ----
@@ -278,13 +281,17 @@ export function createSupabaseFarmData(db: SupabaseClient): FarmData {
     async setIrrigationStatus(operationId, status) {
       const r = await one(
         db.from("operation").update({ status, updated_at: new Date().toISOString() })
-          .eq("id", operationId).select("*"),
+          .eq("id", operationId).eq("op_type", "irrigation").select("*"),
       );
-      if (!r) fail(`operation ${operationId} not found`);
-      return mapOperation(r!);
+      if (!r) throw notFound(operationId);
+      return mapOperation(r);
     },
     async deleteIrrigation(operationId) {
-      await rows(db.from("operation").delete().eq("id", operationId));
+      const r = await rows(
+        db.from("operation").delete().eq("id", operationId).eq("op_type", "irrigation")
+          .select("id"),
+      );
+      if (r.length === 0) throw notFound(operationId);
     },
   };
 }

@@ -1,7 +1,9 @@
+import { HTTPException } from "hono/http-exception";
 import { assertEquals, assertRejects } from "@std/assert";
 import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmData";
 import {
   averageByDay,
+  createSupabaseFarmData,
   mapCropSeason,
   mapOperation,
   toOperationInsert,
@@ -151,4 +153,49 @@ Deno.test("averageByDay averages per MM-DD and folds Feb 29 into Feb 28", () => 
   assertEquals(m.get("02-28"), 3);
   assertEquals(m.has("02-29"), false);
   assertEquals(m.has("03-01"), false);
+});
+
+Deno.test("memory twin: missing id is a 404 on status and delete", async () => {
+  const d = createMemoryFarmData(makeFarmFixture());
+  for (
+    const call of [() => d.setIrrigationStatus(9999, "confirmed"), () => d.deleteIrrigation(9999)]
+  ) {
+    const e = await assertRejects(call, HTTPException);
+    assertEquals(e.status, 404);
+    assertEquals(e.message, "irrigation operation 9999 not found");
+  }
+});
+
+Deno.test("getSeasonAt prefers the latest sowing date when seasons overlap", async () => {
+  const fx = makeFarmFixture();
+  fx.seasons[10].push({
+    id: 200,
+    cropCode: "COWT",
+    sowingDate: "2026-06-01",
+    harvestDate: "2027-07-01",
+    status: "growing",
+  });
+  const d = createMemoryFarmData(fx);
+  assertEquals((await d.getSeasonAt(10, "2026-07-05"))?.id, 200);
+  assertEquals((await d.getSeasonAt(10, "2026-05-05"))?.id, 109);
+});
+
+Deno.test("supabase update/delete are scoped to op_type=irrigation and 404 when empty", async () => {
+  const calls: [string, unknown, unknown][] = [];
+  // deno-lint-ignore no-explicit-any
+  const qb: any = {
+    update: () => qb,
+    delete: () => qb,
+    select: () => qb,
+    eq: (c: string, v: unknown) => (calls.push(["eq", c, v]), qb),
+    then: (res: (v: unknown) => unknown) => res({ data: [], error: null }),
+  };
+  // deno-lint-ignore no-explicit-any
+  const d = createSupabaseFarmData({ from: () => qb } as any);
+  for (const call of [() => d.setIrrigationStatus(5, "confirmed"), () => d.deleteIrrigation(5)]) {
+    calls.length = 0;
+    const e = await assertRejects(call, HTTPException);
+    assertEquals(e.status, 404);
+    assertEquals(calls, [["eq", "id", 5], ["eq", "op_type", "irrigation"]]);
+  }
 });

@@ -1,4 +1,4 @@
-import { HTTPException } from "hono/http-exception";
+import { notFound } from "./supabaseFarmData";
 import type {
   CropRef,
   CropSeason,
@@ -38,7 +38,7 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
 
   const find = (id: number) => {
     const op = ops.find((o) => o.operationId === id);
-    if (!op) throw new HTTPException(500, { message: `operation ${id} not found` });
+    if (!op) throw notFound(id);
     return op;
   };
 
@@ -48,7 +48,12 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
     getMember: async (id) => f.members.find((m) => m.id === id) ?? null,
     listFields: async () => f.fields,
     getSeasonAt: async (fieldId, date) =>
-      (f.seasons[fieldId] ?? []).find((s) => s.sowingDate <= date && date <= s.harvestDate) ??
+      (f.seasons[fieldId] ?? [])
+        .filter((s) => s.sowingDate <= date && date <= s.harvestDate)
+        .sort((
+          a,
+          b,
+        ) => (a.sowingDate < b.sowingDate ? 1 : a.sowingDate > b.sowingDate ? -1 : 0))[0] ??
         null,
     getSoil: async (fieldId) => f.soils[fieldId] ?? null,
     getCropRef: async (code) => f.cropRefs.find((c) => c.code === code) ?? null,
