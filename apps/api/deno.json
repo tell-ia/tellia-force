@@ -6,7 +6,9 @@
     "dev": "deno run --watch --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys --env-file src/main.ts",
     "start": "deno run --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys --env-file src/main.ts",
     "check": "deno check --sloppy-imports src/main.ts tests/",
-    "test": "deno test --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys"
+    "test": "deno test --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys",
+    "test:live": "RUN_LIVE_TESTS=1 deno test --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys --env-file tests/live/",
+    "smoke": "deno run --sloppy-imports --allow-net --allow-env --env-file scripts/smoke.ts"
   },
   "imports": {
     "hono": "npm:hono@^4.6.0",

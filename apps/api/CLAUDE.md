@@ -26,7 +26,9 @@ See product/design/compute context in Notion (link in root `CLAUDE.md`).
 
 ## Commands
 - Dev: `deno task dev` (watch, loads `.env`, serves on `PORT`).
-- Typecheck: `deno task check`.
+- Typecheck: `deno task check`. Offline tests: `deno task test` (no LLM, no network, no Supabase writes).
+- Live LLM tests: `deno task test:live` (real `OPENAI_API_KEY`, in-memory farm; `RUN_DB_TESTS=1` adds one read-only Supabase check).
+- Smoke a running server: `deno task start`, then `SMOKE_URL=http://localhost:<port> deno task smoke` (read-type questions only).
 - Cache deps: `deno cache src/main.ts`.
 
 ## Layout
@@ -41,4 +43,22 @@ apps/api/
     core/middleware.ts   # onError -> shared ApiError envelope
     modules/
       items/items.controller.ts   # example CRUD, copy for new resources
+      irrigation/      # FAO-56 engine (pure), FarmData (Supabase + in-memory twin),
+                       # weather (DB + Open-Meteo), service, REST /irrigation (no LLM)
+      chat/            # Mastra: advisor agent, 8 tools, 4 workflows, POST /chat,
+                       # GET /chat/history, x-member-id middleware. See chat/README.md
+  scripts/smoke.ts     # real-model smoke test against a running server
+  tests/               # offline suite; tests/live/ needs RUN_LIVE_TESTS=1
 ```
+
+## Irrigation and chat
+- **Numbers come from the engine, never the LLM.** Tools return them; the agent copies them.
+- **Only `confirmed` irrigations count** in the water balance. The assistant saves `draft`
+  operations and confirms them only when the same member resumes the `record-irrigation`
+  workflow with `confirmed: true`. Declined drafts are deleted.
+- **`MODEL`** (env, default `openai/gpt-6.1-sol`) is the chat model, `MODEL_MINI` is for thread
+  titles. Both use `OPENAI_API_KEY`. `DEMO_DATE` pins "today".
+- Identity is the `x-member-id` header (no auth, team decision): don't expose the server
+  publicly, `/api/*` exposes Mastra's built-in routes.
+- Tests and agents must never write to the shared Supabase DB. The 8 tool keys are a UI
+  contract; don't rename them.

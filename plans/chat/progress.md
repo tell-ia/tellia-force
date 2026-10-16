@@ -21,8 +21,8 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | 10 | Mastra tools (8) | ✅ done | 2026-10-16 | `chat/tools.ts`, 12 tests; memberId only from request context; foreign confirm refused before resume, run stays suspended |
 | 11 | Advisor agent | ✅ done | 2026-10-16 | `chat/advisor.agent.ts`, `tests/helpers/scriptedModel.ts`, 4 tests; Memory lastMessages 20 + resource-scope template working memory; MODEL_MINI wired as `generateTitle.model` |
 | 12 | Chat module: `/chat`, member identity, history, workers | ✅ done | 2026-10-16 | `chat/{member.middleware,mastra,chat.routes}.ts`, `main.ts`, 6 tests; real chat verified on port 8125 (getFarmAdvice + French text, ttfb 1.3 s, total 12.7 s) |
-| 13 | Docs, smoke test, latency | ⬜ todo | | |
-| 14 | Live end-to-end tests (real LLM, real data read-only) | ⬜ todo | | |
+| 13 | Docs, smoke test, latency | ✅ | 2026-10-16 | README contract, CLAUDE.md, `deno task smoke`; sol vs luna latency recorded below |
+| 14 | Live end-to-end tests (real LLM, real data read-only) | ✅ | 2026-10-16 | `deno task test:live` passed twice (~10 model calls per run, in-memory farm, no Supabase writes) |
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked
 
@@ -83,10 +83,13 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 
 ## Latency
 
-Filled in by Task 13. The target is first text under 2 s for chat; voice uses `/irrigation`, which has no LLM.
+Filled in by Tasks 13 and 14. luna is not clearly faster than sol (same tool round trips); default model unchanged, the user decides. The target is first text under 2 s for chat; voice uses `/irrigation`, which has no LLM.
 
 | Date | Question | First byte | First text | Total | Model |
 |---|---|---|---|---|---|
+| 2026-10-16 | Quel champ dois-je arroser aujourd'hui ? (smoke x3, real Supabase read-only, DEMO_DATE 2026-07-05) | 1.5-1.7 s | 5.7-6.1 s (6.7 s on the first run) | 7.3-7.6 s (8.6 s first run) | openai/gpt-6.1-sol |
+| 2026-10-16 | Same question (smoke x3) | 1.5-1.7 s (one run 40.6 s) | 5.1 s, 6.5 s, 45.9 s (outlier) | 6.0 s, 8.5 s, 47.0 s (outlier) | openai/gpt-6-luna |
+| 2026-10-16 | Same question, live test app (in-memory farm, 2 runs) | n/a | 2.9 s, 2.8 s | 5.0 s, 4.5 s | openai/gpt-6.1-sol |
 
 ## Log
 
@@ -94,3 +97,4 @@ Filled in by Task 13. The target is first text under 2 s for chat; voice uses `/
 - 2026-10-16: Tasks 1-6 implemented by Sonnet subagents (2-4, 5 and 6 in parallel), each reviewed. Suite: 51 passed, 1 ignored (the opt-in DB test). Added Task 14 (live LLM tests) and the gpt-6.1-sol / gpt-6-luna models at the user's request.
 - 2026-10-16: the operation schema (PostgREST OpenAPI) shows status/source/origin as text with defaults confirmed/import/agent and no enum. Draft rows are likely accepted; CHECK constraints are not visible, so a human verifies one insert.
 - 2026-10-16: Task 1 done (setup, contracts, FarmData interface, util).
+- 2026-10-16: Tasks 13 and 14 done: smoke script, chat README, live suite. Offline: 112 passed, 3 ignored. Live passed twice.

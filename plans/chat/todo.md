@@ -21,8 +21,8 @@ The detailed behavior is in [plan.md](plan.md), and the log is in [progress.md](
 - [x] 10. Mastra tools: the 8 keys that make up the UI contract
 - [x] 11. Advisor agent: no invented numbers, memory per member, two-turn confirmation
 - [x] 12. Chat module: `POST /chat` (v7), `GET /chat/history`, `x-member-id` middleware, `startWorkers`
-- [ ] 14. Live end-to-end tests: real OpenAI model (`deno task test:live`), mm-grounded check, two-turn confirmation, latency, read-only real-data advice
-- [ ] 13. Docs (module README, api CLAUDE.md), smoke script, latency
+- [x] 14. Live end-to-end tests: real OpenAI model (`deno task test:live`), mm-grounded check, two-turn confirmation, latency, read-only real-data advice
+- [x] 13. Docs (module README, api CLAUDE.md), smoke script, latency
 
 ## Hand-offs to teammates
 - [ ] UI (Marceau): the chat contract and tool-card table in `apps/api/src/modules/chat/README.md`, plus typed client methods in `apps/web/src/lib/api.ts`
