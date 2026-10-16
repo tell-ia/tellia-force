@@ -15,12 +15,12 @@ const MAIZE_KC: [number, number][] = [
   [1, .35],
 ];
 
-function constantWeather(from: string, to: string) {
+function constantWeather(from: string, to: string, et0 = 5) {
   const out = [];
   for (let d = from; d <= to; d = addDays(d, 1)) {
     out.push({
       date: d,
-      et0: 5,
+      et0,
       rain: 0,
       tmin: 12,
       tmean: 20,
@@ -96,6 +96,7 @@ export function makeFarmFixture(): FarmFixture {
         code: "MAIZ",
         nameFr: "Maïs",
         nameEn: "Maize",
+        names: { fr: "Maïs", en: "Maize", es: "Maíz", it: "Mais" },
         gddBaseC: 6,
         kcIni: .3,
         kcMid: 1.2,
@@ -105,6 +106,7 @@ export function makeFarmFixture(): FarmFixture {
         code: "COWT",
         nameFr: "Blé tendre d'hiver",
         nameEn: "Common winter wheat",
+        names: { fr: "Blé tendre d'hiver", en: "Common winter wheat" },
         gddBaseC: 0,
         kcIni: .4,
         kcMid: 1.15,
@@ -114,6 +116,7 @@ export function makeFarmFixture(): FarmFixture {
         code: "RAPE",
         nameFr: "Colza",
         nameEn: "Rapeseed",
+        names: { fr: "Colza", en: "Rapeseed" },
         gddBaseC: 0,
         kcIni: .35,
         kcMid: 1.15,
@@ -131,6 +134,55 @@ export function makeFarmFixture(): FarmFixture {
       seasonId: 109,
       date: "2026-06-21",
       mm: 30,
+      status: "confirmed",
+      source: "import",
+      memberId: null,
+    }],
+  };
+}
+
+/**
+ * A second farm sharing the DB (SAT Los Olmos, Valladolid, Spanish). Its region is hotter
+ * (ET0 7 vs 5), so any weather or data leaking across farms changes the numbers.
+ * Ids never overlap with farm 1.
+ */
+export function makeSecondFarmFixture(): FarmFixture {
+  const farm1 = makeFarmFixture();
+  return {
+    farm: { id: 2, name: "SAT Los Olmos", lat: 41.6, lon: -4.92 },
+    members: [
+      { id: 5, name: "Elena Martín", language: "es", mainContact: true },
+      { id: 6, name: "Javier Martín", language: "es", mainContact: false },
+    ],
+    fields: [
+      {
+        id: 15,
+        name: "El Pozo",
+        areaHa: 9.4,
+        irrigable: true,
+        centroid: { lat: 41.6, lon: -4.92 },
+      },
+    ],
+    seasons: {
+      15: [{
+        id: 150,
+        cropCode: "MAIZ",
+        sowingDate: "2026-04-16",
+        harvestDate: "2026-10-17",
+        status: "growing",
+      }],
+    },
+    soils: { 15: { sandPct: 63.5, clayPct: 6.7, organicMatterPct: 5.11 } },
+    cropRefs: farm1.cropRefs,
+    cropStages: farm1.cropStages,
+    weather: constantWeather("2026-04-01", "2026-07-15", 7),
+    climatology: farm1.climatology,
+    irrigations: [{
+      operationId: 900,
+      fieldId: 15,
+      seasonId: 150,
+      date: "2026-06-20",
+      mm: 25,
       status: "confirmed",
       source: "import",
       memberId: null,

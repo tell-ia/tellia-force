@@ -1,14 +1,19 @@
 import { HTTPException } from "hono/http-exception";
-import { assertEquals, assertRejects } from "@std/assert";
-import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmData";
+import { assert, assertEquals, assertRejects } from "@std/assert";
+import { cropNameIn } from "../src/modules/irrigation/data/farmData";
+import {
+  createMemoryFarmData,
+  createMemoryFarmDirectory,
+} from "../src/modules/irrigation/data/memoryFarmData";
 import {
   averageByDay,
   createSupabaseFarmData,
+  mapCropRef,
   mapCropSeason,
   mapOperation,
   toOperationInsert,
 } from "../src/modules/irrigation/data/supabaseFarmData";
-import { makeFarmFixture } from "./fixtures/farm.ts";
+import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
 
 Deno.test("getSeasonAt picks the containing season, or null", async () => {
   const d = createMemoryFarmData(makeFarmFixture());
@@ -193,7 +198,7 @@ Deno.test("getSeasonAt prefers the latest sowing date when seasons overlap", asy
   assertEquals((await d.getSeasonAt(10, "2026-05-05"))?.id, 109);
 });
 
-Deno.test("supabase update/delete are scoped to op_type=irrigation and 404 when empty", async () => {
+Deno.test("supabase update/delete are scoped to the farm and op_type=irrigation, 404 when empty", async () => {
   const calls: [string, unknown, unknown][] = [];
   // deno-lint-ignore no-explicit-any
   const qb: any = {
@@ -204,11 +209,86 @@ Deno.test("supabase update/delete are scoped to op_type=irrigation and 404 when 
     then: (res: (v: unknown) => unknown) => res({ data: [], error: null }),
   };
   // deno-lint-ignore no-explicit-any
-  const d = createSupabaseFarmData({ from: () => qb } as any);
+  const d = createSupabaseFarmData({ from: () => qb } as any, 1);
   for (const call of [() => d.setIrrigationStatus(5, "confirmed"), () => d.deleteIrrigation(5)]) {
     calls.length = 0;
     const e = await assertRejects(call, HTTPException);
     assertEquals(e.status, 404);
-    assertEquals(calls, [["eq", "id", 5], ["eq", "op_type", "irrigation"]]);
+    assertEquals(calls, [["eq", "id", 5], ["eq", "farm_id", 1], ["eq", "op_type", "irrigation"]]);
   }
+});
+
+Deno.test("supabase farm reads filter on farm_id; weather on the farm's region", async () => {
+  const calls: { table: string; eq: [string, unknown][] }[] = [];
+  const builder = (table: string) => {
+    const call = { table, eq: [] as [string, unknown][] };
+    calls.push(call);
+    const rowsFor = () =>
+      table === "farm"
+        ? [{ id: 2, name: "SAT Los Olmos", lat: 41.6, lon: -4.92, nuts3_id: "ES418" }]
+        : [];
+    // deno-lint-ignore no-explicit-any
+    const qb: any = {
+      select: () => qb,
+      order: () => qb,
+      limit: () => qb,
+      gte: () => qb,
+      lte: () => qb,
+      not: () => qb,
+      neq: () => qb,
+      range: () => qb,
+      eq: (c: string, v: unknown) => (call.eq.push([c, v]), qb),
+      then: (res: (v: unknown) => unknown) => res({ data: rowsFor(), error: null }),
+    };
+    return qb;
+  };
+  // deno-lint-ignore no-explicit-any
+  const d = createSupabaseFarmData({ from: builder } as any, 2);
+  await d.listMembers();
+  await d.listFields();
+  await d.getMember(1);
+  await d.getSeasonAt(10, "2026-07-05");
+  await d.getSoil(10);
+  await d.listIrrigations(10, { includeDrafts: true });
+  await d.getIrrigation(7);
+  await d.getWeather("2026-07-01", "2026-07-03");
+  for (const c of calls.filter((c) => c.table !== "farm" && c.table !== "weather_daily")) {
+    assert(c.eq.some(([k, v]) => k === "farm_id" && v === 2), `${c.table} not filtered on farm 2`);
+  }
+  const weather = calls.find((c) => c.table === "weather_daily")!;
+  assert(weather.eq.some(([k, v]) => k === "nuts3_id" && v === "ES418"), "weather not by region");
+});
+
+Deno.test("mapCropRef keeps every language's crop name", () => {
+  const ref = mapCropRef({
+    crop_code: "MAIZ",
+    name_fr: "Maïs grain",
+    name_en: "Grain maize",
+    name_es: "Maíz grano",
+    name_it: "Mais da granella",
+    name_de: null,
+    gdd_base_c: 6,
+    kc_ini: .3,
+    kc_mid: 1.2,
+    kc_end: .35,
+  });
+  assertEquals(ref.names, {
+    fr: "Maïs grain",
+    en: "Grain maize",
+    es: "Maíz grano",
+    it: "Mais da granella",
+  });
+  assertEquals(cropNameIn(ref, "es"), "Maíz grano");
+  assertEquals(cropNameIn(ref, "de"), "Grain maize");
+});
+
+Deno.test("memory directory: members map to their farm, default is farm 1's main contact", async () => {
+  const dir = createMemoryFarmDirectory([makeSecondFarmFixture(), makeFarmFixture()]);
+  assertEquals(await dir.listFarmIds(), [1, 2]);
+  assertEquals(await dir.farmOfMember(5), 2);
+  assertEquals(await dir.farmOfMember(1), 1);
+  assertEquals(await dir.farmOfMember(999), null);
+  assertEquals(await dir.defaultMemberId(), 1);
+  assertEquals(await dir.forFarm(2).getMember(1), null);
+  assertEquals((await dir.forFarm(2).listFields()).map((f) => f.id), [15]);
 });

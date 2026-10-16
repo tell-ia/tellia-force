@@ -5,16 +5,17 @@ import { LibSQLStore } from "@mastra/libsql";
 import { Hono } from "hono";
 import { ADVISOR_ID, createAdvisorAgent } from "../../src/modules/chat/advisor.agent";
 import { createAdvisorWorkflows } from "../../src/modules/chat/workflows/index";
-import type { FarmData } from "../../src/modules/irrigation/data/farmData";
+import type { FarmData, FarmDirectory } from "../../src/modules/irrigation/data/farmData";
 import { onError } from "../../src/core/middleware";
 import { createMemoryFarmData } from "../../src/modules/irrigation/data/memoryFarmData";
 import { createIrrigationController } from "../../src/modules/irrigation/irrigation.controller";
+import { HTTPException } from "hono/http-exception";
 import {
   createIrrigationService,
   type IrrigationService,
 } from "../../src/modules/irrigation/irrigation.service";
-import { createWeatherService } from "../../src/modules/irrigation/weather/weatherService";
-import { makeFarmFixture } from "../fixtures/farm";
+import { createFarmRegistry, type FarmRegistry } from "../../src/modules/irrigation/farmRegistry";
+import { makeFarmFixture, makeSecondFarmFixture } from "../fixtures/farm";
 
 const tempDirs: string[] = [];
 globalThis.addEventListener("unload", () => {
@@ -43,30 +44,79 @@ export const emptyOpenMeteoFetch: typeof fetch = () =>
     },
   }));
 
-/**
- * The real router on the in-memory farm. Never imports config.ts or supabase.ts.
- * `today` is 2026-07-05.
- */
-export function makeTestApp() {
-  const data = createMemoryFarmData(makeFarmFixture());
-  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
-  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
-  const app = new Hono();
-  app.onError(onError);
-  app.route("/irrigation", createIrrigationController(service));
-  return { app, data, service };
+export const TEST_TODAY = "2026-07-05";
+
+/** A FarmDirectory over prebuilt FarmData, keyed by farm id (tests may wrap them). */
+export function directoryOf(farms: Record<number, FarmData>): FarmDirectory {
+  const ids = Object.keys(farms).map(Number).sort((a, b) => a - b);
+  const farmOfMember = async (memberId: number) => {
+    for (const id of ids) if (await farms[id].getMember(memberId)) return id;
+    return null;
+  };
+  return {
+    listFarmIds: () => Promise.resolve(ids),
+    farmOfMember,
+    defaultMemberId: async () =>
+      ids.length
+        ? (await farms[ids[0]].listMembers()).find((m) => m.mainContact)?.id ?? null
+        : null,
+    forFarm: (id) => {
+      const data = farms[id];
+      if (!data) throw new HTTPException(404, { message: `farm ${id} not found` });
+      return data;
+    },
+  };
 }
 
-/** A Mastra instance with the advisor workflows on a temp-file LibSQL store. */
+/** Default test farms: 1 (Loiret, fr) and 2 (Valladolid, es). */
+export const twoFarms = (): Record<number, FarmData> => ({
+  1: createMemoryFarmData(makeFarmFixture()),
+  2: createMemoryFarmData(makeSecondFarmFixture()),
+});
+
+/** The real FarmRegistry over in-memory farms, offline Open-Meteo, `today` 2026-07-05. */
+export function makeTestRegistry(
+  opts: {
+    farms?: Record<number, FarmData>;
+    /** Wrap a farm's service (spies, failures). */
+    wrap?: (service: IrrigationService, farmId: number) => IrrigationService;
+  } = {},
+): FarmRegistry {
+  const farms = opts.farms ?? twoFarms();
+  const farmIdOf = new Map(Object.entries(farms).map(([id, d]) => [d, Number(id)]));
+  return createFarmRegistry({
+    directory: directoryOf(farms),
+    today: () => TEST_TODAY,
+    fetch: emptyOpenMeteoFetch,
+    createService: (deps) => {
+      const service = createIrrigationService(deps);
+      return opts.wrap ? opts.wrap(service, farmIdOf.get(deps.data) ?? 0) : service;
+    },
+  });
+}
+
+/**
+ * The real /irrigation router on two in-memory farms. Never imports config.ts or supabase.ts.
+ * `data` and `service` are farm 1's (the default caller's farm).
+ */
+export async function makeTestApp(opts: Parameters<typeof makeTestRegistry>[0] = {}) {
+  const registry = makeTestRegistry(opts);
+  const app = new Hono();
+  app.onError(onError);
+  app.route("/irrigation", createIrrigationController(registry));
+  const { data, service } = await registry.forFarm(1);
+  return { app, registry, data, service };
+}
+
+/** A Mastra instance with the advisor workflows (and agent, given a model) on temp LibSQL. */
 export async function makeTestMastra(
   opts: {
-    service: IrrigationService;
-    data: FarmData;
+    registry: FarmRegistry;
     // deno-lint-ignore no-explicit-any
     model?: any;
   },
 ) {
-  const workflows = createAdvisorWorkflows(opts.service, opts.data);
+  const workflows = createAdvisorWorkflows(opts.registry);
   const storage = new LibSQLStore({
     id: "test-store",
     url: `file:${await tempDbDir()}/t.db`,
@@ -82,11 +132,7 @@ export async function makeTestMastra(
     ...(opts.model
       ? {
         agents: {
-          [ADVISOR_ID]: createAdvisorAgent({
-            service: opts.service,
-            data: opts.data,
-            model: opts.model,
-          }),
+          [ADVISOR_ID]: createAdvisorAgent({ registry: opts.registry, model: opts.model }),
         },
       }
       : {}),
@@ -94,23 +140,24 @@ export async function makeTestMastra(
 }
 
 /**
- * The full app: CORS, /irrigation, GET /chat/history and Mastra (POST /chat, /api/*) on the
- * in-memory farm, the scripted model and a temp LibSQL store. `today` is 2026-07-05.
+ * The full app: CORS, /irrigation, GET /chat/history and Mastra (POST /chat, /api/*) on two
+ * in-memory farms, the scripted model and a temp LibSQL store. `today` is 2026-07-05.
  */
-export async function makeTestChatApp(opts: { model: unknown; openMastraApi?: boolean }) {
-  const { app, data, service } = makeTestApp();
+export async function makeTestChatApp(
+  opts: { model: unknown; openMastraApi?: boolean; farms?: Record<number, FarmData> },
+) {
+  const { app, registry, data, service } = await makeTestApp({ farms: opts.farms });
   app.use(
     "*",
     cors({ origin: "*", allowHeaders: ["Content-Type", "x-member-id"] }),
   );
   const mastra = createMastra({
-    service,
-    data,
+    registry,
     // deno-lint-ignore no-explicit-any
     model: opts.model as any,
     openMastraApi: opts.openMastraApi,
     storageUrl: `file:${await tempDbDir()}/chat.db`,
   });
-  await mountChat(app, { mastra, service, data });
-  return { app, data, service, mastra };
+  await mountChat(app, { mastra, registry });
+  return { app, registry, data, service, mastra };
 }

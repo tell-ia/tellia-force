@@ -1,7 +1,7 @@
 # Seed — the farm database
 
-Rebuilds the whole Supabase database for the demo farm: the hackathon dataset, made realistic,
-plus real weather, real products and Marceau's FAO-56 tables. Python, about 1 minute.
+Rebuilds the whole Supabase database for the 3 demo farms (France, Spain, Italy): the hackathon dataset,
+made realistic, plus real weather, real products and Marceau's FAO-56 tables. Python, about 2 minutes.
 
 ## Run it
 
@@ -28,20 +28,26 @@ cp .env.example .env                    # fill DATABASE_URL and DATASETS_DIR
 
 ## What is in the database
 
-**The farm** (fictional, based on synthetic holding `FARM-02580`, Loiret):
-GAEC des Trois Chênes, 11 fields, 64.9 ha, wheat, barley, rapeseed, maize, sunflower.
-2 irrigated fields: **La Vallée** (5.96 ha, sandy loam) and **Le Puits** (2.89 ha), served by one reel gun.
-4 people: Claire (main contact, `member.id = 1`), Sophie (spraying), Monique (accounts), Camille (irrigation).
+**The farms** (fictional; `FARM_IDS` in `.env` picks them). Every farm table has a `farm_id` column.
+
+| `farm.id` | Farm | Region | Fields | Irrigable fields (one reel gun per farm) | People (main contact first) |
+|---|---|---|---|---|---|
+| 1 | GAEC des Trois Chênes (`FARM-02580`) | Loiret, FR | 11, 64.9 ha | La Vallée, Le Puits (maize), Les Sablons (sunflower) | Claire (`member.id = 1`), Sophie, Monique, Camille |
+| 2 | SAT Los Olmos (`FARM-07712`) | Valladolid, ES | 10, 60.6 ha | El Pozo, Las Eras (maize), La Hoya (sunflower) | Elena (`member.id = 5`), Javier, Carmen, Lucía |
+| 3 | Società Agricola Ca' dei Pioppi (`FARM-08422`) | Bologna, IT | 14, 82.9 ha | Il Pozzo, La Torre (maize), Le Valli (sunflower) | Marco (`member.id = 9`), Paolo, Giulia |
+
+Crops: wheat, barley, rapeseed, maize, sunflower. Members speak the farm language (`farm.language`: fr, es, it).
+Maize earliness: `early` in Loiret, `late` in Spain and Italy (longer season).
 
 | Group | Tables | Notes |
 |---|---|---|
-| Farm | `farm`, `member`, `field`, `soil_analysis`, `irrigation_system` | `member.phone` = who calls or writes. `field.irrigation_system_id` → the reel gun |
+| Farm | `farm`, `member`, `field`, `soil_analysis`, `irrigation_system` | `member.phone` = who calls or writes, and so which farm. `field.irrigation_system_id` → the reel gun |
 | Seasons | `crop_season` | One row per field and harvest year, 2017–2027. `earliness_group` for maize and sunflower (`early`) |
 | Journal | `operation`, `operation_input` | Sowing, fertiliser, spraying, irrigation, harvest. Aug 2016 → Oct 2026, plus planned work |
-| Weather | `weather_daily` | Real, daily, 1 Jan 2015 → seed day. ET0, rain, Tmin, Tmean, Tmax, wind, degree-days |
+| Weather | `weather_daily` | Real, daily, **per region** (`nuts3_id`, join `farm.nuts3_id`), 1 Jan 2015 → seed day. ET0, rain, Tmin, Tmean, Tmax, wind, degree-days |
 | FAO-56 | `fao56_crop_stages`, `fao56_kc`, `fao56_root_depletion`, `fao56_soil_water`, `fao33_ky`, `stage_thresholds_gdd` | Marceau's tables (see `fao56/fao56_README.md`). `stage_thresholds_gdd.earliness_group` joins `crop_season.earliness_group` |
-| Products | `product`, `product_use` | 34 real products from the French E-Phy register, with max dose, days before harvest, buffer zones |
-| Region | `region`, `regional_benchmark` | Real Loiret averages: climate, topsoil, yield and N per crop group |
+| Products | `product`, `product_use` | 34 real products from the French E-Phy register, with max dose, days before harvest, buffer zones. France only: Spanish and Italian sprays keep the synthetic substance code, named `... (synthetic)` |
+| Region | `region`, `regional_benchmark` | Real averages per region (`nuts3_id`): climate, topsoil, yield and N per crop group |
 | Business | `sale`, `subsidy`, `farm_economics`, `market_price` | Synthetic. Sales are generated from harvests; unsold grain = stock |
 | Assistant | `message`, `alert`, `document` | Empty, filled by the app |
 | Old | `crop_ref`, `crop_stage` | My first simple stage model. Replace with the FAO-56 tables |
@@ -51,12 +57,16 @@ Row level security is on with no policies: the public key reads nothing; the API
 
 ## Rules for the code
 
+- **Always filter by `farm_id`** (fields, members, operations, seasons…) and join weather and benchmarks
+  on the farm region (`farm.nuts3_id`). Otherwise farms and countries get mixed.
+- **Inserts may leave `farm_id` empty** on `operation`, `operation_input`, `crop_season`, `soil_analysis`,
+  `message`, `alert` and `document`: a trigger copies it from the field, operation or member.
 - **`operation.water_mm` is gross** (what the farmer pumped). Net water = gross × `irrigation_system.efficiency` (0.75).
 - **Only `status = 'confirmed'` operations count.** `draft` = recorded by the assistant, not confirmed yet.
 - **`origin`** says where a row comes from: `dataset`, `dataset_adjusted`, `generated` or `invented`.
 - **`crop_season.status` is computed on seed day.** For another date, use `sowing_date` and `harvest_date`.
 - **Demo dates**: any date from 2015 to about 7 days before the seed day (the engine reads 7 days ahead).
-- **Summer 2026 is the driest in the data**: June–August 79 mm of rain for a maize need of about 604 mm.
+- **Summer 2026 is the driest in the Loiret data**: June–August 79 mm of rain for a maize need of about 604 mm.
   La Vallée has maize in 2026 (sown 16 April), watered on 21 June, 27 June and 4 July.
 
 ## Where the data comes from
@@ -65,9 +75,10 @@ Row level security is on with no policies: the public key reads nothing; the API
   for 10 years); sprays and fertiliser moved to the right crop stage with real degree-days; no spray
   after harvest; fake product names replaced by real E-Phy products; yearly irrigation totals split into
   dated waterings with a water balance; rapeseed sown in late August.
-- **Invented**: farm, field and people names; the reel gun settings; the earliness group.
-- **Real**: weather (AgERA5 regional average to 2024, then Open-Meteo at the farm), E-Phy (downloaded
-  from data.gouv.fr), regional statistics (hackathon layers), FAO-56 (Marceau, checked against the FAO text).
+- **Invented**: farm, field and people names; the reel gun settings; the earliness group; which sunflower
+  fields are irrigable (the ones the dataset irrigated at least 5 years out of 10).
+- **Real**: weather (AgERA5 regional average to 2024, then Open-Meteo at the farm), E-Phy for France
+  (downloaded from data.gouv.fr), regional statistics (hackathon layers), FAO-56 (Marceau, checked against the FAO text).
 
 ## Limits to say in the pitch
 

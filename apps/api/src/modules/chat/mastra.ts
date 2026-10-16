@@ -6,8 +6,7 @@ import { chatRoute } from "@mastra/ai-sdk";
 import { MastraServer } from "@mastra/hono";
 import { LibSQLStore } from "@mastra/libsql";
 import type { Hono, MiddlewareHandler } from "hono";
-import type { FarmData } from "../irrigation/data/farmData";
-import type { IrrigationService } from "../irrigation/irrigation.service";
+import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { ADVISOR_ID, createAdvisorAgent } from "./advisor.agent";
 import { createChatRoutes } from "./chat.routes";
 import { createMemberMiddleware } from "./member.middleware";
@@ -23,8 +22,8 @@ const apiDisabled: MiddlewareHandler = (c) =>
 
 export function createMastra(
   opts: {
-    service: IrrigationService;
-    data: FarmData;
+    /** Every farm: tools and workflows pick the caller's farm from the request context. */
+    registry: FarmRegistry;
     model: MastraModelConfig;
     /** Cheap model for thread titles. */
     modelMini?: MastraModelConfig;
@@ -35,14 +34,13 @@ export function createMastra(
     openMastraApi?: boolean;
   },
 ) {
-  const { service, data } = opts;
-  const workflows = createAdvisorWorkflows(service, data, opts.timezone);
+  const { registry } = opts;
+  const workflows = createAdvisorWorkflows(registry, opts.timezone);
   return new Mastra({
     storage: new LibSQLStore({ id: "mastra-store", url: opts.storageUrl }),
     agents: {
       [ADVISOR_ID]: createAdvisorAgent({
-        service,
-        data,
+        registry,
         model: opts.model,
         modelMini: opts.modelMini,
       }),
@@ -58,7 +56,7 @@ export function createMastra(
       cors: false,
       middleware: [
         ...(opts.openMastraApi ? [] : [{ path: "/api/*", handler: apiDisabled }]),
-        ...createMemberMiddleware(service, data),
+        ...createMemberMiddleware(registry),
       ],
       apiRoutes: [
         chatRoute({
@@ -78,7 +76,7 @@ export function createMastra(
  */
 export async function mountChat(
   app: Hono,
-  deps: { mastra: Mastra; service: IrrigationService; data: FarmData },
+  deps: { mastra: Mastra; registry: FarmRegistry },
 ) {
   app.route("/chat", createChatRoutes(deps));
   const server = new MastraServer({ app, mastra: deps.mastra });

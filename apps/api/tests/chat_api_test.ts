@@ -152,3 +152,20 @@ Deno.test("OPEN_MASTRA_API on: /api/agents is 200", opts, async () => {
   const res = await app.request("/api/agents", { headers: { "x-member-id": "1" } });
   assertEquals(res.status, 200);
 });
+
+Deno.test("chat as a farm 2 member: farm 2 data and memory only", opts, async () => {
+  const { app, mastra } = await makeTestChatApp({
+    model: scriptedModel([
+      { toolCalls: [{ name: "getFarmAdvice", input: {} }] },
+      { text: "Riega El Pozo." },
+    ]),
+  });
+  const res = await post(app, { "x-member-id": "5" });
+  assertEquals(res.status, 200);
+  const sse = await res.text();
+  assertStringIncludes(sse, '"fieldId":15');
+  assert(!sse.includes('"fieldId":10'), "farm 1 field leaked into farm 2's chat");
+  const memory = await mastra.getAgentById("advisor").getMemory();
+  const threads = await memory!.listThreads({ filter: { resourceId: "member-5" } });
+  assertEquals(threads.threads.map((t: { id: string }) => t.id), ["member-5-2026-07-05"]);
+});

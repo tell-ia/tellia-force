@@ -13,12 +13,13 @@ import {
   type ScenarioResult,
   type WeatherDay,
 } from "@tellia/shared/irrigation";
-import type {
-  CropStage,
-  FarmData,
-  Field,
-  IrrigationOperation,
-  OperationStatus,
+import {
+  cropNameIn,
+  type CropStage,
+  type FarmData,
+  type Field,
+  type IrrigationOperation,
+  type OperationStatus,
 } from "./data/farmData";
 import { cropWaterParams, kcAtFraction, kcFromRef, seasonFraction } from "./engine/crop";
 import { buildFieldReport, rankReports, type ReportInput } from "./engine/report";
@@ -103,9 +104,16 @@ interface Context {
 }
 
 export function createIrrigationService(
-  deps: { data: FarmData; weather: WeatherService; today: () => string },
+  deps: {
+    data: FarmData;
+    weather: WeatherService;
+    today: () => string;
+    /** Language of crop names in reports ("fr", "es", "it"...). Default French. */
+    language?: string;
+  },
 ): IrrigationService {
   const { data, weather } = deps;
+  const language = deps.language ?? "fr";
 
   const checkDate = (date: string, label = "date") => {
     if (!IsoDateSchema.safeParse(date).success) {
@@ -213,7 +221,7 @@ export function createIrrigationService(
       input: {
         field,
         season: { cropCode: season.cropCode },
-        cropName: ref.nameFr,
+        cropName: cropNameIn(ref, language),
         days,
         irrigations,
         taw,
@@ -293,7 +301,10 @@ export function createIrrigationService(
         const name = normalize(field.name);
         const season = await data.getSeasonAt(field.id, asOf);
         const ref = season ? await data.getCropRef(season.cropCode) : null;
-        const crops = ref ? [ref.nameFr, ref.nameEn].map(normalize) : [];
+        // Any language the farmer may use: "maïs", "maíz", "mais", "maize"...
+        const crops = ref
+          ? [...new Set(Object.values(ref.names).concat(ref.nameEn))].map(normalize)
+          : [];
 
         let score = 0;
         if (q === name) score = 100;
@@ -312,7 +323,7 @@ export function createIrrigationService(
           out.push({
             fieldId: field.id,
             name: field.name,
-            cropName: ref ? ref.nameFr : null,
+            cropName: ref ? cropNameIn(ref, language) : null,
             score,
           });
         }

@@ -45,6 +45,8 @@ export interface CropRef {
   code: string;
   nameFr: string;
   nameEn: string;
+  /** Language code -> crop name, for every language the DB has a name in. */
+  names: Record<string, string>;
   gddBaseC: number;
   kcIni: number;
   kcMid: number;
@@ -92,6 +94,26 @@ export interface NewIrrigation {
   memberId: number | null;
 }
 
+/** The crop name in a language ("fr", "es", "it-IT"...), falling back to English. */
+export function cropNameIn(ref: CropRef, language: string): string {
+  return ref.names[language.slice(0, 2).toLowerCase()] ?? ref.nameEn;
+}
+
+/**
+ * Several farms share the database. The directory finds a member's farm and hands out a
+ * FarmData scoped to one farm: its members, fields, operations and region weather only.
+ */
+export interface FarmDirectory {
+  /** Every farm id, ascending. */
+  listFarmIds(): Promise<number[]>;
+  /** The farm of a member, or null when the member does not exist. */
+  farmOfMember(memberId: number): Promise<number | null>;
+  /** Main contact of the first farm (lowest id): the caller when no member is given. */
+  defaultMemberId(): Promise<number | null>;
+  forFarm(farmId: number): FarmData;
+}
+
+/** One farm's data. Lookups by member or operation id return null outside that farm. */
 export interface FarmData {
   getFarm(): Promise<Farm>;
   listMembers(): Promise<Member[]>;
