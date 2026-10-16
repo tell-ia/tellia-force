@@ -28,9 +28,9 @@ tools that call our API.
       unit tests on in-memory farms.
 - [x] 3. frp tunnel: `frpc.example.toml`, ignore `frpc.toml`, root `pnpm tunnel` script.
 - [x] 4. Setup script `apps/api/scripts/vapiSetup.ts` + `deno task vapi:setup`.
-- [ ] 5. Run it: secret in `.env`, tunnel + API up, smoke test through the tunnel, run setup,
+- [x] 5. Run it: secret in `.env`, tunnel + API up, smoke test through the tunnel, run setup,
       test the assistant with the VAPI chat API.
-- [ ] 6. Docs: `apps/api/src/modules/vapi/README.md`.
+- [x] 6. Docs: `apps/api/src/modules/vapi/README.md`.
 
 ## Test rules
 - Unit tests use in-memory farms only (`tests/helpers/testApp.ts`). Never run `test:live`.
