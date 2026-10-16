@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IsoDateSchema } from "./irrigation";
 
 // ---------------------------------------------------------------------------
 // Environment schemas — validate config on both sides at boot, fail loud.
@@ -24,7 +25,7 @@ export const ServerEnvSchema = z.object({
   // Mastra memory + workflow storage (LibSQL). Local file by default.
   MASTRA_DB_URL: z.string().min(1).default("file:./data/mastra.db"),
   // Pin "today" for demos (YYYY-MM-DD); unset = real today.
-  DEMO_DATE: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD").optional(),
+  DEMO_DATE: IsoDateSchema.optional(),
   // IANA time zone used to compute "today".
   TIMEZONE: z.string().min(1).default("Europe/Paris"),
 });

@@ -81,6 +81,9 @@ const normalize = (s: string) =>
   s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const words = (s: string) => normalize(s).split(" ").filter((w) => w.length > 2);
 
+/** Largest single application advised; deeper deficits are split over several days. */
+export const MAX_APPLICATION_MM = 35;
+
 const bad = (message: string) => new HTTPException(400, { message });
 
 function toRecord(op: IrrigationOperation): IrrigationRecord {
@@ -120,7 +123,21 @@ export function createIrrigationService(
   }
 
   /** Everything the engine needs for one field at `asOf`. Fetches weather only in season. */
-  async function buildContext(field: Field, asOf: string): Promise<Context> {
+  /** Per-call memo (one farm-advice request): shares weather and crop lookups across fields. */
+  interface Memo {
+    cache: Map<string, Promise<unknown>>;
+  }
+  const memoized = <T>(memo: Memo | undefined, key: string, load: () => Promise<T>): Promise<T> => {
+    if (!memo) return load();
+    let hit = memo.cache.get(key) as Promise<T> | undefined;
+    if (!hit) {
+      hit = load();
+      memo.cache.set(key, hit);
+    }
+    return hit;
+  };
+
+  async function buildContext(field: Field, asOf: string, memo?: Memo): Promise<Context> {
     const season = await data.getSeasonAt(field.id, asOf);
     if (!season) {
       const { rootDepthM, p } = cropWaterParams("");
@@ -137,14 +154,16 @@ export function createIrrigationService(
           p,
           asOf,
           stageLabel: null,
+          maxApplicationMm: MAX_APPLICATION_MM,
         },
       };
     }
 
-    const [ref, stages, soil] = await Promise.all([
-      data.getCropRef(season.cropCode),
-      data.getCropStages(season.cropCode),
+    const [ref, stages, soil, ops] = await Promise.all([
+      memoized(memo, `ref:${season.cropCode}`, () => data.getCropRef(season.cropCode)),
+      memoized(memo, `stages:${season.cropCode}`, () => data.getCropStages(season.cropCode)),
       data.getSoil(field.id),
+      data.listIrrigations(field.id, { includeDrafts: false }),
     ]);
     if (!ref) {
       throw new HTTPException(500, { message: `crop reference ${season.cropCode} is missing` });
@@ -153,17 +172,23 @@ export function createIrrigationService(
     const sw = soil ? soilWaterFromTexture(soil) : DEFAULT_LOAM;
     const taw = totalAvailableWater(sw.thetaFC, sw.thetaWP, rootDepthM);
 
-    const series = await weather.getDailySeries({
-      from: season.sowingDate,
-      to: addDays(asOf, 7),
-      gddBase: ref.gddBaseC,
-    });
-    const total = await weather.seasonGddTotal({
-      sowing: season.sowingDate,
-      harvest: season.harvestDate,
-      gddBase: ref.gddBaseC,
-      knownDays: series.map((d) => ({ date: d.date, gdd: d.gdd })),
-    });
+    const to = addDays(asOf, 7);
+    const series = await memoized(
+      memo,
+      `series:${season.sowingDate}:${to}:${ref.gddBaseC}`,
+      () => weather.getDailySeries({ from: season.sowingDate, to, gddBase: ref.gddBaseC }),
+    );
+    const total = await memoized(
+      memo,
+      `total:${season.sowingDate}:${season.harvestDate}:${to}:${ref.gddBaseC}`,
+      () =>
+        weather.seasonGddTotal({
+          sowing: season.sowingDate,
+          harvest: season.harvestDate,
+          gddBase: ref.gddBaseC,
+          knownDays: series.map((d) => ({ date: d.date, gdd: d.gdd })),
+        }),
+    );
 
     let cumulative = 0;
     let stageLabel: string | null = null;
@@ -179,7 +204,6 @@ export function createIrrigationService(
       return { date: d.date, et0: d.et0, rain: d.rain, tmin: d.tmin, kc };
     });
 
-    const ops = await data.listIrrigations(field.id, { includeDrafts: false });
     const irrigations = ops
       .filter((o) => o.status === "confirmed")
       .map((o) => ({ date: o.date, mm: o.mm }));
@@ -196,12 +220,13 @@ export function createIrrigationService(
         p,
         asOf,
         stageLabel,
+        maxApplicationMm: MAX_APPLICATION_MM,
       },
     };
   }
 
-  async function reportFor(field: Field, asOf: string): Promise<FieldReport> {
-    return buildFieldReport((await buildContext(field, asOf)).input);
+  async function reportFor(field: Field, asOf: string, memo?: Memo): Promise<FieldReport> {
+    return buildFieldReport((await buildContext(field, asOf, memo)).input);
   }
 
   async function validateIrrigation(
@@ -223,12 +248,11 @@ export function createIrrigationService(
   }
 
   async function findOperation(operationId: number): Promise<IrrigationOperation> {
-    for (const f of await data.listFields()) {
-      const op = (await data.listIrrigations(f.id, { includeDrafts: true }))
-        .find((o) => o.operationId === operationId);
-      if (op) return op;
+    const op = await data.getIrrigation(operationId);
+    if (!op) {
+      throw new HTTPException(404, { message: `irrigation operation ${operationId} not found` });
     }
-    throw new HTTPException(404, { message: `irrigation operation ${operationId} not found` });
+    return op;
   }
 
   async function create(
@@ -306,7 +330,8 @@ export function createIrrigationService(
     async getFarmAdvice(asOf) {
       const date = resolveAsOf(asOf);
       const fields = await data.listFields();
-      const reports = await Promise.all(fields.map((f) => reportFor(f, date)));
+      const memo: Memo = { cache: new Map() };
+      const reports = await Promise.all(fields.map((f) => reportFor(f, date, memo)));
       return { asOf: date, reports: rankReports(reports) };
     },
 

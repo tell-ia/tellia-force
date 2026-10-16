@@ -15,6 +15,8 @@ export interface ReportInput {
   asOf: string;
   stageLabel: string | null;
   extraWarnings?: string[];
+  /** Cap on one application, mm. Unset = no cap. */
+  maxApplicationMm?: number;
 }
 
 export function buildFieldReport(input: ReportInput): FieldReport {
@@ -84,6 +86,12 @@ export function buildFieldReport(input: ReportInput): FieldReport {
     reason =
       `Root zone is only ${pct}% depleted (${depStr} of ${tawStr} mm), below the ${pPct}% stress threshold` +
       (daysUntil === null ? "." : `; irrigation expected in about ${daysUntil} days.`);
+  }
+
+  const cap = input.maxApplicationMm;
+  if (cap !== undefined && irrigateMm > cap) {
+    irrigateMm = cap;
+    reason = reason.replace(/\.$/, "") + `; apply ${cap} mm today and re-check tomorrow`;
   }
 
   return {

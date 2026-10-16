@@ -112,6 +112,8 @@ export interface FarmData {
     fieldId: number,
     opts: { includeDrafts: boolean },
   ): Promise<IrrigationOperation[]>;
+  /** One irrigation operation by id, or null when missing / not an irrigation. */
+  getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;
   setIrrigationStatus(operationId: number, status: OperationStatus): Promise<IrrigationOperation>;
   deleteIrrigation(operationId: number): Promise<void>;

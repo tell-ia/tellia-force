@@ -219,3 +219,47 @@ Deno.test("resolveField", async () => {
   assertEquals((await service.resolveField("LA VALLÉE"))[0].name, "La Vallée");
   assertEquals(await service.resolveField("xyz"), []);
 });
+
+Deno.test("farm advice shares weather and crop lookups across fields", async () => {
+  const fixture = makeFarmFixture();
+  // Three fields on the same maize season.
+  fixture.seasons[11] = [{ ...fixture.seasons[10][0], id: 211 }];
+  fixture.seasons[3] = [{ ...fixture.seasons[10][0], id: 203 }];
+  const inner = createMemoryFarmData(fixture);
+  const calls = { weather: 0, ref: 0, stages: 0, fields: 0, climatology: 0 };
+  const data: typeof inner = {
+    ...inner,
+    getWeather: (f, t) => (calls.weather++, inner.getWeather(f, t)),
+    getCropRef: (c) => (calls.ref++, inner.getCropRef(c)),
+    getCropStages: (c) => (calls.stages++, inner.getCropStages(c)),
+    listFields: () => (calls.fields++, inner.listFields()),
+    getGddClimatology: (b) => (calls.climatology++, inner.getGddClimatology(b)),
+  };
+  const weather = createWeatherService({
+    data,
+    fetch: () => Promise.reject(new Error("no network expected")),
+  });
+  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
+  const advice = await service.getFarmAdvice();
+  assertEquals(advice.reports.length, 3);
+  assert(advice.reports.every((r) => r.cropCode === "MAIZ"));
+  assertEquals(calls.weather, 1);
+  assertEquals(calls.ref, 1);
+  assertEquals(calls.stages, 1);
+  assertEquals(calls.fields, 1);
+  assertEquals(calls.climatology, 1);
+});
+
+Deno.test("farm advice caps one application at 35 mm", async () => {
+  const { service } = setup();
+  const r = (await service.getFarmAdvice("2026-08-20")).reports.find((x) => x.fieldId === 10)!;
+  assert(r.irrigateMm <= 35);
+});
+
+Deno.test("operation lookup uses getIrrigation (404 for unknown id)", async () => {
+  const { service, data } = setup();
+  assertEquals((await data.getIrrigation(1))?.fieldId, 10);
+  assertEquals(await data.getIrrigation(4242), null);
+  assertEquals((await status(service.confirmIrrigation(4242))).status, 404);
+  assertEquals((await service.confirmIrrigation(1)).status, "confirmed");
+});

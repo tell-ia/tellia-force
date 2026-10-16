@@ -80,3 +80,19 @@ Deno.test("IsoDateSchema rejects impossible calendar dates", () => {
     assert(!IsoDateSchema.safeParse(bad).success, bad);
   }
 });
+
+Deno.test("env: DEMO_DATE rejects impossible dates", () => {
+  const base = {
+    SUPABASE_URL: "https://x.supabase.co",
+    SUPABASE_SECRET_KEY: "k",
+    OPENAI_API_KEY: "k",
+    VAPI_PHONE_NUMBER: "+1",
+  };
+  let threw = false;
+  try {
+    parseEnv(ServerEnvSchema, { ...base, DEMO_DATE: "2026-13-45" });
+  } catch {
+    threw = true;
+  }
+  assert(threw);
+});

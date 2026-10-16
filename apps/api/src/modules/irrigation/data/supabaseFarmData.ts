@@ -268,6 +268,13 @@ export function createSupabaseFarmData(db: SupabaseClient): FarmData {
       if (!opts.includeDrafts) q = q.neq("status", "draft");
       return (await rows(q.order("op_date").order("id"))).map(mapOperation);
     },
+    async getIrrigation(operationId) {
+      const r = await one(
+        db.from("operation").select("*").eq("id", operationId).eq("op_type", "irrigation")
+          .not("water_mm", "is", null).limit(1),
+      );
+      return r ? mapOperation(r) : null;
+    },
     async createIrrigation(input) {
       const field = await one(db.from("field").select("area_ha").eq("id", input.fieldId).limit(1));
       const r = await one(

@@ -68,6 +68,10 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
       ops.filter((o) => o.fieldId === fieldId && (opts.includeDrafts || o.status !== "draft"))
         .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.operationId - b.operationId)
         .map((o) => ({ ...o })),
+    getIrrigation: async (id) => {
+      const op = ops.find((o) => o.operationId === id);
+      return op ? { ...op } : null;
+    },
     createIrrigation: async (input: NewIrrigation) => {
       const op: IrrigationOperation = { ...input, operationId: nextId++ };
       ops.push(op);

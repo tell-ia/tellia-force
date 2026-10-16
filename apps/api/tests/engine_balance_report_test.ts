@@ -72,6 +72,7 @@ function report(
     irrigations?: { date: string; mm: number }[];
     irrigable?: boolean;
     season?: { cropCode: string } | null;
+    maxApplicationMm?: number;
   } = {},
 ) {
   return buildFieldReport({
@@ -85,6 +86,7 @@ function report(
     asOf: o.asOf ?? "2026-07-05",
     stageLabel: "Tasselling",
     extraWarnings: [],
+    maxApplicationMm: o.maxApplicationMm,
   });
 }
 
@@ -181,4 +183,20 @@ Deno.test("report: frost tmin is rounded to 1 decimal in warning and reason", ()
   assertEquals(r.decision, "frost_hold");
   assertEquals(r.warnings.includes("Frost forecast today (min -1.2 °C)."), true);
   assertEquals(r.reason.includes("(min -1.2 °C)"), true);
+});
+
+Deno.test("report: maxApplicationMm caps irrigateMm, keeps full depletion, appends suffix", () => {
+  const capped = report({ maxApplicationMm: 35 });
+  const free = report();
+  assertEquals(free.irrigateMm, 90);
+  assertEquals(capped.decision, "irrigate_today");
+  assertEquals(capped.irrigateMm, 35);
+  assertEquals(capped.depletionMm, free.depletionMm);
+  assertEquals(capped.reason.endsWith("; apply 35 mm today and re-check tomorrow"), true);
+  assertEquals(capped.reason.startsWith(free.reason.replace(/\.$/, "")), true);
+  // A cap above the need changes nothing.
+  assertEquals(report({ maxApplicationMm: 200 }), free);
+  const frost = report({ over: { "2026-07-05": { tmin: -1 } }, maxApplicationMm: 35 });
+  assertEquals(frost.decision, "frost_hold");
+  assertEquals(frost.irrigateMm, 35);
 });
