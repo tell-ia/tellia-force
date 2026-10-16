@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import type { ParcelReport } from "@tellia/shared";
 import { getParcelReport } from "../../lib/api";
@@ -26,12 +26,20 @@ function fmtDay(iso: string): string {
 export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: string }) {
   const { farm } = useFarm();
   const balanceRef = useRef<HTMLDivElement>(null);
+  const [highlighted, setHighlighted] = useState(false);
   const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId]);
 
   useEffect(() => {
     if (data && anchor === "balance") {
-      const t = setTimeout(() => balanceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-      return () => clearTimeout(t);
+      const scroll = setTimeout(() => {
+        balanceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setHighlighted(true);
+      }, 120);
+      const fade = setTimeout(() => setHighlighted(false), 1800);
+      return () => {
+        clearTimeout(scroll);
+        clearTimeout(fade);
+      };
     }
   }, [data, anchor]);
 
@@ -75,7 +83,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
             </div>
           </SectionCard>
 
-          <SectionCard id="balance" style={{ gap: 12 }}>
+          <SectionCard id="balance" style={{ gap: 12, boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
             <div ref={balanceRef} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <Label>Water balance · {data.series.at(0)?.dayLabel}–{data.series.at(-1)?.dayLabel} Jul</Label>

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "v0",
+  "id": 201,
+  "farmId": 2,
+  "name": "North Slope",
+  "cropName": "Soybean",
+  "areaHa": 7.2,
+  "sownOn": "2022-05-20",
+  "asOf": "2022-07-13",
+  "recommendation": {
+    "decision": "irrigate",
+    "headline": "Irrigate by Sat 16",
+    "netMm": 25,
+    "grossMm": 31,
+    "efficiency": 0.8,
+    "reason": "Soybean is flowering and the reserve reaches the comfort threshold Saturday. Thursday's 8 mm helps but isn't enough.",
+    "secondPass": null
+  },
+  "reserve": {
+    "availableMm": 70,
+    "capacityMm": 120,
+    "pct": 58,
+    "thresholdMm": 60,
+    "thresholdPct": 50,
+    "thresholdLabel": "Sat eve",
+    "usedByThresholdMm": 10
+  },
+  "series": [
+    { "date": "2022-07-03", "dayLabel": "3", "rain": 0, "irrigation": 0, "cropUse": 5.2, "reserveMm": 104.0, "forecast": false },
+    { "date": "2022-07-04", "dayLabel": "4", "rain": 0, "irrigation": 0, "cropUse": 5.0, "reserveMm": 99.0, "forecast": false },
+    { "date": "2022-07-05", "dayLabel": "5", "rain": 0, "irrigation": 0, "cropUse": 5.2, "reserveMm": 93.8, "forecast": false },
+    { "date": "2022-07-06", "dayLabel": "6", "rain": 0, "irrigation": 0, "cropUse": 5.6, "reserveMm": 88.2, "forecast": false },
+    { "date": "2022-07-07", "dayLabel": "7", "rain": 0, "irrigation": 0, "cropUse": 5.1, "reserveMm": 83.1, "forecast": false },
+    { "date": "2022-07-08", "dayLabel": "8", "rain": 0, "irrigation": 0, "cropUse": 5.8, "reserveMm": 77.3, "forecast": false },
+    { "date": "2022-07-09", "dayLabel": "9", "rain": 0, "irrigation": 0, "cropUse": 5.4, "reserveMm": 71.9, "forecast": false },
+    { "date": "2022-07-10", "dayLabel": "10", "rain": 18, "irrigation": 0, "cropUse": 5.6, "reserveMm": 84.3, "forecast": false },
+    { "date": "2022-07-11", "dayLabel": "11", "rain": 0, "irrigation": 0, "cropUse": 6.0, "reserveMm": 78.3, "forecast": false },
+    { "date": "2022-07-12", "dayLabel": "12", "rain": 0, "irrigation": 0, "cropUse": 5.9, "reserveMm": 72.4, "forecast": false },
+    { "date": "2022-07-13", "dayLabel": "13", "rain": 0, "irrigation": 0, "cropUse": 5.4, "reserveMm": 70.0, "forecast": false },
+    { "date": "2022-07-14", "dayLabel": "14", "rain": 8, "irrigation": 0, "cropUse": 6.2, "reserveMm": 71.8, "forecast": true },
+    { "date": "2022-07-15", "dayLabel": "15", "rain": 0, "irrigation": 0, "cropUse": 6.4, "reserveMm": 65.4, "forecast": true },
+    { "date": "2022-07-16", "dayLabel": "16", "rain": 0, "irrigation": 0, "cropUse": 6.6, "reserveMm": 58.8, "forecast": true },
+    { "date": "2022-07-17", "dayLabel": "17", "rain": 0, "irrigation": 0, "cropUse": 6.3, "reserveMm": 52.5, "forecast": true },
+    { "date": "2022-07-18", "dayLabel": "18", "rain": 0, "irrigation": 0, "cropUse": 6.5, "reserveMm": 46.0, "forecast": true }
+  ],
+  "cropStage": {
+    "label": "Flowering",
+    "daysSinceSowing": 54,
+    "gdd": 712,
+    "gddBase": 10,
+    "useTodayMm": 5.4,
+    "useTomorrowMm": 6.2,
+    "note": "Soybean flowering (R1–R2). Water stress now cuts pod set — a sensitive window, though less brutal than maize.",
+    "progress": 0.52,
+    "steps": [
+      { "label": "Emerg.", "weight": 300, "current": false },
+      { "label": "Veg.", "weight": 520, "current": false },
+      { "label": "Flowering", "weight": 320, "current": true },
+      { "label": "Pod fill", "weight": 480, "current": false },
+      { "label": "Mature", "weight": 260, "current": false }
+    ]
+  },
+  "soil": {
+    "texture": "Clay loam",
+    "sandPct": 30,
+    "siltPct": 40,
+    "clayPct": 30,
+    "omPct": 3,
+    "usableMm": 120,
+    "rootDepthM": 1.0,
+    "note": "120 mm usable over 1.0 m of roots. Holds water better than the Loiret sand — slower to empty."
+  },
+  "seasonBalance": {
+    "rainMm": 128,
+    "irrigatedMm": 0,
+    "cropUseMm": 176,
+    "drainedMm": 8,
+    "stressDays": 1,
+    "cropDays": 54
+  },
+  "nextDays": [
+    { "day": "Thu 14", "tempMax": 30, "pctNoWater": 60, "pctWatered": 81 },
+    { "day": "Fri 15", "tempMax": 31, "pctNoWater": 55, "pctWatered": 76 },
+    { "day": "Sat 16", "tempMax": 33, "pctNoWater": 49, "pctWatered": 70 },
+    { "day": "Sun 17", "tempMax": 32, "pctNoWater": 44, "pctWatered": 65 },
+    { "day": "Mon 18", "tempMax": 34, "pctNoWater": 38, "pctWatered": 59 }
+  ],
+  "method": "FAO-56 soil water balance. Weather: Gers average (AgERA5). Stages from degree-days, base 10. Irrigation as logged by the farmer; gross dose includes reel-gun losses."
+}

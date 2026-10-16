@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { GOOGLE_FONTS_HREF, themeVars, type ThemeName } from "./tokens";
+import { setStatusBarTheme } from "../lib/native";
 
 interface ThemeCtx {
   theme: ThemeName;
@@ -54,6 +55,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.style.colorScheme = theme;
     root.setAttribute("data-theme", theme);
     document.body.style.background = "var(--tf-bg)";
+    void setStatusBarTheme(theme === "dark");
     try {
       localStorage.setItem("tf-theme", theme);
     } catch {

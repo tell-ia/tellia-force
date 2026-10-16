@@ -1,27 +1,51 @@
 {
   "farmId": 2,
   "asOf": "2022-07-13",
-  "greeting": "Good morning, Marc. Nothing urgent today.",
-  "weatherNote": "Placeholder farm — real FARM-03527 data to come. No live chat yet.",
+  "greeting": "Good morning, Marc. One field to water, the rest on track.",
+  "weatherNote": "Warm in the Gers, light rain Thursday. Brief generated 07:00.",
   "parcels": [
     {
       "id": 201,
+      "name": "North Slope",
+      "cropName": "Soybean",
+      "areaHa": 7.2,
+      "stageLabel": "flowering",
+      "status": "action",
+      "badgeLabel": "Irrigate by Sat",
+      "netMm": 25,
+      "reservePct": 58,
+      "thresholdLabel": "Threshold Sat eve"
+    },
+    {
+      "id": 202,
       "name": "Mill Field",
       "cropName": "Soybean",
-      "areaHa": 6.3,
+      "areaHa": 6.4,
       "stageLabel": "pod fill",
       "status": "ok",
-      "badgeLabel": "OK · check Fri",
+      "badgeLabel": "OK · 4 more days",
       "netMm": null,
       "reservePct": null,
       "thresholdLabel": null
     },
     {
-      "id": 202,
-      "name": "South Slope",
+      "id": 203,
+      "name": "Riverside",
       "cropName": "Sunflower",
-      "areaHa": 7.1,
+      "areaHa": 5.8,
       "stageLabel": "flowering",
+      "status": "ok",
+      "badgeLabel": "OK · 6 more days",
+      "netMm": null,
+      "reservePct": null,
+      "thresholdLabel": null
+    },
+    {
+      "id": 204,
+      "name": "Top Field",
+      "cropName": "Sunflower",
+      "areaHa": 9.1,
+      "stageLabel": "rain-fed",
       "status": "idle",
       "badgeLabel": "Rain-fed",
       "netMm": null,
@@ -29,5 +53,8 @@
       "thresholdLabel": null
     }
   ],
-  "alert": null
+  "alert": {
+    "title": "Light rain Thursday — 8 mm",
+    "detail": "Eases demand on the rain-fed blocks."
+  }
 }

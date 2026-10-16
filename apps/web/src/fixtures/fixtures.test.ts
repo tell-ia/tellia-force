@@ -5,6 +5,7 @@ import farms from "./farms.json";
 import oakfieldToday from "./oakfield/advice.json";
 import ridgewayToday from "./ridgeway/advice.json";
 import valleyReport from "./oakfield/parcel-report.valley.json";
+import northSlopeReport from "./ridgeway/parcel-report.northslope.json";
 
 // A schema change that breaks a fixture fails here (and in CI), so the mocked
 // client never drifts from the contract the live API must honour.
@@ -23,6 +24,10 @@ describe("fixtures match their shared schemas", () => {
 
   it("oakfield/parcel-report.valley.json → ParcelReport", () => {
     expect(() => ParcelReportSchema.parse(valleyReport)).not.toThrow();
+  });
+
+  it("ridgeway/parcel-report.northslope.json → ParcelReport", () => {
+    expect(() => ParcelReportSchema.parse(northSlopeReport)).not.toThrow();
   });
 });
 
