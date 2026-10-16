@@ -1,19 +1,26 @@
 import { HTTPException } from "hono/http-exception";
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { cropNameIn } from "../src/modules/irrigation/data/farmData";
+import { cropNameIn, pickCropPhases } from "../src/modules/irrigation/data/farmData";
 import {
   createMemoryFarmData,
   createMemoryFarmDirectory,
 } from "../src/modules/irrigation/data/memoryFarmData";
 import {
+  aridityIndex,
   averageByDay,
   createSupabaseFarmData,
+  mapCropParams,
+  mapCropPhaseRow,
   mapCropRef,
   mapCropSeason,
+  mapIrrigationSystem,
   mapOperation,
+  mapSoilWaterClass,
+  mapWeatherDay,
   toOperationInsert,
 } from "../src/modules/irrigation/data/supabaseFarmData";
 import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
+import { MAIZE_EARLY_PHASES, MAIZE_PARAMS, REEL_GUN, SOIL_CLASSES } from "./fixtures/fao.ts";
 
 Deno.test("getSeasonAt picks the containing season, or null", async () => {
   const d = createMemoryFarmData(makeFarmFixture());
@@ -291,4 +298,335 @@ Deno.test("memory directory: members map to their farm, default is farm 1's main
   assertEquals(await dir.defaultMemberId(), 1);
   assertEquals(await dir.forFarm(2).getMember(1), null);
   assertEquals((await dir.forFarm(2).listFields()).map((f) => f.id), [15]);
+});
+
+// ---- FAO-56 data: crop values, crop phases, soil classes, irrigation system, aridity ----
+
+type Row = Record<string, unknown>;
+
+/** crop_phase_gdd rows as the seed writes them (maize early, its default copy, maize late). */
+const PHASE_ROWS: Row[] = [
+  {
+    crop_code: "MAIZ",
+    earliness_group: "early",
+    ini_end: 320,
+    dev_end: 760,
+    mid_end: 1440,
+    late_end: 1630,
+    flowering: 850,
+    sensitive_from: 750,
+    sensitive_to: 1100,
+    sensitive_p: 0.45,
+    method: "Arvalis anchors",
+  },
+  {
+    crop_code: "MAIZ",
+    earliness_group: null,
+    ini_end: 320,
+    dev_end: 760,
+    mid_end: 1440,
+    late_end: 1630,
+    flowering: 850,
+    sensitive_from: 750,
+    sensitive_to: 1100,
+    sensitive_p: 0.45,
+    method: "Default = early group. Arvalis anchors",
+  },
+  {
+    crop_code: "MAIZ",
+    earliness_group: "late",
+    ini_end: 400,
+    dev_end: 900,
+    mid_end: 1700,
+    late_end: 1900,
+    flowering: 1000,
+    sensitive_from: 900,
+    sensitive_to: 1250,
+    sensitive_p: 0.45,
+    method: "Arvalis anchors",
+  },
+];
+
+/** The FAO-56 tables, one farm per region, and the fields with their irrigation system. */
+function faoTables(): Record<string, Row[]> {
+  return {
+    farm: [
+      { id: 1, name: "GAEC des Trois Chênes", lat: 48.046, lon: 1.794, nuts3_id: "FRB06" },
+      { id: 2, name: "SAT Los Olmos", lat: 41.6, lon: -4.92, nuts3_id: "ES418" },
+    ],
+    region: [
+      { nuts3_id: "FRB06", mean_annual_precip_mm: 640, mean_annual_et0_mm: 800 },
+      { nuts3_id: "ES418", mean_annual_precip_mm: 440, mean_annual_et0_mm: 1100 },
+    ],
+    fao56_crop_stages: [{ crop_code: "MAIZ", t_base_c: 6, t_max_cap_c: 30 }],
+    fao56_kc: [{ crop_code: "MAIZ", kc_ini: 0.3, kc_mid: 1.2, kc_end: 0.6 }],
+    fao56_root_depletion: [
+      { crop_code: "MAIZ", zr_ini_m: 0.2, zr_max_default_m: 1.2, p_table: 0.55 },
+    ],
+    crop_phase_gdd: PHASE_ROWS,
+    fao56_soil_water: SOIL_CLASSES.map((c) => ({
+      texture_class_usda: c.textureClass,
+      theta_fc_mid: c.thetaFcMid,
+      theta_wp_mid: c.thetaWpMid,
+    })),
+    field: [
+      { id: 10, farm_id: 1, irrigation_system_id: 1 },
+      { id: 3, farm_id: 1, irrigation_system_id: null },
+      { id: 15, farm_id: 2, irrigation_system_id: 2 },
+    ],
+    irrigation_system: [
+      {
+        id: 1,
+        farm_id: 1,
+        name: "Reel gun 1",
+        system_type: "reel_gun",
+        efficiency: 0.75,
+        dose_min_mm: 20,
+        dose_max_mm: 40,
+        round_days: 3,
+      },
+      {
+        id: 2,
+        farm_id: 2,
+        name: "Pivot",
+        system_type: "pivot",
+        efficiency: 0.85,
+        dose_min_mm: 10,
+        dose_max_mm: 25,
+        round_days: 2,
+      },
+    ],
+  };
+}
+
+/**
+ * Fake Supabase client: `eq` filters the rows of each table, tables in `broken` answer with
+ * an error (like a table missing from the DB), and every query is logged.
+ */
+function fakeDb(tables: Record<string, Row[]>, broken: string[] = []) {
+  const queries: { table: string; eq: [string, unknown][] }[] = [];
+  const from = (table: string) => {
+    const q = { table, eq: [] as [string, unknown][] };
+    queries.push(q);
+    // deno-lint-ignore no-explicit-any
+    const qb: any = {
+      select: () => qb,
+      order: () => qb,
+      limit: () => qb,
+      eq: (c: string, v: unknown) => (q.eq.push([c, v]), qb),
+      then: (res: (v: unknown) => unknown) =>
+        res(
+          broken.includes(table)
+            ? { data: null, error: { message: `relation "${table}" does not exist` } }
+            : {
+              data: (tables[table] ?? []).filter((r) => q.eq.every(([c, v]) => r[c] === v)),
+              error: null,
+            },
+        ),
+    };
+    return qb;
+  };
+  // deno-lint-ignore no-explicit-any
+  return { db: { from } as any, queries };
+}
+
+const countOf = (queries: { table: string }[], table: string) =>
+  queries.filter((q) => q.table === table).length;
+
+/** Runs `fn` with console.warn captured. */
+async function captureWarnings(fn: () => Promise<void>): Promise<string[]> {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => warnings.push(args.join(" "));
+  try {
+    await fn();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
+}
+
+Deno.test("pickCropPhases: variety group row, else the crop's default row, else null", () => {
+  const rows = PHASE_ROWS.map(mapCropPhaseRow);
+  assertEquals(pickCropPhases(rows, "MAIZ", "late")?.phases.flowering, 1000);
+  assertEquals(pickCropPhases(rows, "MAIZ", "early")?.method, "Arvalis anchors");
+  // No row for the group, or no group: the default row.
+  assertEquals(
+    pickCropPhases(rows, "MAIZ", "very_early")?.method,
+    "Default = early group. Arvalis anchors",
+  );
+  assertEquals(pickCropPhases(rows, "MAIZ", null)?.phases, MAIZE_EARLY_PHASES);
+  // Only a group row and no default: an unknown group finds nothing.
+  assertEquals(pickCropPhases(rows.filter((r) => r.earlinessGroup), "MAIZ", "half_late"), null);
+  assertEquals(pickCropPhases(rows, "SUNF", "early"), null);
+});
+
+Deno.test("memory twin: FAO-56 fixture data, null / [] when the fixture has none", async () => {
+  const fx = makeFarmFixture();
+  const empty = createMemoryFarmData(fx);
+  assertEquals(await empty.getCropParams("MAIZ"), null);
+  assertEquals(await empty.getCropPhases("MAIZ", "early"), null);
+  assertEquals(await empty.getSoilWaterClasses(), []);
+  assertEquals(await empty.getIrrigationSystem(10), null);
+
+  const d = createMemoryFarmData({
+    ...fx,
+    cropParams: { MAIZ: MAIZE_PARAMS },
+    cropPhases: [{ cropCode: "MAIZ", earlinessGroup: "early", phases: MAIZE_EARLY_PHASES }],
+    soilClasses: SOIL_CLASSES,
+    irrigationSystems: { 10: REEL_GUN },
+  });
+  assertEquals(await d.getCropParams("MAIZ"), MAIZE_PARAMS);
+  assertEquals(await d.getCropParams("COWT"), null);
+  // The method defaults to null.
+  assertEquals(await d.getCropPhases("MAIZ", "early"), {
+    phases: MAIZE_EARLY_PHASES,
+    method: null,
+  });
+  // The fixture has no default row: another group finds nothing.
+  assertEquals(await d.getCropPhases("MAIZ", "late"), null);
+  assertEquals(await d.getSoilWaterClasses(), SOIL_CLASSES);
+  assertEquals(await d.getIrrigationSystem(10), REEL_GUN);
+  assertEquals(await d.getIrrigationSystem(11), null);
+});
+
+Deno.test("mapCropParams joins the three FAO-56 rows; null when a row or value is missing", () => {
+  const [stages, kc, roots] = [
+    faoTables().fao56_crop_stages[0],
+    faoTables().fao56_kc[0],
+    faoTables().fao56_root_depletion[0],
+  ];
+  assertEquals(mapCropParams(stages, kc, roots), MAIZE_PARAMS);
+  // Numeric columns may arrive as strings.
+  assertEquals(mapCropParams({ ...stages, t_base_c: "6" }, kc, roots)?.tBaseC, 6);
+  // Only the Tmax cap may be empty.
+  assertEquals(mapCropParams({ ...stages, t_max_cap_c: null }, kc, roots)?.tMaxCapC, null);
+  assertEquals(mapCropParams(stages, null, roots), null);
+  assertEquals(mapCropParams(stages, { ...kc, kc_mid: null }, roots), null);
+  assertEquals(mapCropParams(stages, kc, { ...roots, p_table: "n/a" }), null);
+});
+
+Deno.test("mapCropPhaseRow maps a crop_phase_gdd row; the sensitive window needs from, to and p", () => {
+  assertEquals(mapCropPhaseRow(PHASE_ROWS[0]), {
+    cropCode: "MAIZ",
+    earlinessGroup: "early",
+    phases: MAIZE_EARLY_PHASES,
+    method: "Arvalis anchors",
+  });
+  const noWindow = mapCropPhaseRow({ ...PHASE_ROWS[1], sensitive_p: null, flowering: null });
+  assertEquals(noWindow.earlinessGroup, null);
+  assertEquals(noWindow.phases.sensitive, null);
+  assertEquals(noWindow.phases.flowering, null);
+});
+
+Deno.test("row mappers: soil class, irrigation system, earliness, Tmax, aridity", () => {
+  assertEquals(
+    mapSoilWaterClass({
+      texture_class_usda: "Silt clay loam",
+      theta_fc_mid: 0.335,
+      theta_wp_mid: 0.205,
+    }),
+    SOIL_CLASSES[3],
+  );
+  assertEquals(mapSoilWaterClass({ texture_class_usda: "Peat", theta_fc_mid: null }), null);
+  assertEquals(mapIrrigationSystem(faoTables().irrigation_system[0]), REEL_GUN);
+  assertEquals(
+    mapIrrigationSystem({ id: 3, name: "Drip", efficiency: "0.9" }),
+    { id: 3, name: "Drip", efficiency: 0.9, doseMinMm: null, doseMaxMm: null, roundDays: null },
+  );
+  const season = {
+    id: 1,
+    crop_code: "MAIZ",
+    sowing_date: "2022-05-03",
+    harvest_date: "2022-10-15",
+    status: "harvested",
+  };
+  assertEquals(mapCropSeason({ ...season, earliness_group: "early" }).earlinessGroup, "early");
+  assertEquals(mapCropSeason({ ...season, earliness_group: null }).earlinessGroup, null);
+  assertEquals(mapWeatherDay({ date: "2022-07-12", tmax_c: 31.4 }).tmax, 31.4);
+  assertEquals(mapWeatherDay({ date: "2022-07-12" }).tmax, null);
+  assertEquals(aridityIndex({ mean_annual_precip_mm: 440, mean_annual_et0_mm: 1100 }), 0.4);
+  assertEquals(aridityIndex({ mean_annual_precip_mm: 440, mean_annual_et0_mm: 0 }), null);
+  assertEquals(aridityIndex(null), null);
+});
+
+Deno.test("supabase FAO-56 reads: values per crop, reference tables read once per FarmData", async () => {
+  const { db, queries } = fakeDb(faoTables());
+  const d = createSupabaseFarmData(db, 1);
+  assertEquals(await d.getCropParams("MAIZ"), MAIZE_PARAMS);
+  assertEquals(await d.getCropParams("COWT"), null);
+  assertEquals(await d.getCropPhases("MAIZ", "early"), {
+    phases: MAIZE_EARLY_PHASES,
+    method: "Arvalis anchors",
+  });
+  assertEquals((await d.getCropPhases("MAIZ", "half_early"))?.method, PHASE_ROWS[1].method);
+  assertEquals(await d.getCropPhases("SUNF", "early"), null);
+  assertEquals(await d.getSoilWaterClasses(), SOIL_CLASSES);
+  await d.getSoilWaterClasses();
+  for (
+    const table of [
+      "fao56_crop_stages",
+      "fao56_kc",
+      "fao56_root_depletion",
+      "crop_phase_gdd",
+      "fao56_soil_water",
+    ]
+  ) {
+    assertEquals(countOf(queries, table), 1, `${table} read more than once`);
+  }
+});
+
+Deno.test("supabase FAO-56 reads: a missing table logs one warning, gives null / [], is retried", async () => {
+  const { db, queries } = fakeDb(faoTables(), ["crop_phase_gdd", "fao56_soil_water", "fao56_kc"]);
+  const d = createSupabaseFarmData(db, 1);
+  const warnings = await captureWarnings(async () => {
+    for (let i = 0; i < 2; i++) {
+      assertEquals(await d.getCropPhases("MAIZ", "early"), null);
+      assertEquals(await d.getSoilWaterClasses(), []);
+      assertEquals(await d.getCropParams("MAIZ"), null);
+    }
+  });
+  assertEquals(warnings.length, 3, warnings.join("\n"));
+  assert(warnings.some((w) => w.includes("crop_phase_gdd")));
+  // Failures are not cached: the table may appear later. Tables that answered are.
+  assertEquals(countOf(queries, "crop_phase_gdd"), 2);
+  assertEquals(countOf(queries, "fao56_crop_stages"), 1);
+});
+
+Deno.test("supabase getIrrigationSystem: the field's system, scoped to the farm", async () => {
+  const { db, queries } = fakeDb(faoTables());
+  const d = createSupabaseFarmData(db, 1);
+  assertEquals(await d.getIrrigationSystem(10), REEL_GUN);
+  assertEquals(await d.getIrrigationSystem(3), null); // no system
+  assertEquals(await d.getIrrigationSystem(15), null); // farm 2's field
+  for (const q of queries) {
+    assert(q.eq.some(([k, v]) => k === "farm_id" && v === 1), `${q.table} not filtered on farm 1`);
+  }
+  assertEquals((await createSupabaseFarmData(db, 2).getIrrigationSystem(15))?.efficiency, 0.85);
+
+  const broken = createSupabaseFarmData(fakeDb(faoTables(), ["irrigation_system"]).db, 1);
+  const warnings = await captureWarnings(async () => {
+    assertEquals(await broken.getIrrigationSystem(10), null);
+  });
+  assertEquals(warnings.length, 1);
+});
+
+Deno.test("supabase getFarm: aridity index of the farm's region, read once", async () => {
+  const { db, queries } = fakeDb(faoTables());
+  const es = createSupabaseFarmData(db, 2);
+  assertEquals((await es.getFarm()).aridityIndex, 0.4); // Valladolid: dry
+  await es.getFarm();
+  assertEquals(countOf(queries, "region"), 1);
+  const region = queries.find((q) => q.table === "region")!;
+  assertEquals(region.eq, [["nuts3_id", "ES418"]]);
+  assertEquals((await createSupabaseFarmData(db, 1).getFarm()).aridityIndex, 0.8); // Loiret
+
+  // No region data: the farm still loads, without aridity.
+  const noRegion = createSupabaseFarmData(fakeDb(faoTables(), ["region"]).db, 1);
+  const warnings = await captureWarnings(async () => {
+    const farm = await noRegion.getFarm();
+    assertEquals(farm.name, "GAEC des Trois Chênes");
+    assertEquals(farm.aridityIndex, null);
+  });
+  assertEquals(warnings.length, 1);
 });

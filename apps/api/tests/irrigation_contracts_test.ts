@@ -43,7 +43,7 @@ Deno.test("request bodies", () => {
   assert(RecordIrrigationBodySchema.safeParse({ fieldId: 10, date: "2026-07-05", mm: 30 }).success);
   assert(!SimulateBodySchema.safeParse({ events: [] }).success);
   assert(AdviceQuerySchema.safeParse({}).success);
-  assertEquals(DecisionSchema.options.length, 6);
+  assertEquals(DecisionSchema.options.length, 8); // + plan_irrigation, crop_maturing (engine v2)
   assert(FieldReportSchema.shape.depletionPct);
 });
 

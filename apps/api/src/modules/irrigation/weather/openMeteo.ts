@@ -13,6 +13,8 @@ export interface OpenMeteoDay {
   rain: number;
   tmin: number;
   tmean: number;
+  /** Daily max temperature, for degree-days. Absent when Open-Meteo has no value. */
+  tmax?: number;
 }
 
 export interface OpenMeteoClient {
@@ -29,6 +31,7 @@ const ResponseSchema = z.object({
     precipitation_sum: nullableNumbers,
     temperature_2m_min: nullableNumbers,
     temperature_2m_mean: nullableNumbers,
+    temperature_2m_max: nullableNumbers.optional(),
   }),
 });
 
@@ -57,7 +60,8 @@ export function createOpenMeteoClient(opts: {
       url.searchParams.set("longitude", String(lon));
       url.searchParams.set(
         "daily",
-        "et0_fao_evapotranspiration,precipitation_sum,temperature_2m_min,temperature_2m_mean",
+        "et0_fao_evapotranspiration,precipitation_sum,temperature_2m_min,temperature_2m_mean," +
+          "temperature_2m_max",
       );
       url.searchParams.set("timezone", "auto");
       url.searchParams.set("start_date", start);
@@ -74,7 +78,15 @@ export function createOpenMeteoClient(opts: {
         const tmin = daily.temperature_2m_min[i];
         const tmean = daily.temperature_2m_mean[i];
         if (et0 == null || tmin == null || tmean == null) return;
-        days.push({ date, et0, rain: daily.precipitation_sum[i] ?? 0, tmin, tmean });
+        const tmax = daily.temperature_2m_max?.[i];
+        days.push({
+          date,
+          et0,
+          rain: daily.precipitation_sum[i] ?? 0,
+          tmin,
+          tmean,
+          ...(tmax != null ? { tmax } : {}),
+        });
       });
       cache.set(key, { at: now(), days });
       return days.map((d) => ({ ...d }));

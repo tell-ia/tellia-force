@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HTTPException } from "hono/http-exception";
+import type { CropParams } from "../engine/cropModel";
+import type { SoilWaterClass } from "../engine/soil";
 import type {
+  CropPhaseRow,
   CropRef,
   CropSeason,
   CropStage,
@@ -9,11 +12,13 @@ import type {
   FarmDirectory,
   Field,
   IrrigationOperation,
+  IrrigationSystem,
   Member,
   OperationStatus,
   SoilAnalysis,
   StoredWeatherDay,
 } from "./farmData";
+import { pickCropPhases } from "./farmData";
 
 const PAGE = 1000;
 
@@ -22,10 +27,27 @@ export const notFound = (id: number) =>
 
 type Row = Record<string, unknown>;
 
+/** A numeric column as a number; null stays null. */
+const num = (v: unknown) => (v == null ? null : Number(v));
+
 // ---- pure row mappers (snake_case -> camelCase), unit-tested ----
 
-export function mapFarm(r: Row): Farm {
-  return { id: r.id as number, name: r.name as string, lat: r.lat as number, lon: r.lon as number };
+/** The farm row, plus the aridity of its region (`region` row) when we have it. */
+export function mapFarm(r: Row, region: Row | null = null): Farm {
+  return {
+    id: r.id as number,
+    name: r.name as string,
+    lat: r.lat as number,
+    lon: r.lon as number,
+    aridityIndex: aridityIndex(region),
+  };
+}
+
+/** Region mean annual precipitation / mean annual ET0, or null when a value is missing. */
+export function aridityIndex(region: Row | null): number | null {
+  const precip = num(region?.mean_annual_precip_mm);
+  const et0 = num(region?.mean_annual_et0_mm);
+  return precip != null && et0 ? precip / et0 : null;
 }
 
 export function mapMember(r: Row): Member {
@@ -50,13 +72,16 @@ export function mapField(r: Row): Field {
 }
 
 export function mapCropSeason(r: Row): CropSeason {
-  return {
+  const season: CropSeason = {
     id: r.id as number,
     cropCode: r.crop_code as string,
     sowingDate: r.sowing_date as string,
     harvestDate: r.harvest_date as string,
     status: r.status as string,
   };
+  // Only when the row has the column (a DB without it keeps the old shape).
+  if ("earliness_group" in r) season.earlinessGroup = (r.earliness_group as string | null) ?? null;
+  return season;
 }
 
 export function mapSoil(r: Row): SoilAnalysis {
@@ -104,10 +129,74 @@ export function mapWeatherDay(r: Row): StoredWeatherDay {
     rain: Number(r.precip_mm ?? 0),
     tmin: Number(r.tmin_c ?? 0),
     tmean: Number(r.tmean_c ?? 0),
+    tmax: n(r.tmax_c),
     gddBase0: n(r.gdd_base0),
     gddBase5: n(r.gdd_base5),
     gddBase6: n(r.gdd_base6),
     gddBase10: n(r.gdd_base10),
+  };
+}
+
+/**
+ * FAO-56 values of one crop from its rows in fao56_crop_stages, fao56_kc and
+ * fao56_root_depletion. Null when a row or a value is missing (only the Tmax cap may be empty).
+ */
+export function mapCropParams(
+  stages: Row | null,
+  kc: Row | null,
+  roots: Row | null,
+): CropParams | null {
+  if (!stages || !kc || !roots) return null;
+  const values = [
+    stages.t_base_c,
+    kc.kc_ini,
+    kc.kc_mid,
+    kc.kc_end,
+    roots.zr_ini_m,
+    roots.zr_max_default_m,
+    roots.p_table,
+  ].map(num);
+  if (values.some((v) => v == null || Number.isNaN(v))) return null;
+  const [tBaseC, kcIni, kcMid, kcEnd, zrIniM, zrMaxM, pTable] = values as number[];
+  return { tBaseC, tMaxCapC: num(stages.t_max_cap_c), kcIni, kcMid, kcEnd, zrIniM, zrMaxM, pTable };
+}
+
+/** One crop_phase_gdd row. The sensitive window needs all three of from, to and p. */
+export function mapCropPhaseRow(r: Row): CropPhaseRow {
+  const from = num(r.sensitive_from);
+  const to = num(r.sensitive_to);
+  const p = num(r.sensitive_p);
+  return {
+    cropCode: r.crop_code as string,
+    earlinessGroup: (r.earliness_group as string | null | undefined) ?? null,
+    phases: {
+      iniEnd: Number(r.ini_end),
+      devEnd: Number(r.dev_end),
+      midEnd: Number(r.mid_end),
+      lateEnd: Number(r.late_end),
+      flowering: num(r.flowering),
+      sensitive: from != null && to != null && p != null ? { from, to, p } : null,
+    },
+    method: (r.method as string | null | undefined) ?? null,
+  };
+}
+
+/** One fao56_soil_water row (mid values), or null when a θ is missing. */
+export function mapSoilWaterClass(r: Row): SoilWaterClass | null {
+  const thetaFcMid = num(r.theta_fc_mid);
+  const thetaWpMid = num(r.theta_wp_mid);
+  if (thetaFcMid == null || thetaWpMid == null) return null;
+  return { textureClass: r.texture_class_usda as string, thetaFcMid, thetaWpMid };
+}
+
+export function mapIrrigationSystem(r: Row): IrrigationSystem {
+  return {
+    id: r.id as number,
+    name: r.name as string,
+    efficiency: Number(r.efficiency),
+    doseMinMm: num(r.dose_min_mm),
+    doseMaxMm: num(r.dose_max_mm),
+    roundDays: num(r.round_days),
   };
 }
 
@@ -201,9 +290,52 @@ async function one(q: PromiseLike<Result>): Promise<Row | null> {
 /**
  * Supabase FarmData for one farm. Every farm table is filtered on `farm_id`; weather comes
  * from the farm's region (`nuts3_id`). Crop reference tables are shared by all farms.
+ *
+ * The FAO-56 reads (reference tables, region aridity, irrigation system) are optional: when a
+ * table is missing (crop_phase_gdd is not in every DB yet) or the query fails, they log one
+ * warning and return null / [], so the service falls back to the old model instead of failing.
  */
 export function createSupabaseFarmData(db: SupabaseClient, farmId: number): FarmData {
   const climCache = new Map<number, Promise<Map<string, number>>>();
+  // Reference tables never change while the API runs: read each one once.
+  const refCache = new Map<string, Promise<unknown[]>>();
+  const warned = new Set<string>();
+
+  function warnOnce(what: string, e: unknown) {
+    if (warned.has(what)) return;
+    warned.add(what);
+    const message = e instanceof Error ? e.message : String(e);
+    console.warn(`irrigation: cannot read ${what}, falling back to defaults (${message})`);
+  }
+
+  /** A whole reference table, cached. A failure gives [] and is retried on the next call. */
+  function reference<T>(table: string, columns: string, map: (r: Row[]) => T[]): Promise<T[]> {
+    let p = refCache.get(table) as Promise<T[]> | undefined;
+    if (!p) {
+      p = rows(db.from(table).select(columns)).then(map).catch((e) => {
+        refCache.delete(table);
+        warnOnce(table, e);
+        return [];
+      });
+      refCache.set(table, p);
+    }
+    return p;
+  }
+
+  let regionP: Promise<Row | null> | null = null;
+  function regionRow(farm: Row): Promise<Row | null> {
+    if (!regionP) {
+      regionP = one(
+        db.from("region").select("mean_annual_precip_mm,mean_annual_et0_mm")
+          .eq("nuts3_id", farm.nuts3_id).limit(1),
+      ).catch((e) => {
+        regionP = null;
+        warnOnce("region", e);
+        return null;
+      });
+    }
+    return regionP;
+  }
 
   let farmP: Promise<Row> | null = null;
   function farmRow(): Promise<Row> {
@@ -221,7 +353,8 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
 
   return {
     async getFarm() {
-      return mapFarm(await farmRow());
+      const farm = await farmRow();
+      return mapFarm(farm, await regionRow(farm));
     },
     async listMembers() {
       return (await rows(db.from("member").select("*").eq("farm_id", farmId).order("id")))
@@ -261,6 +394,43 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
         db.from("crop_stage").select("*").eq("crop_code", code).order("season_fraction"),
       );
       return r.map(mapCropStage);
+    },
+    async getCropParams(code) {
+      const [stages, kc, roots] = await Promise.all([
+        reference("fao56_crop_stages", "crop_code,t_base_c,t_max_cap_c", (r) => r),
+        reference("fao56_kc", "crop_code,kc_ini,kc_mid,kc_end", (r) => r),
+        reference("fao56_root_depletion", "crop_code,zr_ini_m,zr_max_default_m,p_table", (r) => r),
+      ]);
+      const ofCrop = (table: Row[]) => table.find((r) => r.crop_code === code) ?? null;
+      return mapCropParams(ofCrop(stages), ofCrop(kc), ofCrop(roots));
+    },
+    async getCropPhases(code, earlinessGroup) {
+      const all = await reference("crop_phase_gdd", "*", (r) => r.map(mapCropPhaseRow));
+      return pickCropPhases(all, code, earlinessGroup);
+    },
+    getSoilWaterClasses() {
+      return reference(
+        "fao56_soil_water",
+        "texture_class_usda,theta_fc_mid,theta_wp_mid",
+        (r) => r.map(mapSoilWaterClass).filter((c) => c != null),
+      );
+    },
+    async getIrrigationSystem(fieldId) {
+      try {
+        const field = await one(
+          db.from("field").select("irrigation_system_id").eq("id", fieldId).eq("farm_id", farmId)
+            .limit(1),
+        );
+        if (field?.irrigation_system_id == null) return null;
+        const r = await one(
+          db.from("irrigation_system").select("*").eq("id", field.irrigation_system_id)
+            .eq("farm_id", farmId).limit(1),
+        );
+        return r ? mapIrrigationSystem(r) : null;
+      } catch (e) {
+        warnOnce("irrigation_system", e);
+        return null;
+      }
     },
     async getWeather(from, to) {
       const region = (await farmRow()).nuts3_id;

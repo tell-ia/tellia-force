@@ -2,6 +2,9 @@
 // Types are camelCase; the Supabase implementation (Task 5) maps snake_case rows
 // at this boundary, and an in-memory twin implements it for tests.
 
+import type { CropParams, CropPhases } from "../engine/cropModel";
+import type { SoilWaterClass } from "../engine/soil";
+
 export type IsoDate = string;
 export type OperationStatus = "draft" | "planned" | "confirmed";
 
@@ -10,6 +13,8 @@ export interface Farm {
   name: string;
   lat: number;
   lon: number;
+  /** Region mean annual precipitation / mean annual ET0. Below 0.5 = dry region. Null if unknown. */
+  aridityIndex?: number | null;
 }
 
 export interface Member {
@@ -33,6 +38,8 @@ export interface CropSeason {
   sowingDate: IsoDate;
   harvestDate: IsoDate;
   status: string;
+  /** Variety group ("early", "late"...): picks the crop phase row. Null = default row. */
+  earlinessGroup?: string | null;
 }
 
 export interface SoilAnalysis {
@@ -67,10 +74,32 @@ export interface StoredWeatherDay {
   rain: number;
   tmin: number;
   tmean: number;
+  tmax?: number | null;
   gddBase0: number | null;
   gddBase5: number | null;
   gddBase6: number | null;
   gddBase10: number | null;
+}
+
+/** Irrigation equipment of a field (`irrigation_system`). Doses are gross mm. */
+export interface IrrigationSystem {
+  id: number;
+  name: string;
+  /** Share of pumped water that reaches the roots: net mm = gross mm x efficiency. */
+  efficiency: number;
+  doseMinMm: number | null;
+  /** Most water one pass can apply (gross mm). */
+  doseMaxMm: number | null;
+  /** Days to water every field it serves once. */
+  roundDays: number | null;
+}
+
+/** One row of `crop_phase_gdd`: phase ends of a crop for one variety group (null = default row). */
+export interface CropPhaseRow {
+  cropCode: string;
+  earlinessGroup: string | null;
+  phases: CropPhases;
+  method?: string | null;
 }
 
 export interface IrrigationOperation {
@@ -97,6 +126,20 @@ export interface NewIrrigation {
 /** The crop name in a language ("fr", "es", "it-IT"...), falling back to English. */
 export function cropNameIn(ref: CropRef, language: string): string {
   return ref.names[language.slice(0, 2).toLowerCase()] ?? ref.nameEn;
+}
+
+/** Phases of a crop: the row of its variety group, else its default row, else null. */
+export function pickCropPhases(
+  rows: CropPhaseRow[],
+  code: string,
+  earlinessGroup: string | null,
+): { phases: CropPhases; method: string | null } | null {
+  const ofCrop = rows.filter((r) => r.cropCode === code);
+  const exact = earlinessGroup == null
+    ? undefined
+    : ofCrop.find((r) => r.earlinessGroup === earlinessGroup);
+  const row = exact ?? ofCrop.find((r) => r.earlinessGroup == null);
+  return row ? { phases: row.phases, method: row.method ?? null } : null;
 }
 
 /**
@@ -126,6 +169,17 @@ export interface FarmData {
   getCropRef(code: string): Promise<CropRef | null>;
   /** Sorted by seasonFraction ascending. */
   getCropStages(code: string): Promise<CropStage[]>;
+  /** FAO-56 values of a crop (degree-day base, Kc, roots, p), or null when a table lacks it. */
+  getCropParams(code: string): Promise<CropParams | null>;
+  /** Phase ends in degree-days: the variety group's row, else the crop's default row, else null. */
+  getCropPhases(
+    code: string,
+    earlinessGroup: string | null,
+  ): Promise<{ phases: CropPhases; method: string | null } | null>;
+  /** FAO-56 Table 19 rows (θFC, θWP per texture class); empty when the table is missing. */
+  getSoilWaterClasses(): Promise<SoilWaterClass[]>;
+  /** The field's irrigation equipment, or null when it has none. */
+  getIrrigationSystem(fieldId: number): Promise<IrrigationSystem | null>;
   /** Stored days in [from, to] inclusive; days the DB lacks are simply absent. */
   getWeather(from: IsoDate, to: IsoDate): Promise<StoredWeatherDay[]>;
   /** "MM-DD" -> mean GDD for that calendar day over 2015-2024. */

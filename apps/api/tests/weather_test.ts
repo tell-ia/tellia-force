@@ -239,3 +239,61 @@ Deno.test("weather service cache: hit within TTL, refetch after expiry, failures
   assertEquals((await svc3.getDailySeries(p)).length, 10);
   assertEquals(attempts, 2);
 });
+
+/** Open-Meteo with Tmax: 30 °C each day, except a null on `nullDay`. */
+function fetchWithTmax(calls: string[], nullDay?: string): typeof fetch {
+  return (input) => {
+    const url = String(input);
+    calls.push(url);
+    const u = new URL(url);
+    const s = u.searchParams.get("start_date")!;
+    const e = u.searchParams.get("end_date")!;
+    const time: string[] = [];
+    for (let d = s; d <= e; d = addDays(d, 1)) time.push(d);
+    return Promise.resolve(Response.json({
+      daily: {
+        time,
+        et0_fao_evapotranspiration: time.map(() => 5),
+        precipitation_sum: time.map(() => 0),
+        temperature_2m_min: time.map(() => 14),
+        temperature_2m_mean: time.map(() => 22),
+        temperature_2m_max: time.map((d) => (d === nullDay ? null : 30)),
+      },
+    }));
+  };
+}
+
+Deno.test("Open-Meteo: asks for Tmax and keeps it; a null Tmax is left out, the day stays", async () => {
+  const calls: string[] = [];
+  const c = createOpenMeteoClient({ fetch: fetchWithTmax(calls, "2026-07-17") });
+  const days = await c.fetchDaily({ lat: 1, lon: 2, start: "2026-07-16", end: "2026-07-17" });
+  assertStringIncludes(new URL(calls[0]).searchParams.get("daily")!, "temperature_2m_max");
+  assertEquals(days, [
+    { date: "2026-07-16", et0: 5, rain: 0, tmin: 14, tmean: 22, tmax: 30 },
+    { date: "2026-07-17", et0: 5, rain: 0, tmin: 14, tmean: 22 },
+  ]);
+});
+
+Deno.test("weather service carries Tmax from the DB and Open-Meteo; null when the source lacks it", async () => {
+  const base = fakeData();
+  const data: Data = {
+    ...base,
+    // The DB has Tmax on 14 July only (older rows may lack it).
+    getWeather: async (from, to) =>
+      (await base.getWeather(from, to)).map((d) =>
+        d.date === "2026-07-14" ? { ...d, tmax: 29.5 } : d
+      ),
+  };
+  const svc = createWeatherService({ data, fetch: fetchWithTmax([], "2026-07-17") });
+  const days = await svc.getDailySeries({ from: "2026-07-14", to: "2026-07-17", gddBase: 6 });
+  assertEquals(days.map((d) => [d.date, d.source, d.tmax]), [
+    ["2026-07-14", "db", 29.5],
+    ["2026-07-15", "db", null],
+    ["2026-07-16", "open-meteo", 30],
+    ["2026-07-17", "open-meteo", null],
+  ]);
+  // Old Open-Meteo answers without Tmax still parse: Tmax is null.
+  const old = createWeatherService({ data: fakeData(), fetch: fakeFetch([]) });
+  const oldDays = await old.getDailySeries({ from: "2026-07-16", to: "2026-07-16", gddBase: 6 });
+  assertEquals(oldDays[0].tmax, null);
+});

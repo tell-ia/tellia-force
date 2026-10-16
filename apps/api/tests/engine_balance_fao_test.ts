@@ -86,7 +86,7 @@ Deno.test("balance: daily TAW from root growth, depletion kept in mm", () => {
     days: days(3, { 0: { taw: 24 }, 1: { taw: 30 }, 2: { taw: 36 } }),
     irrigations: [],
     taw: 100,
-    p: 0.55,
+    p: 0.6, // RAW 14.4 / 18 / 21.6 stays above D: no stress, so only the TAW growth is tested
     startDepletion: 10,
   });
   assertEquals(r.map((d) => d.taw), [24, 30, 36]);
