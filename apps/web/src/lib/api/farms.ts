@@ -22,36 +22,40 @@ function initials(name: string): string {
 
 const firstName = (full: string): string => full.split(/\s+/)[0] ?? full;
 
-// The persona list comes from the API (so a farm Vincent adds shows up with no
-// code change). The member read has no farm_id, so each farm's holder is its
-// main-contact member, paired by order. Falls back to the fixture when the API
-// is unreachable (offline demo).
+// The persona list comes from the API (a farm Vincent adds to the DB shows up
+// with no code change). Each farm's holder is its main-contact member, and the
+// parcel count is its field count — both resolved by farm_id. Falls back to the
+// fixture when the API is unreachable (offline demo).
 //
-// MOCK fallback only: the source of truth is GET /data/farm + /data/member.
+// Source of truth: GET /data/farm + /data/member + /data/field.
 export async function listFarms(): Promise<FarmSummary[]> {
   try {
-    const [farms, members] = await Promise.all([
+    const [farms, members, fields] = await Promise.all([
       list("farm", { limit: 100 }),
-      list("member", { limit: 200 }),
+      list("member", { limit: 300 }),
+      list("field", { limit: 1000 }),
     ]);
-    const holders = members.data.filter((m) => m.main_contact).sort((a, b) => a.id - b.id);
-    const sorted = [...farms.data].sort((a, b) => a.id - b.id);
-    const list_ = sorted.map((f, i) => {
-      const holder = holders[i];
-      return FarmSummarySchema.parse({
-        id: f.id,
-        code: f.source_holding_id ?? `FARM-${f.id}`,
-        name: f.name,
-        region: (f.nuts3_id && REGION[f.nuts3_id]) || f.nuts3_id || "",
-        initials: initials(f.name),
-        parcelCount: 0, // not exposed per farm by /data; shown only if > 0
-        featured: true,
-        live: true,
-        farmerName: holder ? firstName(holder.full_name) : "",
-        memberId: holder ? holder.id : f.id,
+    const built = [...farms.data]
+      .sort((a, b) => a.id - b.id)
+      .map((f) => {
+        const holder =
+          members.data.find((m) => m.farm_id === f.id && m.main_contact) ??
+          members.data.find((m) => m.farm_id === f.id);
+        const parcelCount = fields.data.filter((fl) => fl.farm_id === f.id).length;
+        return FarmSummarySchema.parse({
+          id: f.id,
+          code: f.source_holding_id ?? `FARM-${f.id}`,
+          name: f.name,
+          region: (f.nuts3_id && REGION[f.nuts3_id]) || f.nuts3_id || "",
+          initials: initials(f.name),
+          parcelCount,
+          featured: true,
+          live: true,
+          farmerName: holder ? firstName(holder.full_name) : "",
+          memberId: holder ? holder.id : f.id,
+        });
       });
-    });
-    if (list_.length > 0) return list_;
+    if (built.length > 0) return built;
     throw new Error("no farms from API");
   } catch {
     return mock(FarmListSchema, farmsFixture);

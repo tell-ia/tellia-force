@@ -153,15 +153,19 @@ export const ParcelReportSchema = z.object({
   name: z.string(),
   cropName: z.string(),
   areaHa: z.number(),
-  sownOn: IsoDateSchema,
+  sownOn: IsoDateSchema.optional(),
   asOf: IsoDateSchema,
+  // Core (always present): the recommendation + current reserve.
   recommendation: RecommendationSchema,
   reserve: ReserveSchema,
-  series: z.array(BalancePointSchema),
-  cropStage: CropTimelineSchema,
-  soil: SoilSchema,
-  seasonBalance: SeasonBalanceSchema,
-  nextDays: z.array(NextDaySchema),
+  // Rich sections — present in the full get_parcel_report, omitted by the
+  // lightweight live path (from FieldReport) until that endpoint ships. The UI
+  // renders each only when present.
+  series: z.array(BalancePointSchema).optional(),
+  cropStage: CropTimelineSchema.optional(),
+  soil: SoilSchema.optional(),
+  seasonBalance: SeasonBalanceSchema.optional(),
+  nextDays: z.array(NextDaySchema).optional(),
   method: z.string(), // footnote
 });
 export type ParcelReport = z.infer<typeof ParcelReportSchema>;

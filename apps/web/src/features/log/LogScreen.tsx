@@ -21,7 +21,7 @@ export function LogScreen() {
 
   // Forecast window (day 9 → 18) from the real report: reserve without water, and
   // the optimistic "with X mm" line the farmer's entry produces.
-  const win = useMemo(() => (data ? data.series.filter((p) => Number(p.dayLabel) >= 9) : []), [data]);
+  const win = useMemo(() => (data?.series ? data.series.filter((p) => Number(p.dayLabel) >= 9) : []), [data]);
   const cap = data?.reserve.capacityMm ?? 144;
   const threshold = data?.reserve.thresholdMm ?? 79;
 

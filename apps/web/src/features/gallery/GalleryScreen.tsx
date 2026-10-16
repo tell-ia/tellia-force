@@ -50,17 +50,23 @@ export function GalleryScreen() {
           <Wrap name="ReserveGauge">
             <SectionCard><ReserveGauge reserve={data.reserve} /></SectionCard>
           </Wrap>
-          <Wrap name="WaterBalanceChart">
-            <SectionCard><WaterBalanceChart series={data.series} reserve={data.reserve} /><BalanceLegend /></SectionCard>
-          </Wrap>
-          <Wrap name="CropStageTimeline">
-            <SectionCard><CropStageTimeline cropStage={data.cropStage} /></SectionCard>
-          </Wrap>
-          <Wrap name="NextDaysTable">
-            <SectionCard><NextDaysTable days={data.nextDays} /></SectionCard>
-          </Wrap>
-          <Wrap name="SoilCard"><SectionCard><SoilCard soil={data.soil} /></SectionCard></Wrap>
-          <Wrap name="SeasonBalanceCard"><SectionCard><SeasonBalanceCard season={data.seasonBalance} /></SectionCard></Wrap>
+          {data.series && (
+            <Wrap name="WaterBalanceChart">
+              <SectionCard><WaterBalanceChart series={data.series} reserve={data.reserve} /><BalanceLegend /></SectionCard>
+            </Wrap>
+          )}
+          {data.cropStage && (
+            <Wrap name="CropStageTimeline">
+              <SectionCard><CropStageTimeline cropStage={data.cropStage} /></SectionCard>
+            </Wrap>
+          )}
+          {data.nextDays && (
+            <Wrap name="NextDaysTable">
+              <SectionCard><NextDaysTable days={data.nextDays} /></SectionCard>
+            </Wrap>
+          )}
+          {data.soil && <Wrap name="SoilCard"><SectionCard><SoilCard soil={data.soil} /></SectionCard></Wrap>}
+          {data.seasonBalance && <Wrap name="SeasonBalanceCard"><SectionCard><SeasonBalanceCard season={data.seasonBalance} /></SectionCard></Wrap>}
         </>
       )}
     </div>

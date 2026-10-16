@@ -39,12 +39,12 @@ describe("the hero parcel is internally consistent", () => {
   });
 
   it("today's reserve matches the last non-forecast series point", () => {
-    const today = r.series.filter((p) => !p.forecast).at(-1);
+    const today = (r.series ?? []).filter((p) => !p.forecast).at(-1);
     expect(today?.date).toBe(r.asOf);
     expect(Math.round(today!.reserveMm)).toBe(r.reserve.availableMm);
   });
 
   it("watering lifts every next-day reserve above the no-water case", () => {
-    for (const d of r.nextDays) expect(d.pctWatered).toBeGreaterThan(d.pctNoWater);
+    for (const d of r.nextDays ?? []) expect(d.pctWatered).toBeGreaterThan(d.pctNoWater);
   });
 });

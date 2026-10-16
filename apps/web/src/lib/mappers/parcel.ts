@@ -1,4 +1,4 @@
-import type { FieldReport, Reserve } from "@tellia/shared";
+import type { FieldReport, ParcelReport, Reserve } from "@tellia/shared";
 
 // Pure domain→view mappers + the small computations the screens need. Tested in
 // parcel.test.ts on the demo numbers. No rendering, no side effects.
@@ -46,5 +46,55 @@ export function fieldReportToReserve(r: FieldReport): Reserve {
     thresholdPct: reservePct(thresholdMm, capacityMm),
     thresholdLabel: eveLabel(r.asOf, r.daysUntilIrrigation),
     usedByThresholdMm: Math.max(0, availableMm - thresholdMm),
+  };
+}
+
+function headlineFor(r: FieldReport): string {
+  switch (r.decision) {
+    case "irrigate_today":
+      return "Irrigate now";
+    case "wait_for_rain":
+      return "Wait for rain";
+    case "frost_hold":
+      return "Hold · frost";
+    case "no_irrigation":
+      return "No water needed";
+    case "not_irrigable":
+      return "Rain-fed";
+    case "outside_season":
+      return "Off season";
+    default:
+      return "";
+  }
+}
+
+/**
+ * Lightweight live ParcelReport from the engine's FieldReport (reco + reserve +
+ * reason). The rich sections (series/soil/season/stage) are left out until the
+ * full get_parcel_report endpoint is available.
+ */
+export function fieldReportToParcelReport(
+  r: FieldReport,
+  opts: { farmId: number; areaHa?: number },
+): ParcelReport {
+  return {
+    schemaVersion: "v0",
+    id: r.fieldId,
+    farmId: opts.farmId,
+    name: r.fieldName,
+    cropName: r.cropName ?? "—",
+    areaHa: opts.areaHa ?? 0,
+    asOf: r.asOf,
+    recommendation: {
+      decision: r.decision,
+      headline: headlineFor(r),
+      netMm: r.irrigateMm,
+      grossMm: grossFromNet(r.irrigateMm),
+      efficiency: 0.8,
+      reason: r.reason,
+      secondPass: null,
+    },
+    reserve: fieldReportToReserve(r),
+    method: "FAO-56 water balance (live summary). Full history & soil come from get_parcel_report.",
   };
 }

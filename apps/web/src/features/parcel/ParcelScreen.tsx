@@ -60,7 +60,10 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
           <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 4px" }}>
             <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 46, lineHeight: 0.95, letterSpacing: "-0.01em" }}>{data.name}</div>
             <div style={{ fontSize: 14, color: v("ink2") }}>
-              {data.cropName} · {data.areaHa} ha · sown {fmtDay(data.sownOn)}{farm ? ` · ${farm.name}` : ""}
+              {data.cropName}
+              {data.areaHa ? ` · ${data.areaHa} ha` : ""}
+              {data.sownOn ? ` · sown ${fmtDay(data.sownOn)}` : ""}
+              {farm ? ` · ${farm.name}` : ""}
             </div>
           </div>
 
@@ -83,34 +86,44 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
             </div>
           </SectionCard>
 
-          <SectionCard id="balance" style={{ gap: 12, boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
-            <div ref={balanceRef} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <Label>Water balance · {data.series.at(0)?.dayLabel}–{data.series.at(-1)?.dayLabel} Jul</Label>
-              <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
-            </div>
-            <WaterBalanceChart series={data.series} reserve={data.reserve} />
-            <BalanceLegend />
-          </SectionCard>
+          {data.series && (
+            <SectionCard id="balance" style={{ gap: 12, boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
+              <div ref={balanceRef} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <Label>Water balance · {data.series.at(0)?.dayLabel}–{data.series.at(-1)?.dayLabel} Jul</Label>
+                <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
+              </div>
+              <WaterBalanceChart series={data.series} reserve={data.reserve} />
+              <BalanceLegend />
+            </SectionCard>
+          )}
 
-          <SectionCard style={{ gap: 14 }}>
-            <CropStageTimeline cropStage={data.cropStage} />
-          </SectionCard>
+          {data.cropStage && (
+            <SectionCard style={{ gap: 14 }}>
+              <CropStageTimeline cropStage={data.cropStage} />
+            </SectionCard>
+          )}
 
-          <SectionCard style={{ gap: 10 }}>
-            <NextDaysTable days={data.nextDays} />
-            <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
-              Comfort threshold 55%. Right column: with the {data.recommendation.netMm} mm net planned Thursday evening.
-            </div>
-          </SectionCard>
+          {data.nextDays && (
+            <SectionCard style={{ gap: 10 }}>
+              <NextDaysTable days={data.nextDays} />
+              <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
+                Comfort threshold 55%. Right column: with the {data.recommendation.netMm} mm net planned Thursday evening.
+              </div>
+            </SectionCard>
+          )}
 
-          <SectionCard>
-            <SoilCard soil={data.soil} />
-          </SectionCard>
+          {data.soil && (
+            <SectionCard>
+              <SoilCard soil={data.soil} />
+            </SectionCard>
+          )}
 
-          <SectionCard style={{ gap: 14 }}>
-            <SeasonBalanceCard season={data.seasonBalance} />
-          </SectionCard>
+          {data.seasonBalance && (
+            <SectionCard style={{ gap: 14 }}>
+              <SeasonBalanceCard season={data.seasonBalance} />
+            </SectionCard>
+          )}
 
           <div style={{ fontSize: 11, color: v("ink2"), lineHeight: 1.5, padding: "0 4px" }}>{data.method}</div>
         </>

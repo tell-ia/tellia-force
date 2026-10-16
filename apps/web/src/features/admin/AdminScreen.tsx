@@ -13,7 +13,7 @@ export function AdminScreen() {
   const { farm, farms, setFarm } = useFarm();
   const [fired, setFired] = useState(false);
   const { data } = useAsync<FarmToday | null>(
-    () => (farm ? getFarmToday(farm.id) : Promise.resolve(null)),
+    () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
     [farm?.id],
   );
 

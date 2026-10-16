@@ -123,6 +123,7 @@ export type FarmEconomics = z.infer<typeof FarmEconomicsSchema>;
 /** Fields (parcels) of the farm. Names are invented. Shapes are schematic squares placed in the region. */
 export const FieldSchema = z.object({
   id: z.number().int(),
+  farm_id: z.number().int(),
   name: z.string(),
   area_ha: z.number(),
   tenure: z.string().nullable(),
@@ -146,6 +147,7 @@ export type MarketPrice = z.infer<typeof MarketPriceSchema>;
 /** People of the farm. phone (E.164, like +33612345678) identifies who sends a WhatsApp message or calls. */
 export const MemberSchema = z.object({
   id: z.number().int(),
+  farm_id: z.number().int(),
   full_name: z.string(),
   role: z.string(),
   phone: z.string().nullable(),

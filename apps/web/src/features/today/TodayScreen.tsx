@@ -13,7 +13,7 @@ export function TodayScreen() {
   const { farm, farms } = useFarm();
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data, loading } = useAsync<FarmToday | null>(
-    () => (farm ? getFarmToday(farm.id) : Promise.resolve(null)),
+    () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
     [farm?.id],
   );
 
