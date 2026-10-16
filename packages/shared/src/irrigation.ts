@@ -10,7 +10,7 @@ export const IsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
   .refine((s) => {
-    const [y, m, d] = s.split("-").map(Number);
+    const [y, m, d] = s.split("-").map(Number) as [number, number, number];
     const t = new Date(Date.UTC(y, m - 1, d));
     return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
   }, "not a real calendar date");
