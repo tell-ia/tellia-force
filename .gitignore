@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Capacitor native build artifacts
+apps/web/android/app/build/
+apps/web/android/build/
+apps/web/android/.gradle/
+apps/web/android/local.properties
+
+coverage/
+*.swp

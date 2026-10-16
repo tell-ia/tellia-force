@@ -1,0 +1,12 @@
+{
+  // Deno powers ONLY apps/api; the rest of the repo is Node/TS (tsserver).
+  // This split keeps both language servers happy in one workspace.
+  "deno.enable": true,
+  "deno.enablePaths": ["apps/api"],
+  "deno.config": "apps/api/deno.json",
+  "deno.unstable": ["sloppy-imports"],
+
+  // Keep tsserver off the Deno app so it doesn't flag npm:/jsr: imports.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "editor.formatOnSave": true
+}

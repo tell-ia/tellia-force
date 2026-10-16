@@ -1,0 +1,25 @@
+{
+  "unstable": ["sloppy-imports"],
+  "tasks": {
+    "dev": "deno run --watch --sloppy-imports --allow-net --allow-read --allow-env --env-file src/main.ts",
+    "start": "deno run --sloppy-imports --allow-net --allow-read --allow-env --env-file src/main.ts",
+    "check": "deno check --sloppy-imports src/main.ts",
+    "test": "deno test --sloppy-imports --allow-net --allow-read --allow-env"
+  },
+  "imports": {
+    "hono": "npm:hono@^4.6.0",
+    "hono/": "npm:/hono@^4.6.0/",
+    "@hono/zod-validator": "npm:@hono/zod-validator@^0.4.1",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.45.0",
+    "zod": "npm:zod@^4.0.5",
+    "@std/assert": "jsr:@std/assert@^1.0.8",
+    "@tellia/shared": "../../packages/shared/src/index.ts",
+    "@tellia/shared/env": "../../packages/shared/src/env.ts",
+    "@tellia/shared/api": "../../packages/shared/src/api.ts",
+    "@tellia/shared/db": "../../packages/shared/src/db.ts"
+  },
+  "fmt": {
+    "lineWidth": 100
+  },
+  "lock": true
+}

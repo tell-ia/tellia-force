@@ -1,0 +1,55 @@
+{
+  // Generic debug configs — work for every dev as long as `deno` and `pnpm`
+  // are on PATH (and Android Studio/SDK for the device run). No absolute paths.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Debug the Deno + Hono API. Breakpoints in apps/api/src/**.
+      // --inspect-wait makes Deno wait until the debugger attaches.
+      "name": "API: Deno (debug)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/apps/api",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": [
+        "run",
+        "--inspect-wait",
+        "--sloppy-imports",
+        "--allow-net",
+        "--allow-read",
+        "--allow-env",
+        "--env-file",
+        "src/main.ts"
+      ],
+      "attachSimplePort": 9229,
+      "console": "integratedTerminal"
+    },
+    {
+      // Debug the Android app's web code: same React/TS that runs inside the
+      // Capacitor WebView, served by Vite with sourcemaps. Set breakpoints in
+      // apps/web/src/**. Starts Vite first (preLaunchTask).
+      "name": "Android app: web code (Chrome, debug)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/apps/web",
+      "preLaunchTask": "web: vite dev"
+    },
+    {
+      // Build + sync + run the native Android app on a device/emulator.
+      // Needs Android Studio + SDK. First run: `cd apps/web && npx cap add android`.
+      "name": "Android app: build + run on device",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/apps/web",
+      "command": "pnpm build && npx cap sync android && npx cap run android"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack: API + Android web (debug)",
+      "configurations": ["API: Deno (debug)", "Android app: web code (Chrome, debug)"],
+      "stopAll": true
+    }
+  ]
+}
