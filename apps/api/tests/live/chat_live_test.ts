@@ -150,27 +150,21 @@ Deno.test({
   ...opts,
   async fn() {
     const { db } = await import("../../src/supabase.ts");
-    const { createSupabaseFarmData } = await import(
+    const { createSupabaseFarmDirectory } = await import(
       "../../src/modules/irrigation/data/supabaseFarmData.ts"
     );
-    const { createIrrigationService } = await import(
-      "../../src/modules/irrigation/irrigation.service.ts"
-    );
-    const { createWeatherService } = await import(
-      "../../src/modules/irrigation/weather/weatherService.ts"
-    );
+    const { createFarmRegistry } = await import("../../src/modules/irrigation/farmRegistry.ts");
     const { createIrrigationController } = await import(
       "../../src/modules/irrigation/irrigation.controller.ts"
     );
     const { Hono } = await import("hono");
     const { emptyOpenMeteoFetch } = await import("../helpers/testApp.ts");
-    const data = createSupabaseFarmData(db);
-    const service = createIrrigationService({
-      data,
-      weather: createWeatherService({ data, fetch: emptyOpenMeteoFetch }),
+    const registry = createFarmRegistry({
+      directory: createSupabaseFarmDirectory(db),
       today: () => "2026-07-05",
+      fetch: emptyOpenMeteoFetch,
     });
-    const app = new Hono().route("/irrigation", createIrrigationController(service));
+    const app = new Hono().route("/irrigation", createIrrigationController(registry));
     const res = await app.request("/irrigation/advice?date=2026-07-05");
     assertEquals(res.status, 200);
     const { data: advice } = await res.json();

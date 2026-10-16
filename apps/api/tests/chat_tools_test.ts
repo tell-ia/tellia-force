@@ -1,30 +1,35 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { RequestContext } from "@mastra/core/request-context";
-import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmData.ts";
-import { createIrrigationService } from "../src/modules/irrigation/irrigation.service.ts";
-import { createWeatherService } from "../src/modules/irrigation/weather/weatherService.ts";
 import { createAdvisorTools } from "../src/modules/chat/tools.ts";
-import { MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
-import { makeFarmFixture } from "./fixtures/farm.ts";
-import { emptyOpenMeteoFetch, makeTestMastra } from "./helpers/testApp.ts";
+import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
+import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
 
 const opts = { sanitizeResources: false, sanitizeOps: false };
 
 async function setup() {
-  const data = createMemoryFarmData(makeFarmFixture());
-  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
-  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
-  const mastra = await makeTestMastra({ service, data });
-  const tools = createAdvisorTools(service);
-  const ctx = (member?: number) => {
+  const registry = makeTestRegistry();
+  const { data, service } = await registry.forFarm(1);
+  const mastra = await makeTestMastra({ registry });
+  const tools = createAdvisorTools(registry);
+  /** A request context as the member middleware builds it: the member and their farm. */
+  const ctx = async (member?: number, farm?: number) => {
     const requestContext = new RequestContext();
-    if (member !== undefined) requestContext.set(MEMBER_ID_KEY, member);
+    if (member !== undefined) {
+      requestContext.set(MEMBER_ID_KEY, member);
+      const scope = await registry.forMember(member);
+      requestContext.set(FARM_ID_KEY, farm ?? scope?.farmId ?? 1);
+    }
     return { requestContext, mastra };
   };
-  // deno-lint-ignore no-explicit-any
-  const run = (tool: { execute?: any }, input: unknown, member?: number): Promise<any> =>
-    tool.execute!(input, ctx(member));
-  return { data, service, tools, run };
+  const run = async (
+    // deno-lint-ignore no-explicit-any
+    tool: { execute?: any },
+    input: unknown,
+    member?: number,
+    farm?: number,
+    // deno-lint-ignore no-explicit-any
+  ): Promise<any> => tool.execute!(input, await ctx(member, farm));
+  return { registry, data, service, tools, run };
 }
 
 Deno.test("tool keys are exactly the UI contract", opts, async () => {
@@ -185,4 +190,32 @@ Deno.test("recordIrrigation records the caller's member id on the draft", opts, 
     o.status === "draft"
   );
   assertEquals(draft?.memberId, 2);
+});
+
+Deno.test("tools: a farm 2 member sees farm 2 only", opts, async () => {
+  const { tools, run } = await setup();
+  const found = await run(tools.resolveField, { query: "la vallée" }, 5);
+  assertEquals(found.matches.map((m: { fieldId: number }) => m.fieldId), []);
+  const maiz = await run(tools.resolveField, { query: "maíz" }, 5);
+  assertEquals(maiz.matches[0].fieldId, 15);
+  await assertRejects(() => run(tools.getFieldReport, { fieldId: 10 }, 5));
+  const advice = await run(tools.getFarmAdvice, {}, 5);
+  assertEquals(advice.reports.map((r: { fieldId: number }) => r.fieldId), [15]);
+});
+
+Deno.test("tools: confirm refuses a run from another farm", opts, async () => {
+  const { tools, run, data } = await setup();
+  const started = await run(
+    tools.recordIrrigation,
+    { fieldId: 10, date: "2026-07-04", mm: 20 },
+    1,
+  );
+  // Same member id claimed with a different farm in the context.
+  await assertRejects(
+    () => run(tools.confirmIrrigation, { runId: started.runId, confirmed: true }, 1, 2),
+  );
+  const draft = (await data.listIrrigations(10, { includeDrafts: true })).filter((o) =>
+    o.mm === 20
+  );
+  assertEquals(draft.map((o) => o.status), ["draft"]);
 });

@@ -14,9 +14,12 @@ conversation: it never computes numbers.
 2. **Use `useChat` with `DefaultChatTransport`** pointing at `${API_URL}/chat`, with the header
    `x-member-id: <member id>`. Send **only the newest message**: the server keeps the thread (memory
    keeps the last 10 messages). Ids for memory sent in the body are ignored.
-3. **Identity.** `x-member-id` selects the farm member. Without it the main contact (member 1) is
-   used. An unknown id returns `400` with the `ApiError` envelope. Memory resource is `member-{id}`
-   and the thread is `member-{id}-{YYYY-MM-DD}` (one conversation per member per day).
+3. **Identity and farm.** `x-member-id` selects the farm member, and the member's farm scopes
+   everything: fields, weather (the farm's region), records, and the reply language (Elena, member
+   5, gets Spanish; Marco, member 9, Italian). Without the header the main contact of the first farm
+   (member 1, Loiret) is used. An unknown id returns `400` with the `ApiError` envelope. Memory
+   resource is `member-{id}` and the thread is `member-{id}-{YYYY-MM-DD}` (one conversation per
+   member per day).
 4. **Render each tool part as a card.** The tool key is in the part type (`tool-<key>`). For each
    part: skeleton while the state is `input-available` / `input-streaming`, card when it is
    `output-available`, error card on `output-error`.
@@ -45,7 +48,9 @@ draft is deleted.
 
 ## `/irrigation` REST endpoints (no LLM, for VAPI and the UI)
 
-VAPI webhooks must call these, **not `/chat`**, to stay under the 2 s voice budget. Responses use
+VAPI webhooks must call these, **not `/chat`**, to stay under the 2 s voice budget. Send the same
+`x-member-id` header to pick the caller's farm (default: farm 1's main contact); another farm's
+field is `404`. Responses use
 the `{ data }` envelope.
 
 | Method and path                                 | Purpose                                        |

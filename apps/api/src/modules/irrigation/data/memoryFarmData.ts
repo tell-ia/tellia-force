@@ -1,3 +1,4 @@
+import { HTTPException } from "hono/http-exception";
 import { notFound } from "./supabaseFarmData";
 import type {
   CropRef,
@@ -5,6 +6,7 @@ import type {
   CropStage,
   Farm,
   FarmData,
+  FarmDirectory,
   Field,
   IrrigationOperation,
   IsoDate,
@@ -85,6 +87,24 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
     deleteIrrigation: async (id) => {
       const i = ops.indexOf(find(id));
       ops.splice(i, 1);
+    },
+  };
+}
+
+/** In-memory FarmDirectory over several fixtures (one per farm). */
+export function createMemoryFarmDirectory(fixtures: FarmFixture[]): FarmDirectory {
+  const sorted = [...fixtures].sort((a, b) => a.farm.id - b.farm.id);
+  const farms = new Map(sorted.map((f) => [f.farm.id, createMemoryFarmData(f)]));
+  const memberFarm = new Map(sorted.flatMap((f) => f.members.map((m) => [m.id, f.farm.id])));
+  return {
+    listFarmIds: () => Promise.resolve([...farms.keys()]),
+    farmOfMember: (id) => Promise.resolve(memberFarm.get(id) ?? null),
+    defaultMemberId: () =>
+      Promise.resolve(sorted[0]?.members.find((m) => m.mainContact)?.id ?? null),
+    forFarm: (id) => {
+      const data = farms.get(id);
+      if (!data) throw new HTTPException(404, { message: `farm ${id} not found` });
+      return data;
     },
   };
 }

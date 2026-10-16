@@ -2,27 +2,27 @@ import { assert, assertEquals, assertNotEquals, assertStringIncludes } from "@st
 import { RequestContext } from "@mastra/core/request-context";
 import type { FarmData } from "../src/modules/irrigation/data/farmData.ts";
 import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmData.ts";
-import { createIrrigationService } from "../src/modules/irrigation/irrigation.service.ts";
-import { createWeatherService } from "../src/modules/irrigation/weather/weatherService.ts";
 import { createAdvisorWorkflows } from "../src/modules/chat/workflows/index.ts";
-import { MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
-import { makeFarmFixture } from "./fixtures/farm.ts";
-import { emptyOpenMeteoFetch, makeTestMastra } from "./helpers/testApp.ts";
+import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
+import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
+import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
 
 const opts = { sanitizeResources: false, sanitizeOps: false };
 
-export const ctxFor = (memberId: number) => {
+/** Members 1-2 are on farm 1, members 5-6 on farm 2 (as the member middleware sets it). */
+const farmOf = (memberId: number) => (memberId >= 5 ? 2 : 1);
+export const ctxFor = (memberId: number, farmId = farmOf(memberId)) => {
   const rc = new RequestContext();
   rc.set(MEMBER_ID_KEY, memberId);
+  rc.set(FARM_ID_KEY, farmId);
   return rc;
 };
 
 async function setup() {
-  const data = createMemoryFarmData(makeFarmFixture());
-  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
-  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
-  const mastra = await makeTestMastra({ service, data });
-  return { data, service, mastra };
+  const registry = makeTestRegistry();
+  const { data, service } = await registry.forFarm(1);
+  const mastra = await makeTestMastra({ registry });
+  return { registry, data, service, mastra };
 }
 
 const drafts = async (data: FarmData, status?: string) =>
@@ -33,7 +33,7 @@ const drafts = async (data: FarmData, status?: string) =>
 Deno.test("farm-advice: same reports and order as the service", opts, async () => {
   const { service, mastra } = await setup();
   const run = await mastra.getWorkflow("farm-advice").createRun();
-  const res = await run.start({ inputData: {} });
+  const res = await run.start({ inputData: { farmId: 1 } });
   assertEquals(res.status, "success");
   const expected = await service.getFarmAdvice();
   // deno-lint-ignore no-explicit-any
@@ -46,7 +46,7 @@ Deno.test("simulate-scenario: 50 mm of rain gives a comparison", opts, async () 
   const { mastra } = await setup();
   const run = await mastra.getWorkflow("simulate-scenario").createRun();
   const res = await run.start({
-    inputData: { fieldId: 10, events: [{ type: "rain", date: "2026-07-06", mm: 50 }] },
+    inputData: { farmId: 1, fieldId: 10, events: [{ type: "rain", date: "2026-07-06", mm: 50 }] },
   });
   assertEquals(res.status, "success");
   // deno-lint-ignore no-explicit-any
@@ -58,7 +58,7 @@ Deno.test("simulate-scenario: 50 mm of rain gives a comparison", opts, async () 
 async function startRecord(mastra: Awaited<ReturnType<typeof setup>>["mastra"], member = 1) {
   const run = await mastra.getWorkflow("record-irrigation").createRun();
   const res = await run.start({
-    inputData: { memberId: member, fieldId: 10, date: "2026-07-04", mm: 25 },
+    inputData: { farmId: 1, memberId: member, fieldId: 10, date: "2026-07-04", mm: 25 },
     requestContext: ctxFor(member),
   });
   return { run, res };
@@ -165,7 +165,7 @@ Deno.test(
     const { data, mastra } = await setup();
     const run = await mastra.getWorkflow("record-irrigation").createRun();
     const res = await run.start({
-      inputData: { memberId: 1, fieldId: 10, date: "2026-07-06", mm: 25 },
+      inputData: { farmId: 1, memberId: 1, fieldId: 10, date: "2026-07-06", mm: 25 },
       requestContext: ctxFor(1),
     });
     assertEquals(res.status, "failed");
@@ -175,32 +175,39 @@ Deno.test(
   },
 );
 
-Deno.test("morning-warmup: succeeds and fills the weather cache", opts, async () => {
-  const fixture = makeFarmFixture();
-  const base = createMemoryFarmData(fixture);
-  let weatherReads = 0;
-  const data: FarmData = {
-    ...base,
-    getWeather: (from, to) => {
-      weatherReads++;
-      return base.getWeather(from, to);
-    },
-  };
-  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
-  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
-  const mastra = await makeTestMastra({ service, data });
-  const run = await mastra.getWorkflow("morning-warmup").createRun();
-  const res = await run.start({ inputData: {} });
-  assertEquals(res.status, "success");
-  // deno-lint-ignore no-explicit-any
-  const out = (res as any).result;
-  assertEquals(out.fields, 3);
-  assertEquals(out.failures, 0);
-  assert(weatherReads > 0);
-  const warmed = weatherReads;
-  await service.getFarmAdvice();
-  assertEquals(weatherReads, warmed);
-});
+Deno.test(
+  "morning-warmup: covers every farm and fills each farm's weather cache",
+  opts,
+  async () => {
+    const reads: Record<number, number> = { 1: 0, 2: 0 };
+    const counting = (farmId: number, base: FarmData): FarmData => ({
+      ...base,
+      getWeather: (from, to) => {
+        reads[farmId]++;
+        return base.getWeather(from, to);
+      },
+    });
+    const registry = makeTestRegistry({
+      farms: {
+        1: counting(1, createMemoryFarmData(makeFarmFixture())),
+        2: counting(2, createMemoryFarmData(makeSecondFarmFixture())),
+      },
+    });
+    const mastra = await makeTestMastra({ registry });
+    const run = await mastra.getWorkflow("morning-warmup").createRun();
+    const res = await run.start({ inputData: {} });
+    assertEquals(res.status, "success");
+    // deno-lint-ignore no-explicit-any
+    const out = (res as any).result;
+    assertEquals(out.fields, 4); // farm 1: 3 fields, farm 2: 1 field
+    assertEquals(out.failures, 0);
+    assert(reads[1] > 0 && reads[2] > 0, "both farms warmed");
+    const warmed = { ...reads };
+    await (await registry.forFarm(1)).service.getFarmAdvice();
+    await (await registry.forFarm(2)).service.getFarmAdvice();
+    assertEquals(reads, warmed);
+  },
+);
 
 Deno.test("morning-warmup: declares the 05:00 Europe/Paris schedule", opts, async () => {
   const { mastra } = await setup();
@@ -211,22 +218,18 @@ Deno.test("morning-warmup: declares the 05:00 Europe/Paris schedule", opts, asyn
 });
 
 Deno.test("morning-warmup: schedule timezone is configurable", opts, () => {
-  const data = createMemoryFarmData(makeFarmFixture());
-  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
-  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
-  const wf = createAdvisorWorkflows(service, data, "America/New_York");
+  const wf = createAdvisorWorkflows(makeTestRegistry(), "America/New_York");
   assertEquals(wf.morningWarmup.getScheduleConfigs?.()[0].timezone, "America/New_York");
 });
 
 Deno.test("morning-warmup: every field failing fails the run", opts, async () => {
-  const data = createMemoryFarmData(makeFarmFixture());
-  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
-  const real = createIrrigationService({ data, weather, today: () => "2026-07-05" });
-  const service = {
-    ...real,
-    getFieldReport: () => Promise.reject(new Error("weather offline")),
-  };
-  const mastra = await makeTestMastra({ service, data });
+  const registry = makeTestRegistry({
+    wrap: (real) => ({
+      ...real,
+      getFieldReport: () => Promise.reject(new Error("weather offline")),
+    }),
+  });
+  const mastra = await makeTestMastra({ registry });
   const run = await mastra.getWorkflow("morning-warmup").createRun();
   const res = await run.start({ inputData: {} });
   assertEquals(res.status, "failed");
@@ -235,4 +238,43 @@ Deno.test("morning-warmup: every field failing fails the run", opts, async () =>
     String((res as any).error?.message ?? (res as any).error),
     "weather offline",
   );
+});
+
+Deno.test(
+  "farm-advice: farm 2 sees only its own field, with its own (hotter) weather",
+  opts,
+  async () => {
+    const { registry, mastra } = await setup();
+    const run = await mastra.getWorkflow("farm-advice").createRun();
+    const res = await run.start({ inputData: { farmId: 2 } });
+    assertEquals(res.status, "success");
+    // deno-lint-ignore no-explicit-any
+    const reports = (res as any).result.reports;
+    assertEquals(reports.map((r: { fieldId: number }) => r.fieldId), [15]);
+    assertEquals(reports[0].cropName, "Maíz");
+    const farm1 = await (await registry.forFarm(1)).service.getFieldReport(10);
+    assertNotEquals(reports[0].depletionMm, farm1.depletionMm);
+  },
+);
+
+Deno.test("record-irrigation: a member of farm 2 cannot write on farm 1", opts, async () => {
+  const { data, mastra } = await setup();
+  const run = await mastra.getWorkflow("record-irrigation").createRun();
+  const res = await run.start({
+    inputData: { farmId: 1, memberId: 5, fieldId: 10, date: "2026-07-04", mm: 25 },
+    requestContext: ctxFor(5),
+  });
+  assertEquals(res.status, "failed");
+  assertEquals((await drafts(data, "draft")).length, 0);
+});
+
+Deno.test("record-irrigation: farm 2 cannot reach a farm 1 field", opts, async () => {
+  const { data, mastra } = await setup();
+  const run = await mastra.getWorkflow("record-irrigation").createRun();
+  const res = await run.start({
+    inputData: { farmId: 2, memberId: 5, fieldId: 10, date: "2026-07-04", mm: 25 },
+    requestContext: ctxFor(5),
+  });
+  assertEquals(res.status, "failed");
+  assertEquals((await drafts(data, "draft")).length, 0);
 });

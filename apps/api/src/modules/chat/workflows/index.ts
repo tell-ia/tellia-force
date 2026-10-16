@@ -10,36 +10,45 @@ import {
   ScenarioEventSchema,
   ScenarioResultSchema,
 } from "@tellia/shared/irrigation";
-import type { FarmData } from "../../irrigation/data/farmData";
 import { rankReports } from "../../irrigation/engine/report";
-import type { IrrigationService } from "../../irrigation/irrigation.service";
-import { MEMBER_ID_KEY } from "../requestContext";
+import type { FarmRegistry } from "../../irrigation/farmRegistry";
+import { FARM_ID_KEY, MEMBER_ID_KEY } from "../requestContext";
 
 export const MORNING_WARMUP_CRON = "0 5 * * *";
 export const MORNING_WARMUP_TIMEZONE = "Europe/Paris"; // default
 
-const FieldTargetSchema = z.object({ fieldId: z.number().int(), asOf: IsoDateSchema });
+const FarmId = z.number().int();
+const FieldTargetSchema = z.object({
+  farmId: FarmId,
+  fieldId: z.number().int(),
+  asOf: IsoDateSchema,
+});
 
+/** Every workflow input carries the caller's farm; steps only touch that farm. */
 export function createAdvisorWorkflows(
-  service: IrrigationService,
-  data: Pick<FarmData, "listFields">,
+  registry: FarmRegistry,
   timezone: string = MORNING_WARMUP_TIMEZONE,
 ) {
+  const serviceFor = async (farmId: number) => (await registry.forFarm(farmId)).service;
+
   // --- farm-advice -----------------------------------------------------------
   const listFields = createStep({
     id: "list-fields",
-    inputSchema: z.object({ asOf: IsoDateSchema.optional() }),
+    inputSchema: z.object({ farmId: FarmId, asOf: IsoDateSchema.optional() }),
     outputSchema: z.array(FieldTargetSchema),
     execute: async ({ inputData }) => {
-      const asOf = inputData.asOf ?? service.today();
-      return (await data.listFields()).map((f) => ({ fieldId: f.id, asOf }));
+      const { farmId } = inputData;
+      const asOf = inputData.asOf ?? registry.today();
+      const { data } = await registry.forFarm(farmId);
+      return (await data.listFields()).map((f) => ({ farmId, fieldId: f.id, asOf }));
     },
   });
   const fieldReport = createStep({
     id: "field-report",
     inputSchema: FieldTargetSchema,
     outputSchema: FieldReportSchema,
-    execute: ({ inputData }) => service.getFieldReport(inputData.fieldId, inputData.asOf),
+    execute: async ({ inputData }) =>
+      (await serviceFor(inputData.farmId)).getFieldReport(inputData.fieldId, inputData.asOf),
   });
   const rank = createStep({
     id: "rank",
@@ -47,14 +56,14 @@ export function createAdvisorWorkflows(
     outputSchema: FarmAdviceSchema,
     execute: ({ inputData, getInitData }) => {
       const asOf = inputData[0]?.asOf ?? getInitData<{ asOf?: string }>().asOf ??
-        service.today();
+        registry.today();
       return Promise.resolve({ asOf, reports: rankReports(inputData) });
     },
   });
   const farmAdvice = createWorkflow({
     id: "farm-advice",
     description: "Ranked irrigation advice for every field of the farm.",
-    inputSchema: z.object({ asOf: IsoDateSchema.optional() }),
+    inputSchema: z.object({ farmId: FarmId, asOf: IsoDateSchema.optional() }),
     outputSchema: FarmAdviceSchema,
   })
     .then(listFields)
@@ -66,13 +75,18 @@ export function createAdvisorWorkflows(
   const simulate = createStep({
     id: "simulate",
     inputSchema: z.object({
+      farmId: FarmId,
       fieldId: z.number().int(),
       events: z.array(ScenarioEventSchema),
       asOf: IsoDateSchema.optional(),
     }),
     outputSchema: ScenarioResultSchema,
-    execute: ({ inputData }) =>
-      service.simulateScenario(inputData.fieldId, inputData.events, inputData.asOf),
+    execute: async ({ inputData }) =>
+      (await serviceFor(inputData.farmId)).simulateScenario(
+        inputData.fieldId,
+        inputData.events,
+        inputData.asOf,
+      ),
   });
   const ScenarioWithSummary = ScenarioResultSchema.extend({ summary: z.string() });
   const summarize = createStep({
@@ -94,6 +108,7 @@ export function createAdvisorWorkflows(
 
   // --- record-irrigation -----------------------------------------------------
   const RecordInput = z.object({
+    farmId: FarmId,
     memberId: z.number().int(),
     fieldId: z.number().int(),
     date: IsoDateSchema,
@@ -108,6 +123,11 @@ export function createAdvisorWorkflows(
     inputSchema: RecordInput,
     outputSchema: Previewed,
     execute: async ({ inputData }) => {
+      const service = await serviceFor(inputData.farmId);
+      // The member must belong to the farm the run writes to.
+      if (!(await (await registry.forFarm(inputData.farmId)).data.getMember(inputData.memberId))) {
+        throw new Error(`member ${inputData.memberId} is not on farm ${inputData.farmId}`);
+      }
       const preview = await service.previewIrrigation(inputData);
       return { ...inputData, fieldName: preview.fieldName, summary: preview.summary };
     },
@@ -117,7 +137,7 @@ export function createAdvisorWorkflows(
     inputSchema: Previewed,
     outputSchema: Drafted,
     execute: async ({ inputData }) => {
-      const rec = await service.createDraftIrrigation({
+      const rec = await (await serviceFor(inputData.farmId)).createDraftIrrigation({
         fieldId: inputData.fieldId,
         date: inputData.date,
         mm: inputData.mm,
@@ -144,8 +164,11 @@ export function createAdvisorWorkflows(
         const { summary, operationId, fieldId, fieldName, date, mm } = inputData;
         return await suspend({ summary, operationId, fieldId, fieldName, date, mm });
       }
-      // Only the member who started the run may answer it.
-      if (requestContext.get(MEMBER_ID_KEY) !== inputData.memberId) {
+      // Only the member who started the run (on that farm) may answer it.
+      if (
+        requestContext.get(MEMBER_ID_KEY) !== inputData.memberId ||
+        requestContext.get(FARM_ID_KEY) !== inputData.farmId
+      ) {
         throw new Error("only the member who started this irrigation record can confirm it");
       }
       return { ...inputData, confirmed: resumeData.confirmed };
@@ -160,6 +183,7 @@ export function createAdvisorWorkflows(
     inputSchema: Decided,
     outputSchema: FinishOutput,
     execute: async ({ inputData }) => {
+      const service = await serviceFor(inputData.farmId);
       if (inputData.confirmed) {
         return {
           status: "saved" as const,
@@ -193,12 +217,16 @@ export function createAdvisorWorkflows(
     inputSchema: z.object({}),
     outputSchema: WarmupOutput,
     execute: async () => {
-      // Per-field so one failing field does not hide the others; the weather service's
-      // process-level cache keeps what this loads for the calls that follow.
-      const asOf = service.today();
-      const fields = await data.listFields();
+      // Every farm, per field, so one failing field does not hide the others; each farm's
+      // weather service keeps what this loads for the calls that follow.
+      const asOf = registry.today();
+      const targets: { service: Awaited<ReturnType<typeof serviceFor>>; fieldId: number }[] = [];
+      for (const farmId of await registry.farmIds()) {
+        const { data, service } = await registry.forFarm(farmId);
+        for (const f of await data.listFields()) targets.push({ service, fieldId: f.id });
+      }
       const settled = await Promise.allSettled(
-        fields.map((f) => service.getFieldReport(f.id, asOf)),
+        targets.map((t) => t.service.getFieldReport(t.fieldId, asOf)),
       );
       const firstFailure = settled.find((s) => s.status === "rejected") as
         | PromiseRejectedResult
@@ -229,7 +257,8 @@ export function createAdvisorWorkflows(
   });
   const morningWarmup = createWorkflow({
     id: "morning-warmup",
-    description: "05:00 job: computes today's advice so weather and climatology are cached.",
+    description:
+      "05:00 job: computes today's advice for every farm so weather and climatology are cached.",
     inputSchema: z.object({}),
     outputSchema: WarmupOutput,
     schedule: {

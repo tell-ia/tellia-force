@@ -53,9 +53,13 @@ apps/api/
 
 ## Irrigation and chat
 - **Numbers come from the engine, never the LLM.** Tools return them; the agent copies them.
-- **Several farms share the DB** (`farm_id` on every farm table, weather per region `nuts3_id`). Until the
-  API takes a farm per request, `supabaseFarmData` serves the first farm only (`servedFarm()`): its members,
-  fields and region weather. Inserts may omit `farm_id`: a DB trigger copies it from the field.
+- **Several farms share the DB** (`farm_id` on every farm table, weather per region `nuts3_id`). Every
+  request works on the **caller's farm**: `x-member-id` → member → `farm_id` (default: main contact of the
+  first farm). `irrigation/farmRegistry.ts` caches one `{data, weather, service}` scope per farm, so weather
+  caches never mix regions. `createSupabaseFarmData(db, farmId)` filters every farm table on `farm_id`
+  and reads weather by the farm's `nuts3_id`; another farm's field, member or operation is 404/400.
+  Chat tools and workflows take the farm from the request context (`FARM_ID_KEY`), never from input.
+  Inserts may omit `farm_id`: a DB trigger copies it from the field.
 - **Only `confirmed` irrigations count** in the water balance. The assistant saves `draft`
   operations and confirms them only when the same member resumes the `record-irrigation`
   workflow with `confirmed: true`. Declined drafts are deleted.

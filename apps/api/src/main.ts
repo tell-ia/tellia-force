@@ -5,11 +5,10 @@ import { config, corsOrigins } from "./config";
 import { onError } from "./core/middleware";
 import { createMastra, mountChat } from "./modules/chat/mastra";
 import { data, TABLES } from "./modules/data/data.controller";
-import { createSupabaseFarmData } from "./modules/irrigation/data/supabaseFarmData";
+import { createSupabaseFarmDirectory } from "./modules/irrigation/data/supabaseFarmData";
+import { createFarmRegistry } from "./modules/irrigation/farmRegistry";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
-import { createIrrigationService } from "./modules/irrigation/irrigation.service";
 import { todayIn } from "./modules/irrigation/engine/util";
-import { createWeatherService } from "./modules/irrigation/weather/weatherService";
 import { db } from "./supabase";
 
 const app = new Hono();
@@ -32,13 +31,12 @@ app.get("/health", (c) => c.json({ data: { status: "ok", ts: Date.now(), tables:
 app.route("/data", data);
 
 // Irrigation advisor, fast path (no LLM): used by the web UI and VAPI tool webhooks.
-const farmData = createSupabaseFarmData(db);
-const irrigation = createIrrigationService({
-  data: farmData,
-  weather: createWeatherService({ data: farmData }),
+// Several farms share the DB: each request works on the caller's farm (x-member-id header).
+const registry = createFarmRegistry({
+  directory: createSupabaseFarmDirectory(db),
   today: () => config.DEMO_DATE ?? todayIn(config.TIMEZONE),
 });
-app.route("/irrigation", createIrrigationController(irrigation));
+app.route("/irrigation", createIrrigationController(registry));
 
 // Chat advisor (Mastra): GET /chat/history, POST /chat (AI SDK v7 stream) and /api/*.
 // LibSQL needs its directory to exist before it opens the file.
@@ -47,15 +45,14 @@ if (config.MASTRA_DB_URL.startsWith("file:")) {
   Deno.mkdirSync(dir, { recursive: true });
 }
 const mastra = createMastra({
-  service: irrigation,
-  data: farmData,
+  registry,
   model: config.MODEL,
   modelMini: config.MODEL_MINI,
   storageUrl: config.MASTRA_DB_URL,
   timezone: config.TIMEZONE,
   openMastraApi: config.OPEN_MASTRA_API,
 });
-await mountChat(app, { mastra, service: irrigation, data: farmData });
+await mountChat(app, { mastra, registry });
 
 Deno.serve({ port: config.PORT }, app.fetch);
 // Workers must start or the 05:00 morning-warmup schedule never fires.

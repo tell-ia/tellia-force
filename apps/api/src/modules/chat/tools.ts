@@ -1,4 +1,5 @@
-// The eight chat tools. The member comes only from the request context, never from input.
+// The eight chat tools. The member and their farm come only from the request context, never
+// from input, so a tool can only see and write the caller's own farm.
 
 import { createTool } from "@mastra/core/tools";
 import type { RequestContext } from "@mastra/core/request-context";
@@ -12,14 +13,23 @@ import {
   ScenarioResultSchema,
   WeatherDaySchema,
 } from "@tellia/shared/irrigation";
-import type { IrrigationService } from "../irrigation/irrigation.service";
-import { MEMBER_ID_KEY } from "./requestContext";
+import type { FarmRegistry } from "../irrigation/farmRegistry";
+import { FARM_ID_KEY, MEMBER_ID_KEY } from "./requestContext";
 
 /** The calling member's id from the request context; throws when absent. */
 export function memberIdFrom(ctx: { requestContext?: RequestContext<any> }): number {
   const id = ctx.requestContext?.get(MEMBER_ID_KEY);
   if (typeof id !== "number" || !Number.isInteger(id)) {
     throw new Error("no member in the request context");
+  }
+  return id;
+}
+
+/** The calling member's farm id from the request context; throws when absent. */
+export function farmIdFrom(ctx: { requestContext?: RequestContext<any> }): number {
+  const id = ctx.requestContext?.get(FARM_ID_KEY);
+  if (typeof id !== "number" || !Number.isInteger(id)) {
+    throw new Error("no farm in the request context");
   }
   return id;
 }
@@ -50,7 +60,13 @@ function failureMessage(result: any): string {
   return `workflow ${result.status}`;
 }
 
-export function createAdvisorTools(service: IrrigationService) {
+export function createAdvisorTools(registry: FarmRegistry) {
+  /** The caller's farm service; also checks the member is set. */
+  const serviceOf = async (ctx: { requestContext?: RequestContext<any> }) => {
+    memberIdFrom(ctx);
+    return (await registry.forFarm(farmIdFrom(ctx))).service;
+  };
+
   const date = IsoDateSchema.optional().describe("Day to evaluate, YYYY-MM-DD. Default: today.");
   const fieldId = z.number().int().describe("Field id, from resolve_field.");
 
@@ -69,8 +85,7 @@ export function createAdvisorTools(service: IrrigationService) {
       ),
     }),
     execute: async ({ query }, ctx) => {
-      memberIdFrom(ctx);
-      return { matches: await service.resolveField(query) };
+      return { matches: await (await serviceOf(ctx)).resolveField(query) };
     },
   });
 
@@ -80,10 +95,7 @@ export function createAdvisorTools(service: IrrigationService) {
       "Irrigation advice for one field: decision, mm to apply, root-zone depletion, rain forecast and the reason. All numbers come from the calculation; never compute your own.",
     inputSchema: z.object({ fieldId, date }),
     outputSchema: FieldReportSchema,
-    execute: ({ fieldId, date }, ctx) => {
-      memberIdFrom(ctx);
-      return service.getFieldReport(fieldId, date);
-    },
+    execute: async ({ fieldId, date }, ctx) => (await serviceOf(ctx)).getFieldReport(fieldId, date),
   });
 
   const getWeather = createTool({
@@ -93,8 +105,7 @@ export function createAdvisorTools(service: IrrigationService) {
     inputSchema: z.object({ fieldId, date }),
     outputSchema: z.object({ fieldId: z.number().int(), days: z.array(WeatherDaySchema) }),
     execute: async ({ fieldId, date }, ctx) => {
-      memberIdFrom(ctx);
-      return { fieldId, days: await service.getWeather(fieldId, date) };
+      return { fieldId, days: await (await serviceOf(ctx)).getWeather(fieldId, date) };
     },
   });
 
@@ -112,7 +123,7 @@ export function createAdvisorTools(service: IrrigationService) {
       records: z.array(IrrigationRecordSchema),
     }),
     execute: async ({ fieldId, from, to }, ctx) => {
-      memberIdFrom(ctx);
+      const service = await serviceOf(ctx);
       return { fieldId, records: await service.listIrrigations(fieldId, { from, to }) };
     },
   });
@@ -126,7 +137,7 @@ export function createAdvisorTools(service: IrrigationService) {
     execute: async ({ date }, ctx) => {
       memberIdFrom(ctx);
       return FarmAdviceSchema.parse(
-        await runWorkflow(ctx, "farm-advice", { asOf: date }),
+        await runWorkflow(ctx, "farm-advice", { farmId: farmIdFrom(ctx), asOf: date }),
       );
     },
   });
@@ -144,7 +155,12 @@ export function createAdvisorTools(service: IrrigationService) {
     execute: async ({ fieldId, events, date }, ctx) => {
       memberIdFrom(ctx);
       return ScenarioResultSchema.parse(
-        await runWorkflow(ctx, "simulate-scenario", { fieldId, events, asOf: date }),
+        await runWorkflow(ctx, "simulate-scenario", {
+          farmId: farmIdFrom(ctx),
+          fieldId,
+          events,
+          asOf: date,
+        }),
       );
     },
   });
@@ -177,7 +193,7 @@ export function createAdvisorTools(service: IrrigationService) {
       if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
       const run = await ctx.mastra.getWorkflow("record-irrigation").createRun();
       const result = await run.start({
-        inputData: { memberId, fieldId, date, mm },
+        inputData: { farmId: farmIdFrom(ctx), memberId, fieldId, date, mm },
         requestContext: ctx.requestContext,
       });
       if (result.status !== "suspended") throw new Error(failureMessage(result));
@@ -209,7 +225,7 @@ export function createAdvisorTools(service: IrrigationService) {
       // Refuse before resuming, so a foreign attempt leaves the run suspended for its owner.
       const state = await workflow.getWorkflowRunById(runId);
       if (!state) throw new Error("unknown confirmation");
-      if (state.payload?.memberId !== memberId) {
+      if (state.payload?.memberId !== memberId || state.payload?.farmId !== farmIdFrom(ctx)) {
         throw new Error("this confirmation belongs to another member");
       }
       if (state.status !== "suspended") throw new Error("this confirmation is no longer pending");

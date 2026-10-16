@@ -1,10 +1,11 @@
-// The advisor agent: one agent for the whole farm, scoped per member by the request context.
+// The advisor agent: one agent for every farm, scoped per member (and their farm) by the
+// request context.
 
 import { Agent } from "@mastra/core/agent";
 import type { MastraModelConfig } from "@mastra/core/llm";
 import { Memory } from "@mastra/memory";
-import type { FarmData } from "../irrigation/data/farmData";
-import type { IrrigationService } from "../irrigation/irrigation.service";
+import { cropNameIn } from "../irrigation/data/farmData";
+import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { MEMBER_ID_KEY } from "./requestContext";
 import { createAdvisorTools } from "./tools";
 
@@ -20,22 +21,22 @@ const RULES = `Rules:
 7. Mention any warnings the tools return.`;
 
 export async function buildInstructions(
-  service: IrrigationService,
-  data: FarmData,
+  registry: FarmRegistry,
   memberId: number | null | undefined,
 ): Promise<string> {
-  const member = memberId == null ? null : await data.getMember(memberId);
-  if (!member) {
+  const scope = memberId == null ? null : await registry.forMember(memberId);
+  const member = scope && memberId != null ? await scope.data.getMember(memberId) : null;
+  if (!scope || !member) {
     return "The user is unknown: this member is not registered on the farm. Do not call any tool. Ask them to reopen the app.";
   }
+  const { data } = scope;
   const farm = await data.getFarm();
-  const today = service.today();
-  const fr = member.language.toLowerCase().startsWith("fr");
+  const today = registry.today();
   const lines: string[] = [];
   for (const f of await data.listFields()) {
     const season = await data.getSeasonAt(f.id, today);
     const ref = season ? await data.getCropRef(season.cropCode) : null;
-    const crop = ref ? (fr ? ref.nameFr : ref.nameEn) : "no crop";
+    const crop = ref ? cropNameIn(ref, member.language) : "no crop";
     lines.push(
       `- ${f.name} (field ${f.id}, ${crop}, ${f.areaHa} ha, irrigable ${
         f.irrigable ? "yes" : "no"
@@ -55,8 +56,7 @@ export async function buildInstructions(
 
 export function createAdvisorAgent(
   deps: {
-    service: IrrigationService;
-    data: FarmData;
+    registry: FarmRegistry;
     model: MastraModelConfig;
     /** Cheap model for thread titles. */
     modelMini?: MastraModelConfig;
@@ -76,13 +76,9 @@ export function createAdvisorAgent(
     name: "Irrigation advisor",
     description: "Tells the farmer which field to water, when and how much.",
     instructions: ({ requestContext }) =>
-      buildInstructions(
-        deps.service,
-        deps.data,
-        requestContext.get(MEMBER_ID_KEY) as number | undefined,
-      ),
+      buildInstructions(deps.registry, requestContext.get(MEMBER_ID_KEY) as number | undefined),
     model: deps.model,
-    tools: createAdvisorTools(deps.service),
+    tools: createAdvisorTools(deps.registry),
     memory,
   });
 }

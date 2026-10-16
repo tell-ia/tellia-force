@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   AdviceQuerySchema,
@@ -7,10 +8,11 @@ import {
   SimulateBodySchema,
 } from "@tellia/shared/irrigation";
 import { validate } from "../../core/validate";
-import type { IrrigationService } from "./irrigation.service";
+import { type FarmRegistry, type FarmScope, MEMBER_HEADER } from "./farmRegistry";
 
 // Fast path for the web UI and the VAPI tool webhooks: no LLM, no workflow.
-// Mount at `/irrigation`.
+// Mount at `/irrigation`. The farm is the caller's: `x-member-id` header, default the main
+// contact of the first farm. Fields of another farm are 404.
 
 const FieldParam = z.object({ fieldId: z.coerce.number().int() });
 const OperationsQuery = z.object({
@@ -19,12 +21,22 @@ const OperationsQuery = z.object({
   to: IsoDateSchema.optional(),
 });
 
-export function createIrrigationController(service: IrrigationService) {
-  const app = new Hono();
+type Env = { Variables: { memberId: number; scope: FarmScope } };
+
+export function createIrrigationController(registry: FarmRegistry) {
+  const app = new Hono<Env>();
+
+  app.use("*", async (c, next) => {
+    const caller = await registry.resolveCaller(c.req.header(MEMBER_HEADER));
+    c.set("memberId", caller.memberId);
+    c.set("scope", caller.scope);
+    await next();
+  });
+  const service = (c: { get(key: "scope"): FarmScope }) => c.get("scope").service;
 
   app.get("/advice", validate("query", AdviceQuerySchema), async (c) => {
     const { date } = c.req.valid("query");
-    return c.json({ data: await service.getFarmAdvice(date) });
+    return c.json({ data: await service(c).getFarmAdvice(date) });
   });
 
   app.get(
@@ -34,7 +46,7 @@ export function createIrrigationController(service: IrrigationService) {
     async (c) => {
       const { fieldId } = c.req.valid("param");
       const { date } = c.req.valid("query");
-      return c.json({ data: await service.getFieldReport(fieldId, date) });
+      return c.json({ data: await service(c).getFieldReport(fieldId, date) });
     },
   );
 
@@ -45,7 +57,7 @@ export function createIrrigationController(service: IrrigationService) {
     async (c) => {
       const { fieldId } = c.req.valid("param");
       const { date } = c.req.valid("query");
-      return c.json({ data: await service.getWeather(fieldId, date) });
+      return c.json({ data: await service(c).getWeather(fieldId, date) });
     },
   );
 
@@ -56,19 +68,22 @@ export function createIrrigationController(service: IrrigationService) {
     async (c) => {
       const { fieldId } = c.req.valid("param");
       const { events, date } = c.req.valid("json");
-      return c.json({ data: await service.simulateScenario(fieldId, events, date) });
+      return c.json({ data: await service(c).simulateScenario(fieldId, events, date) });
     },
   );
 
   app.get("/operations", validate("query", OperationsQuery), async (c) => {
     const { fieldId, from, to } = c.req.valid("query");
-    return c.json({ data: await service.listIrrigations(fieldId, { from, to }) });
+    return c.json({ data: await service(c).listIrrigations(fieldId, { from, to }) });
   });
 
   app.post("/operations", validate("json", RecordIrrigationBodySchema), async (c) => {
     const body = c.req.valid("json");
-    const memberId = body.memberId ?? await service.defaultMemberId();
-    const record = await service.recordIrrigation({
+    const memberId = body.memberId ?? c.get("memberId");
+    if (!(await c.get("scope").data.getMember(memberId))) {
+      throw new HTTPException(400, { message: `member ${memberId} is not on this farm` });
+    }
+    const record = await service(c).recordIrrigation({
       fieldId: body.fieldId,
       date: body.date,
       mm: body.mm,
