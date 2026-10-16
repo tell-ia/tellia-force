@@ -91,7 +91,13 @@ export function buildFieldReport(input: ReportInput): FieldReport {
   const cap = input.maxApplicationMm;
   if (cap !== undefined && irrigateMm > cap) {
     irrigateMm = cap;
-    reason = reason.replace(/\.$/, "") + `; apply ${cap} mm today and re-check tomorrow`;
+    if (decision === "frost_hold") {
+      reason = `Frost is forecast today (min ${
+        round1(today!.tmin)
+      } °C): irrigate ${cap} mm once temperatures are above 0 °C, then re-check (deficit ${need} mm).`;
+    } else {
+      reason = reason.replace(/\.$/, "") + `; apply ${cap} mm today and re-check tomorrow`;
+    }
   }
 
   return {

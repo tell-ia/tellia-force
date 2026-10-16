@@ -199,4 +199,10 @@ Deno.test("report: maxApplicationMm caps irrigateMm, keeps full depletion, appen
   const frost = report({ over: { "2026-07-05": { tmin: -1 } }, maxApplicationMm: 35 });
   assertEquals(frost.decision, "frost_hold");
   assertEquals(frost.irrigateMm, 35);
+  assertEquals(
+    frost.reason,
+    `Frost is forecast today (min -1 °C): irrigate 35 mm once temperatures are above 0 °C, then re-check (deficit ${
+      Math.round(frost.depletionMm)
+    } mm).`,
+  );
 });
