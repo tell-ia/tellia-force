@@ -1,6 +1,6 @@
 # VAPI phone assistant
 
-A farmer calls the VAPI number and talks (English) with the assistant "Tellia Irrigation".
+A farmer calls the VAPI number and talks (English) with the assistant "Jean".
 VAPI runs the voice and the LLM; every number comes from our engine through tools.
 
 ```

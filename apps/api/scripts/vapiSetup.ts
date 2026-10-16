@@ -1,5 +1,5 @@
 // Creates or updates the VAPI phone assistant from code: one VAPI tool per entry of
-// vapi.tools.ts, the assistant "Tellia Irrigation", and the phone number's link to it.
+// vapi.tools.ts, the assistant "Jean", and the phone number's link to it.
 // Safe to re-run (tools match by function name, the assistant by name). Never deletes anything.
 //
 //   deno task vapi:setup             # apply (needs VAPI_* in .env, see .env.example)
@@ -21,10 +21,10 @@ const env = parseEnv(
 );
 const dryRun = Deno.args.includes("--dry-run");
 
-const ASSISTANT_NAME = "Tellia Irrigation";
+const ASSISTANT_NAME = "Jean";
 
 const SYSTEM_PROMPT =
-  `You are Tellia, a phone assistant that helps farmers decide when to irrigate and how much.
+  `You are Jean, a phone assistant that helps farmers decide when to irrigate and how much.
 Today is {{"now" | date: "%A %-d %B %Y", "${env.TIMEZONE}"}}. Every tool result also has "today" (YYYY-MM-DD); when they differ, trust the tool.
 
 How you speak
@@ -96,7 +96,7 @@ for (const fn of vapiFunctions()) {
 // 2. Assistant. Voice and transcriber are the ones of VAPI's English demo assistant.
 const assistantBody = {
   name: ASSISTANT_NAME,
-  firstMessage: "Hi, this is Tellia, your irrigation assistant. What can I check for you today?",
+  firstMessage: "Hi, this is Jean, your irrigation assistant. What can I check for you today?",
   model: {
     provider: "openai",
     model: "gpt-4.1",

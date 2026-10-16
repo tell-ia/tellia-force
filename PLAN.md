@@ -18,7 +18,7 @@ tools that call our API.
 - Public URL: team frp tunnel (see tell-ia-solutions `dev-tunnels.md`),
   `https://vincent-tellia-api.dev.review-time.info` → local API.
 - VAPI config is code: `deno task vapi:setup` creates or updates the tools, the assistant
-  "Tellia Irrigation" (English, voice and transcriber copied from the demo assistant) and links
+  "Jean" (English, voice and transcriber copied from the demo assistant) and links
   the phone number. Re-runnable. `--dry-run` prints the payloads.
 
 ## Tasks

@@ -11,13 +11,14 @@
   ~1.1 s warm, 3.2 s cold). `vapi:setup` created 7 tools, assistant "Tellia Irrigation"
   (0daa12f7-facf-4d97-a37d-80dde93bd92f), linked +12188456415. Secret header kept by VAPI.
 - 2026-10-17 Task 6: `apps/api/src/modules/vapi/README.md`.
+- 2026-10-17 Assistant renamed "Jean" (name, prompt, first message) on VAPI and in the script.
 
 ## In progress
 
 ## Key decisions
 - English only (user choice).
 - Tunnel: team frp (user choice), not ngrok.
-- New assistant "Tellia Irrigation"; the demo "Riley" is left as is.
+- New assistant "Jean" (user renamed it from "Tellia Irrigation"); the demo "Riley" is left as is.
 - Unknown caller: default farm, read-only (no `record_irrigation`). Safer default; revisit for demo.
 
 ## Blockers
