@@ -40,5 +40,9 @@
       "reservePct": null,
       "thresholdLabel": null
     }
-  ]
+  ],
+  "alert": {
+    "title": "No spraying Monday — 36 °C forecast",
+    "detail": "No rain until Wed 20 (6 mm)."
+  }
 }

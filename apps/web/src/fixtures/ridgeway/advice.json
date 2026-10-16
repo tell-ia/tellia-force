@@ -28,5 +28,6 @@
       "reservePct": null,
       "thresholdLabel": null
     }
-  ]
+  ],
+  "alert": null
 }

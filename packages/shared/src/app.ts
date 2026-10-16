@@ -57,6 +57,8 @@ export const FarmTodaySchema = z.object({
   greeting: z.string(), // "Good morning, Claire. One field needs water."
   weatherNote: z.string(),
   parcels: z.array(ParcelSummarySchema),
+  // Optional end-of-list weather/operations callout.
+  alert: z.object({ title: z.string(), detail: z.string() }).nullable(),
 });
 export type FarmToday = z.infer<typeof FarmTodaySchema>;
 
@@ -159,6 +161,13 @@ export const ParcelReportSchema = z.object({
   method: z.string(), // footnote
 });
 export type ParcelReport = z.infer<typeof ParcelReportSchema>;
+export type Recommendation = z.infer<typeof RecommendationSchema>;
+export type Reserve = z.infer<typeof ReserveSchema>;
+export type BalancePoint = z.infer<typeof BalancePointSchema>;
+export type CropStageStep = z.infer<typeof CropStageStepSchema>;
+export type Soil = z.infer<typeof SoilSchema>;
+export type SeasonBalance = z.infer<typeof SeasonBalanceSchema>;
+export type NextDay = z.infer<typeof NextDaySchema>;
 
 // --- Logging ---------------------------------------------------------------
 
