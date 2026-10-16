@@ -32,6 +32,64 @@ via `@capacitor/app`). Platform helpers: `lib/native.ts` (`isNative`, `platform`
   `capacitor.config.ts` to your LAN IP and `cap sync`.
 
 ## Env (`apps/web/.env`, git-ignored)
-`VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. Only `VITE_*`
-reach the browser — never put secrets here. Validated at boot by `src/env.ts`.
+`VITE_API_URL`, `VITE_VAPI_PHONE_NUMBER`, `VITE_API_MODE` (`mock` | `live`,
+default `mock`). Only `VITE_*` reach the browser — never put secrets here.
+Validated at boot by `src/env.ts` against `@tellia/shared` `ClientEnvSchema`.
+
+---
+
+# TelliaForce app — build rules (the mobile demo)
+
+TelliaForce = Tellia's AI irrigation advisor. Every morning it tells a farmer
+which field to water, when, how many mm and why (FAO-56 water balance). Build
+this app phase by phase (plan in `plans/design-brief.md`); the hi-fi prototype
+is the **source of truth for values** (6 screens in a Claude Design canvas,
+mirrored under `docs/prototype/*.dc.html`): copy exact colors, sizes, radii,
+copy and SVG geometry — never "something similar".
+
+## Ground rules (always)
+1. **No hardcoded colors / fonts / radii / spacing in components** — only tokens
+   from `src/theme/tokens.ts` (light + dark from day one, via `var(--tf-…)`).
+2. **No business logic in UI components.** Components render props. Computations
+   (percentages, thresholds, "Fri eve", net/gross) live in pure, tested
+   functions (`src/lib/mappers/`, Phase 4).
+3. **All data goes through `src/lib/api/`.** Screens never import fixtures.
+4. **Every mocked call is tagged `// MOCK:`** naming the real endpoint it stands
+   for. `grep -r "MOCK:" apps/web/src` lists everything left to wire.
+5. **Touch targets ≥ 44px.** Real `<button>` / `<a>`; `aria-label` on icon-only
+   buttons; SVG `aria-hidden` for decoration, `role="img"` + label otherwise.
+6. **No new dependency without asking first** (name, why, size).
+7. **Typecheck + lint + tests green before a phase is "done".**
+   `pnpm --filter @tellia/web check-types && pnpm --filter @tellia/web test`.
+8. State any deviation from the brief or prototype in the phase summary.
+9. **Ask over guessing** on anything touching the backend or the data contract.
+
+## Contracts — one source of truth
+All shared shapes live in `@tellia/shared` (never redefine on one side). The
+engine contracts are in `src/irrigation.ts` (`FieldReport`, `FarmAdvice`,
+`ScenarioResult`, `DayBalance`…); the app view-models are in `src/app.ts`
+(`FarmSummary`, `FarmToday`, `ParcelReport`, `IrrigationLog`, `ChatMessage` —
+marked `v0-draft`, formalized in Phase 4). Ids match the backend: a parcel id IS
+a `fieldId`, a farm id IS the backend farm id. The persona switch sets the
+farm's `memberId` → sent as `x-member-id` on live calls.
+
+## Mock convention (trivially replaceable)
+`src/lib/api/` — one file per resource. Each function returns a schema-validated
+fixture (with fake latency) while the real endpoint isn't wired, and flips to
+`http` with a one-line change. The real endpoints already exist
+(`/irrigation/advice`, `/irrigation/fields/:fieldId/report`, `POST
+/irrigation/operations`); the live swap needs a pure mapper (Phase 4). Fixtures
+in `src/fixtures/<farm>/…json`, validated by `fixtures.test.ts` — a schema
+change that breaks one fails CI. Chat (`POST /chat`, AI SDK v7) goes **live**
+first (Phase 3), not mocked.
+
+## Folder map
 ```
+src/theme/tokens.ts          colors (L/D), hero, font, radius, space, shadow
+src/lib/api/{core,farms,parcels,irrigation,chat}.ts + index.ts
+src/fixtures/{oakfield,ridgeway}/*.json + fixtures.test.ts
+src/lib/mappers/*.ts         pure domain→view (Phase 4, tested)
+src/features/{persona,today,parcel,chat,log,admin}/
+src/components/              reuse Screen / Button / Card / useHaptics / native
+```
+

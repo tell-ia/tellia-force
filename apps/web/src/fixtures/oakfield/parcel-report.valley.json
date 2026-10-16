@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "v0",
+  "id": 101,
+  "farmId": 1,
+  "name": "The Valley",
+  "cropName": "Grain maize",
+  "areaHa": 5.96,
+  "sownOn": "2022-05-03",
+  "asOf": "2022-07-13",
+  "recommendation": {
+    "decision": "irrigate",
+    "headline": "Irrigate by Fri 15",
+    "netMm": 35,
+    "grossMm": 44,
+    "efficiency": 0.8,
+    "reason": "Soil water reaches the comfort threshold by Friday evening, in the middle of flowering. No rain before the 20th; 36 °C on Monday.",
+    "secondPass": "Then a 2nd pass of 30–35 mm around the 19th"
+  },
+  "reserve": {
+    "availableMm": 97,
+    "capacityMm": 144,
+    "pct": 67,
+    "thresholdMm": 79,
+    "thresholdPct": 55,
+    "thresholdLabel": "Fri eve",
+    "usedByThresholdMm": 16
+  },
+  "series": [
+    { "date": "2022-07-03", "dayLabel": "3", "rain": 0, "irrigation": 0, "cropUse": 5.8, "reserveMm": 139.0, "forecast": false },
+    { "date": "2022-07-04", "dayLabel": "4", "rain": 0, "irrigation": 0, "cropUse": 6.1, "reserveMm": 132.9, "forecast": false },
+    { "date": "2022-07-05", "dayLabel": "5", "rain": 0, "irrigation": 0, "cropUse": 6.5, "reserveMm": 126.4, "forecast": false },
+    { "date": "2022-07-06", "dayLabel": "6", "rain": 0, "irrigation": 0, "cropUse": 6.6, "reserveMm": 119.8, "forecast": false },
+    { "date": "2022-07-07", "dayLabel": "7", "rain": 0, "irrigation": 0, "cropUse": 4.4, "reserveMm": 115.4, "forecast": false },
+    { "date": "2022-07-08", "dayLabel": "8", "rain": 0, "irrigation": 0, "cropUse": 6.7, "reserveMm": 108.7, "forecast": false },
+    { "date": "2022-07-09", "dayLabel": "9", "rain": 0, "irrigation": 35, "cropUse": 7.4, "reserveMm": 126.3, "forecast": false },
+    { "date": "2022-07-10", "dayLabel": "10", "rain": 0, "irrigation": 0, "cropUse": 7.3, "reserveMm": 119.0, "forecast": false },
+    { "date": "2022-07-11", "dayLabel": "11", "rain": 0, "irrigation": 0, "cropUse": 7.6, "reserveMm": 111.4, "forecast": false },
+    { "date": "2022-07-12", "dayLabel": "12", "rain": 0, "irrigation": 0, "cropUse": 7.4, "reserveMm": 104.0, "forecast": false },
+    { "date": "2022-07-13", "dayLabel": "13", "rain": 0, "irrigation": 0, "cropUse": 6.9, "reserveMm": 97.1, "forecast": false },
+    { "date": "2022-07-14", "dayLabel": "14", "rain": 0, "irrigation": 0, "cropUse": 8.4, "reserveMm": 88.7, "forecast": true },
+    { "date": "2022-07-15", "dayLabel": "15", "rain": 0, "irrigation": 0, "cropUse": 7.9, "reserveMm": 80.8, "forecast": true },
+    { "date": "2022-07-16", "dayLabel": "16", "rain": 0, "irrigation": 0, "cropUse": 7.8, "reserveMm": 73.0, "forecast": true },
+    { "date": "2022-07-17", "dayLabel": "17", "rain": 0, "irrigation": 0, "cropUse": 8.4, "reserveMm": 64.6, "forecast": true },
+    { "date": "2022-07-18", "dayLabel": "18", "rain": 0, "irrigation": 0, "cropUse": 9.3, "reserveMm": 55.3, "forecast": true }
+  ],
+  "cropStage": {
+    "label": "Flowering",
+    "daysSinceSowing": 72,
+    "gdd": 871,
+    "gddBase": 6,
+    "useTodayMm": 6.9,
+    "useTomorrowMm": 8.4,
+    "note": "Flowering since 12 July (850 °C·d). Water shortage in the next 3 weeks aborts kernels: the most yield-sensitive window of the season.",
+    "progress": 0.476,
+    "steps": [
+      { "label": "Emerg.", "weight": 320, "current": false },
+      { "label": "Leaf growth", "weight": 530, "current": false },
+      { "label": "Flowering", "weight": 300, "current": true },
+      { "label": "Grain fill", "weight": 450, "current": false },
+      { "label": "Mature", "weight": 250, "current": false }
+    ]
+  },
+  "soil": {
+    "texture": "Silty sand",
+    "sandPct": 64,
+    "siltPct": 29,
+    "clayPct": 7,
+    "omPct": 5,
+    "usableMm": 144,
+    "rootDepthM": 1.2,
+    "note": "144 mm usable over 1.2 m of roots. Free-draining: a full profile empties in about ten hot days."
+  },
+  "seasonBalance": {
+    "rainMm": 149,
+    "irrigatedMm": 35,
+    "cropUseMm": 209,
+    "drainedMm": 22,
+    "stressDays": 0,
+    "cropDays": 72
+  },
+  "nextDays": [
+    { "day": "Thu 14", "tempMax": 31, "pctNoWater": 61, "pctWatered": 85 },
+    { "day": "Fri 15", "tempMax": 27, "pctNoWater": 56, "pctWatered": 80 },
+    { "day": "Sat 16", "tempMax": 28, "pctNoWater": 50, "pctWatered": 74 },
+    { "day": "Sun 17", "tempMax": 31, "pctNoWater": 45, "pctWatered": 69 },
+    { "day": "Mon 18", "tempMax": 36, "pctNoWater": 38, "pctWatered": 62 }
+  ],
+  "method": "FAO-56 soil water balance. Weather: Loiret average (AgERA5). Stages from degree-days, base 6. Irrigation as logged by the farmer; gross dose includes reel-gun losses."
+}

@@ -1,0 +1,44 @@
+{
+  "farmId": 1,
+  "asOf": "2022-07-13",
+  "greeting": "Good morning, Claire. One field needs water.",
+  "weatherNote": "Hot and dry until next Wednesday. Brief generated 07:00.",
+  "parcels": [
+    {
+      "id": 101,
+      "name": "The Valley",
+      "cropName": "Grain maize",
+      "areaHa": 5.96,
+      "stageLabel": "flowering",
+      "status": "action",
+      "badgeLabel": "Irrigate by Fri",
+      "netMm": 35,
+      "reservePct": 67,
+      "thresholdLabel": "Threshold Fri eve"
+    },
+    {
+      "id": 102,
+      "name": "The Well",
+      "cropName": "Grain maize",
+      "areaHa": 8.2,
+      "stageLabel": "grain fill",
+      "status": "ok",
+      "badgeLabel": "OK · 3 more days",
+      "netMm": null,
+      "reservePct": null,
+      "thresholdLabel": null
+    },
+    {
+      "id": 103,
+      "name": "Long Field",
+      "cropName": "Winter wheat",
+      "areaHa": 11.4,
+      "stageLabel": "harvested",
+      "status": "idle",
+      "badgeLabel": "Nothing to do",
+      "netMm": null,
+      "reservePct": null,
+      "thresholdLabel": null
+    }
+  ]
+}

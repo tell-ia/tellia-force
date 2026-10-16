@@ -44,6 +44,9 @@ export const ClientEnvSchema = z.object({
   VITE_API_URL: z.url().default("http://localhost:8000"),
   // VAPI phone number (E.164) — safe to expose, shown/used in the front.
   VITE_VAPI_PHONE_NUMBER: z.string().min(1),
+  // Data source: "mock" serves fixtures (default), "live" hits the API. Per-
+  // function overrides stay possible in the api client (chat goes live first).
+  VITE_API_MODE: z.enum(["mock", "live"]).default("mock"),
 });
 export type ClientEnv = z.infer<typeof ClientEnvSchema>;
 

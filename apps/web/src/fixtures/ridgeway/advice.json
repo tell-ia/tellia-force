@@ -1,0 +1,32 @@
+{
+  "farmId": 2,
+  "asOf": "2022-07-13",
+  "greeting": "Good morning, Marc. Nothing urgent today.",
+  "weatherNote": "Placeholder farm — real FARM-03527 data to come. No live chat yet.",
+  "parcels": [
+    {
+      "id": 201,
+      "name": "Mill Field",
+      "cropName": "Soybean",
+      "areaHa": 6.3,
+      "stageLabel": "pod fill",
+      "status": "ok",
+      "badgeLabel": "OK · check Fri",
+      "netMm": null,
+      "reservePct": null,
+      "thresholdLabel": null
+    },
+    {
+      "id": 202,
+      "name": "South Slope",
+      "cropName": "Sunflower",
+      "areaHa": 7.1,
+      "stageLabel": "flowering",
+      "status": "idle",
+      "badgeLabel": "Rain-fed",
+      "netMm": null,
+      "reservePct": null,
+      "thresholdLabel": null
+    }
+  ]
+}

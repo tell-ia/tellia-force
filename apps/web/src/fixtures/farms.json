@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "code": "FARM-02580",
+    "name": "Oakfield Farm",
+    "region": "Loiret",
+    "initials": "OF",
+    "parcelCount": 3,
+    "featured": true,
+    "live": true,
+    "farmerName": "Claire",
+    "memberId": 1
+  },
+  {
+    "id": 2,
+    "code": "FARM-03527",
+    "name": "Ridgeway Farm",
+    "region": "Gers",
+    "initials": "RF",
+    "parcelCount": 8,
+    "featured": true,
+    "live": false,
+    "farmerName": "Marc",
+    "memberId": 2
+  }
+]
