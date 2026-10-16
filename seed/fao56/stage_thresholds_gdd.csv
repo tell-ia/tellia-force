@@ -1,0 +1,35 @@
+crop_code,crop_name,t_base_c,t_max_cap_c,anchor_stage,gdd_from_sowing_min,gdd_from_sowing_max,gdd_from_sowing_default,fao56_phase_boundary,evidence_level,source,note
+MAIZ,Grain maize,6,30,Emergence,80,130,90,inside ini,published,Isagri thermal-time article: 80 degree-days base 6 (+40-50 in cold soils below 10 C); Chambres d'agriculture / Terres Inovia: ~90,Then 40-45 degree-days per new leaf (Isagri; Chambre de Bretagne 44)
+MAIZ,Grain maize,6,30,"5-6 leaves (~10 % ground cover) = end of ini",300,350,320,end of ini,derived,Derived: emergence 90 + 5 leaves x 44 degree-days,FAO ini ends at ~10 % ground cover; mapping to leaf number is ours
+MAIZ,Grain maize,6,30,"Full cover (~100 degree-days before flowering) = end of dev",700,810,760,end of dev,derived,Derived from flowering thresholds minus ~100 degree-days,FAO dev ends at effective full cover
+MAIZ,Grain maize,6,30,Female flowering - very early (index 220-240),790,835,815,inside mid (start of flowering sensitivity window),published,Isagri table and Chambre d'agriculture de Bretagne 2024 (both citing Arvalis),Silk elongation to female flowering = 200 degree-days (Isagri)
+MAIZ,Grain maize,6,30,Female flowering - early (index 240-280/290),825,870,850,inside mid,published,Isagri; Chambre de Bretagne 2024,
+MAIZ,Grain maize,6,30,Female flowering - half-early flint-dent (index 290-330),850,930,890,inside mid,published,Isagri; Chambre de Bretagne 2024,
+MAIZ,Grain maize,6,30,Female flowering - half-early dent,920,975,950,inside mid,published,Isagri,
+MAIZ,Grain maize,6,30,Female flowering - half-late (index 310-330),975,1020,1000,inside mid,published,Isagri,
+MAIZ,Grain maize,6,30,Female flowering - late and very late,1020,1070,1045,inside mid,published,Isagri,
+MAIZ,Grain maize,6,30,"End of grain-abortion risk (= end of FAO-33 'flowering' period)",,,flowering + 200 to 250,inside mid,published,Isagri: female flowering to grain abortion limit = 200-250 degree-days,Use flowering anchor + 225
+MAIZ,Grain maize,6,30,"Silage maturity 32 % DM (= start of late season)",1340,1760,flowering + 590,end of mid,published,Isagri / Chambre de Bretagne: 1340-1410 / 1390-1460 / 1460-1540 / 1530-1600 / 1600-1670 / 1690-1760 by earliness,
+MAIZ,Grain maize,6,30,Grain harvest 35 % moisture (early groups) or 32 % (late groups),1525,2050,flowering + 780,end of late,published,Isagri: 1525-1625 / 1630-1650 / 1650-1750 at 35 %; 1775-1825 / 1830-1925 / 1930-2050 at 32 %,Grain dry-down: 20 degree-days per 1 % moisture lost between 60 % and 30 % (Isagri)
+SUNF,Sunflower,6,30,Emergence,80,100,90,inside ini,published,APAD / Terres Inovia: ~90 degree-days base 6 sowing to emergence,Isagri uses base 7 for sunflower without stage values; Terres Inovia newer model uses base 4.8 (1781 / 1841 full cycle) - not comparable
+SUNF,Sunflower,6,30,Full cycle sowing to harvest - early varieties,1570,1570,1570,end of late,published,Terres Inovia (2019): 1570 early / 1640 half-early / 1700 normal,Tmax capped at 30 C (Terres Inovia convention)
+SUNF,Sunflower,6,30,Full cycle - half-early varieties,1640,1640,1640,end of late,published,Terres Inovia,
+SUNF,Sunflower,6,30,Full cycle - normal varieties,1700,1700,1700,end of late,published,Terres Inovia,
+SUNF,Sunflower,6,30,Flowering (F1) to whole-plant harvest stage,550,700,620,span of mid + late,published,Arvalis citing M. Moquet: 550-700 degree-days base 6-30 from flowering,
+SUNF,Sunflower,6,30,Start of flowering F1 (BBCH 61),900,1100,950,start of flowering window inside mid,derived,"Derived: full cycle minus 620 (1570 - 620 = 950 early; 1640 - 620 = 1020 half-early; 1700 - 620 = 1080 normal)","No published sowing-to-flowering sum found in Terres Inovia / Arvalis / MAS Seeds / APAD / Isagri sources (checked 16 Oct 2026); the value is variety dependent. Recalibrate from the farmer's observed F1 date when logged"
+SUNF,Sunflower,6,30,Star bud E1 (BBCH 51) = end of dev,650,850,720,end of dev,derived,Derived: F1 minus ~230 degree-days,Weak
+COWT,Winter wheat,0,30,Emergence,150,200,180,inside ini,published (secondary),Isagri thermal-time table (base 0): levee 180,
+COWT,Winter wheat,0,30,Start of tillering (3 leaves),500,560,538,inside ini/dev,published (secondary),Isagri: 538 (text says 150 per leaf; table 143),
+COWT,Winter wheat,0,30,End of tillering (6 leaves),950,1000,967,inside dev,published (secondary),Isagri: 967,
+COWT,Winter wheat,0,30,Ear 1 cm (BBCH 30),650,1250,1000,inside dev,published,Arvalis: 650-1250 degree-days base 0 depending on variety and sowing date (vernalisation + photoperiod + thermal sum model),Wide: variety earliness and sowing date dominate. Consistent with Isagri end of tillering ~967
+COWT,Winter wheat,0,30,Flag leaf emerged (BBCH 39),1200,1300,1255,inside dev,published (secondary),Isagri: 1255,
+COWT,Winter wheat,0,30,Booting complete (BBCH 45),1500,1580,1539,end of dev,published (secondary),Isagri: 1539,FAO dev ends at full cover; booting is a reasonable end of dev for wheat
+COWT,Winter wheat,0,30,Start of heading (BBCH 51),1550,1600,1567,start of mid,published (secondary),Isagri: 1567,Generic French references quote ~2000: Isagri's table is lower; variety dependent
+COWT,Winter wheat,0,30,Ear fully emerged (BBCH 59),1650,1700,1682,inside mid,published (secondary),Isagri: 1682,
+COWT,Winter wheat,0,30,Start of flowering (BBCH 61) = FAO-33 flowering window,1700,1780,1739,inside mid,published (secondary),Isagri: 1739; end of flowering 1768,FAO-33 Ky 0.60 window
+COWT,Winter wheat,0,30,Milky ripe (BBCH 75),1800,1850,1825,inside mid (yield formation),published (secondary),Isagri: 1825; Semences de France: heading + ~450,
+COWT,Winter wheat,0,30,Harvest maturity,2500,2800,2650,end of late,derived,Isagri table unreadable after milky stage; derived from heading + ~1000,Verify
+BARL,Winter barley,0,30,All stages,,,,,proxy,No barley-specific sums found (Isagri gives base 0 only); use wheat anchors minus ~10 % (earlier cycle),Flag as proxy
+RAPE,Winter rapeseed,0,30,Full winter cycle sowing to maturity,2200,2450,2330,end of late,published (secondary),SEMAE Pedagogie: 2330 degree-days base 0 on average (250-310 d),Isagri lists colza with base 6 but no stage values; no stage sums found. Use FAO-56 day lengths for intermediate phases
+OLIV,Olive,10,30,All stages,,,,,FAO days,FAO-56 Table 11 day lengths (30/90/60/90 from March),Perennial; thermal-time phenology not used
+HAY,Grass hay,4,30,All stages,,,,,FAO days,FAO-56 Table 11 alfalfa cutting-cycle day lengths reset at each cut,

@@ -20,6 +20,9 @@ sides use.
 - `apps/web` — **Vite + React 19 + Tailwind 4**, **Capacitor** → Android.
   Consumes `@tellia/shared` as a pnpm workspace dep. Reusable native-aware
   components in `src/components/`.
+- `seed/` — Python seed that rebuilds the whole Supabase DB (see `seed/README.md`). `--reset`
+  rewrites the shared DB for the team: never run it without asking. Schema changes go in
+  `seed/schema.sql` + `seed/migrations/`.
 
 ## Stack decisions (hackathon)
 - **No auth.** API uses the Supabase service-role key and bypasses RLS. If auth

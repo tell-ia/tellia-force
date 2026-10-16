@@ -5,6 +5,7 @@ Hackathon monorepo — mobile-first app.
 - **`apps/api`** — Deno + Hono backend on Supabase.
 - **`apps/web`** — Vite + React + Tailwind front, wrapped for Android with Capacitor.
 - **`packages/shared`** — `@tellia/shared`: Zod schemas shared by both sides (contracts, DTOs, env).
+- **`seed/`** — Python script that rebuilds the Supabase database (demo farm, real weather, FAO-56 tables). See `seed/README.md`.
 
 > 📚 Design / compute / product context lives in **Notion**:
 > https://app.notion.com/p/Hackaton-3f8a8fc1d5f3809a93edf5e7134df186?source=copy_link

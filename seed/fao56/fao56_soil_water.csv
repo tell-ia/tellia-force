@@ -1,0 +1,13 @@
+texture_class_usda,sand_pct_min,sand_pct_max,clay_pct_min,clay_pct_max,theta_fc_min,theta_fc_max,theta_fc_mid,theta_wp_min,theta_wp_max,theta_wp_mid,aw_mm_per_m_min,aw_mm_per_m_max,aw_mm_per_m_mid,ze_m,rew_mm_min,rew_mm_max,rew_mm,source,verified_2026_10_16
+Sand,85,100,0,10,0.07,0.17,0.12,0.02,0.07,0.045,50,110,75,0.10,2,7,4.5,FAO-56 Table 19,yes
+Loamy sand,70,90,0,15,0.11,0.19,0.15,0.03,0.10,0.065,60,120,85,0.10,4,8,6,FAO-56 Table 19,yes
+Sandy loam,43,85,0,20,0.18,0.28,0.23,0.06,0.16,0.11,110,150,120,0.10,6,10,8,FAO-56 Table 19,yes
+Loam,23,52,7,27,0.20,0.30,0.25,0.07,0.17,0.12,130,180,130,0.10,8,10,9,FAO-56 Table 19,yes
+Silt loam,0,50,0,27,0.22,0.36,0.29,0.09,0.21,0.15,130,190,140,0.10,8,11,9.5,FAO-56 Table 19,yes
+Silt,0,20,0,12,0.28,0.36,0.32,0.12,0.22,0.17,160,200,150,0.10,8,11,9.5,FAO-56 Table 19,yes
+Silt clay loam,0,20,27,40,0.30,0.37,0.335,0.17,0.24,0.205,130,180,130,0.10,8,11,9.5,FAO-56 Table 19,yes
+Silty clay,0,20,40,60,0.30,0.42,0.36,0.17,0.29,0.23,130,190,130,0.10,8,12,10,FAO-56 Table 19,yes
+Clay,0,45,40,100,0.32,0.40,0.36,0.20,0.24,0.22,120,200,140,0.10,8,12,10,FAO-56 Table 19,yes
+Sandy clay loam,45,80,20,35,0.20,0.30,0.25,0.10,0.18,0.14,100,120,110,0.10,6,10,8,Interpolated between Sandy loam and Clay loam (absent from Table 19),interpolated
+Clay loam,20,45,27,40,0.25,0.35,0.30,0.14,0.22,0.18,110,130,120,0.10,8,11,9,Interpolated (absent from Table 19),interpolated
+Sandy clay,45,65,35,55,0.26,0.34,0.30,0.16,0.24,0.20,100,100,100,0.10,6,10,8,Interpolated (absent from Table 19),interpolated
