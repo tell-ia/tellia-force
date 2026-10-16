@@ -46,13 +46,39 @@ export function createWeatherService(
     client?: OpenMeteoClient;
     fetch?: typeof fetch;
     now?: () => number;
+    /** Process-level cache lifetime for series and season totals. Default 10 minutes. */
+    cacheTtlMs?: number;
   },
 ): WeatherService {
   const client = deps.client ?? createOpenMeteoClient({ fetch: deps.fetch, now: deps.now });
   const { data } = deps;
+  const now = deps.now ?? Date.now;
+  const ttl = deps.cacheTtlMs ?? 10 * 60 * 1000;
+  const cache = new Map<string, { at: number; value: Promise<unknown> }>();
+
+  /** Caches the in-flight promise (so concurrent callers share it); failures are evicted. */
+  function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const t = now();
+    const hit = cache.get(key);
+    if (hit && t - hit.at < ttl) return hit.value as Promise<T>;
+    const value = load();
+    cache.set(key, { at: t, value });
+    value.catch(() => {
+      if (cache.get(key)?.value === value) cache.delete(key);
+    });
+    return value;
+  }
 
   return {
-    async getDailySeries({ from, to, gddBase }) {
+    getDailySeries: (p) => cached(`series:${p.from}:${p.to}:${p.gddBase}`, () => loadSeries(p)),
+    seasonGddTotal: (p) =>
+      cached(
+        `total:${p.sowing}:${p.harvest}:${p.gddBase}:${JSON.stringify(p.knownDays)}`,
+        () => loadTotal(p),
+      ),
+  };
+
+  async function loadSeries({ from, to, gddBase }: DailySeriesParams) {
       if (from > to) return [];
       const stored = await data.getWeather(from, to);
       const days: WeatherDayGdd[] = stored
@@ -86,9 +112,9 @@ export function createWeatherService(
         }
       }
       return days.sort((a, b) => a.date.localeCompare(b.date));
-    },
+  }
 
-    async seasonGddTotal({ sowing, harvest, gddBase, knownDays }) {
+  async function loadTotal({ sowing, harvest, gddBase, knownDays }: SeasonGddParams) {
       const known = knownDays.filter((d) => d.date >= sowing && d.date <= harvest);
       let total = known.reduce((s, d) => s + d.gdd, 0);
       const lastKnown = known.reduce((m, d) => (d.date > m ? d.date : m), addDays(sowing, -1));
@@ -101,6 +127,5 @@ export function createWeatherService(
         }
       }
       return total;
-    },
-  };
+  }
 }

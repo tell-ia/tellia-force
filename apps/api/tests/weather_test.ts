@@ -181,3 +181,61 @@ Deno.test("seasonGddTotal: missing 02-29 climatology falls back to 02-28", async
   });
   assertEquals(total, 14 * 4);
 });
+
+Deno.test("weather service cache: hit within TTL, refetch after expiry, failures not cached", async () => {
+  let reads = 0;
+  const base = fakeData();
+  const data: Data = {
+    ...base,
+    getWeather: (from, to) => {
+      reads++;
+      return base.getWeather(from, to);
+    },
+  };
+  let t = 0;
+  const svc = createWeatherService({ data, fetch: fakeFetch([]), now: () => t });
+  const p = { from: "2026-07-01", to: "2026-07-10", gddBase: 6 };
+  const a = await svc.getDailySeries(p);
+  const b = await svc.getDailySeries(p);
+  assertEquals(reads, 1);
+  assertEquals(a, b);
+  // Every input is part of the key.
+  await svc.getDailySeries({ ...p, gddBase: 10 });
+  await svc.getDailySeries({ ...p, to: "2026-07-11" });
+  assertEquals(reads, 3);
+  // Expiry (default TTL 10 minutes).
+  t = 10 * 60_000 + 1;
+  await svc.getDailySeries(p);
+  assertEquals(reads, 4);
+
+  // seasonGddTotal is cached too (climatology read once).
+  let clim = 0;
+  const data2: Data = {
+    ...base,
+    getGddClimatology: (b2) => {
+      clim++;
+      return base.getGddClimatology(b2);
+    },
+  };
+  const svc2 = createWeatherService({ data: data2, fetch: fakeFetch([]), now: () => t });
+  const sp = { sowing: "2026-04-16", harvest: "2026-10-17", gddBase: 6, knownDays: [] };
+  const t1 = await svc2.seasonGddTotal(sp);
+  assertEquals(await svc2.seasonGddTotal(sp), t1);
+  assertEquals(clim, 1);
+
+  // Failures are not cached.
+  let fail = true;
+  let attempts = 0;
+  const flaky: Data = {
+    ...base,
+    getWeather: (from, to) => {
+      attempts++;
+      return fail ? Promise.reject(new Error("db down")) : base.getWeather(from, to);
+    },
+  };
+  const svc3 = createWeatherService({ data: flaky, fetch: fakeFetch([]), now: () => t });
+  await assertRejects(() => svc3.getDailySeries(p), Error, "db down");
+  fail = false;
+  assertEquals((await svc3.getDailySeries(p)).length, 10);
+  assertEquals(attempts, 2);
+});
