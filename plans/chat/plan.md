@@ -53,7 +53,7 @@ Every number comes from a deterministic FAO-56 water balance. The AI never produ
   - The assistant creates records as `status: draft`, which is what the `operation` table defines for unconfirmed records.
   - A draft becomes `confirmed` only when the **same member** resumes the suspended `record-irrigation` run with `confirmed: true`.
   - A declined draft is deleted.
-- **UI tool contract:** the tool keys are `resolveField`, `getFarmAdvice`, `getFieldReport`, `simulateScenario`, `getWeather`, `recordIrrigation` and `confirmIrrigation`. They appear as `tool-<key>` message parts in the chat stream, so renaming one breaks the UI.
+- **UI tool contract:** the tool keys are `resolveField`, `getFarmAdvice`, `getFieldReport`, `simulateScenario`, `getWeather`, `getIrrigationHistory`, `recordIrrigation` and `confirmIrrigation`. They appear as `tool-<key>` message parts in the chat stream, so renaming one breaks the UI.
 - **Hosting:** self-hosted Deno only, not Deno Deploy or edge isolates (Mastra issue #14503). Studio and `mastra dev` are Node-only and out of scope.
 - **Language:** code, identifiers and engine "reason" sentences are in English. The agent replies in the member's language (`member.language`, `fr` for this farm).
 - **Tests:**
@@ -124,7 +124,7 @@ These failure modes are the most likely to hurt a real user. Each one is pinned 
 | `…/irrigation.service.ts` | the use cases | 7 |
 | `…/irrigation.controller.ts`, `src/main.ts` (modify) | `/irrigation` REST | 8 |
 | `apps/api/src/modules/chat/workflows/*.ts` | the four Mastra workflows | 9 |
-| `…/chat/tools.ts` | the seven tools | 10 |
+| `…/chat/tools.ts` | the eight tools | 10 |
 | `…/chat/advisor.agent.ts` | agent, instructions, memory | 11 |
 | `…/chat/member.middleware.ts`, `…/chat/mastra.ts`, `…/chat/chat.routes.ts`, `src/main.ts` (modify) | member identity, Mastra instance, `/chat` and history, workers | 12 |
 | `apps/api/tests/**` | tests; helpers: fixtures, fake fetch, scripted model, test app | all |
@@ -450,6 +450,7 @@ Report (`asOf` 07-05 unless stated):
   - `confirmIrrigation(operationId)`, which is **idempotent**: an already confirmed record stays a single record.
   - `cancelIrrigation(operationId)`, which deletes a draft.
   - `recordIrrigation({ fieldId, date, mm, memberId, source })`, which creates a confirmed record directly. REST uses it.
+  - `listIrrigations(fieldId, { from?, to? })`, which returns the **confirmed** irrigation records for a field (`IrrigationRecord[]`, newest first), optionally limited to a date range. REST `GET /irrigation/operations` and the `getIrrigationHistory` tool use it. Unknown field → 404.
   - `asOf` defaults to `today()`.
 - **The report pipeline for one field at `asOf`:**
   1. Get the season at `asOf`. If there is none, return `outside_season` without fetching weather.
@@ -475,6 +476,7 @@ Report (`asOf` 07-05 unless stated):
   - field 11 on 07-04, which has no season → 400.
 - The preview summary for 25 mm on field 10 on 07-04 is "Record 25 mm on La Vallée for 2026-07-04?".
 - A scenario with 50 mm of rain tomorrow → comparison computed, and a series of 21 days.
+- `listIrrigations(10)` returns the fixture's confirmed 2026-06-21 record of 30 mm. A draft is not listed. Field 999 → 404.
 - `resolveField`:
   - "la vallee" → 10;
   - "le puits" → 11;
@@ -572,13 +574,14 @@ Steps call the irrigation service, never the FAO maths directly.
 
 **Build**
 - `memberIdFrom(ctx)` reads `memberId` from the tool's request context and throws if it is missing.
-- `createAdvisorTools(service)` returns seven tools. Each has zod input and output schemas taken from `@tellia/shared/irrigation`, and a description written for the model.
+- `createAdvisorTools(service)` returns eight tools. Each has zod input and output schemas taken from `@tellia/shared/irrigation`, and a description written for the model.
 
   | Key (UI contract) | Tool id | Input → behavior |
   |---|---|---|
   | `resolveField` | `resolve_field` | query → matches |
   | `getFieldReport` | `get_field_report` | fieldId, optional date → service |
   | `getWeather` | `get_weather` | fieldId, optional date → service |
+  | `getIrrigationHistory` | `get_irrigation_history` | fieldId, optional from/to dates → service; returns `{ fieldId, records: IrrigationRecord[] }`. Description: "for questions like when did I last water" |
   | `getFarmAdvice` | `get_farm_advice` | optional date → `farm-advice` workflow |
   | `simulateScenario` | `simulate_scenario` | fieldId, 1 to 10 events, optional date → `simulate-scenario` workflow |
   | `recordIrrigation` | `record_irrigation` | fieldId, date, mm → starts `record-irrigation` with the caller's memberId, returns `{ runId, status: "awaiting_confirmation", summary, fieldName, date, mm }`. Description: "ask the farmer this summary as a yes/no question". |
@@ -588,7 +591,8 @@ Steps call the irrigation service, never the FAO maths directly.
 - Verified: an error thrown inside a tool reaches a direct caller, and invalid input returns `{ error: true, message }`.
 
 **Tests** (call `execute` directly, with a context holding a request context with memberId **and** the test Mastra)
-- The tool keys are exactly the seven above.
+- The tool keys are exactly the eight above.
+- `getIrrigationHistory` for field 10 → the fixture's 30 mm record on 2026-06-21.
 - `resolveField` "la vallée" → field 10 first.
 - `getFieldReport` 10 → a report. Field 999 → rejects. No memberId → rejects.
 - `getFarmAdvice` → 3 reports.
@@ -614,7 +618,7 @@ Steps call the irrigation service, never the FAO maths directly.
 
     **Rules:**
     1. Never compute or guess numbers. Copy every number from a tool result.
-    2. Which tool to use: farm advice for "what should I water", the field report for a single field, weather for weather questions.
+    2. Which tool to use: farm advice for "what should I water", the field report for a single field, weather for weather questions, and irrigation history for "when did I last water".
     3. Reply in the member's language, briefly: the decision and mm first, then the tool's reason, translated with the numbers unchanged.
     4. When the farmer reports watering:
        - resolve the field;
@@ -627,7 +631,7 @@ Steps call the irrigation service, never the FAO maths directly.
     7. Mention any warnings the tools return.
 - `createAdvisorAgent({ service, data, model })`:
   - Dynamic instructions that read `memberId` from the request context.
-  - The seven tools.
+  - The eight tools.
   - Mastra Memory with the last 20 messages and working memory in **template** mode: language, field nicknames, preferences. Template mode is the one verified on Deno.
   - The model is the `MODEL` router string (`openai/gpt-6.1-sol`), or the scripted mock in tests. `MODEL_MINI` (`openai/gpt-6-luna`) is wired through `createMastra` for light helper work.
 - **Test helper `scriptedModel(steps)`:** a `MockLanguageModelV3` from `ai/test` that serves both generate and stream. Each call consumes the next step, either some tool calls or a text. It records the prompts, and answers "OK." once the script runs out.
@@ -782,7 +786,7 @@ Do **not** smoke the record/confirm flow, because it writes to the shared DB. Le
   - the web UI cards (Marceau);
   - writing morning `alert` rows (backlog; confirm the table's owner first).
 - **Names used consistently across tasks:**
-  - the seven tool keys
+  - the eight tool keys
   - the four workflow ids
   - `ADVISOR_ID`
   - memory ids `member-{id}` and `member-{id}-{date}`
