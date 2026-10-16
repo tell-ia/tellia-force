@@ -5,6 +5,12 @@ import type { FieldReport, ParcelReport, Reserve } from "@tellia/shared";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+// No front translation: the DB already holds every language (crop_ref.name_en/fr/
+// es/it…). The backend serves crop/stage names in the right language; we just
+// render what the report returns. `cropName` falls back to a dash only if null.
+export const cropLabel = (_code: string | null | undefined, name: string | null | undefined): string =>
+  name || "—";
+
 /** Gross dose at the gun from the net dose (reel gun ≈ 0.8 efficiency). */
 export const grossFromNet = (netMm: number, efficiency = 0.8): number =>
   Math.round(netMm / efficiency);
@@ -82,7 +88,7 @@ export function fieldReportToParcelReport(
     id: r.fieldId,
     farmId: opts.farmId,
     name: r.fieldName,
-    cropName: r.cropName ?? "—",
+    cropName: cropLabel(r.cropCode, r.cropName),
     areaHa: opts.areaHa ?? 0,
     asOf: r.asOf,
     recommendation: {

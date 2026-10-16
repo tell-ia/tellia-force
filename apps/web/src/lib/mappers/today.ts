@@ -1,5 +1,5 @@
 import type { Field, FarmAdvice, FarmSummary, FarmToday, FieldReport, ParcelStatus, ParcelSummary } from "@tellia/shared";
-import { eveLabel } from "./parcel";
+import { cropLabel, eveLabel } from "./parcel";
 
 // Engine FarmAdvice (ranked FieldReport[]) → the Today screen's FarmToday.
 // Pure; tested in today.test.ts.
@@ -31,7 +31,7 @@ export function toFarmToday(advice: FarmAdvice, farm: FarmSummary, fields: Field
       return {
         id: r.fieldId,
         name: r.fieldName,
-        cropName: r.cropName ?? "—",
+        cropName: cropLabel(r.cropCode, r.cropName),
         areaHa: areaById.get(r.fieldId) ?? 0,
         stageLabel: r.stageLabel,
         status: statusOf(r),
