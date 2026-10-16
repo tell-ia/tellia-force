@@ -172,7 +172,14 @@ Deno.test("vapi: function definitions are plain JSON Schema objects", () => {
   for (const f of fns) {
     assertEquals(f.parameters.type, "object");
     const text = JSON.stringify(f.parameters);
-    assert(!text.includes("$schema") && !text.includes("additionalProperties"), f.name);
-    assert(!text.includes(String(Number.MAX_SAFE_INTEGER)), f.name);
+    for (
+      const k of ["$schema", "additionalProperties", "minimum", "exclusiveMinimum", "minItems"]
+    ) {
+      assert(!text.includes(`"${k}"`), `${f.name}: ${k}`);
+    }
   }
+  const sim = fns.find((f) => f.name === "simulate_scenario")!.parameters as {
+    properties: { events: { items: { required: string[] } } };
+  };
+  assertEquals(sim.properties.events.items.required, ["type", "date"]);
 });

@@ -163,17 +163,18 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
   }),
 };
 
-const SAFE_INT_BOUNDS = new Set([Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER]);
+/** JSON Schema keywords sent to VAPI. Bounds stay out: the webhook re-validates with zod. */
+const KEEP = new Set(["type", "properties", "items", "required", "description", "enum", "pattern"]);
 
-/** JSON Schema for VAPI: no `$schema`, no `additionalProperties`, no safe-integer bounds. */
-function cleanSchema(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(cleanSchema);
-  if (!node || typeof node !== "object") return node;
+function cleanSchema(node: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node)) {
-    if (k === "$schema" || k === "additionalProperties") continue;
-    if ((k === "minimum" || k === "maximum") && SAFE_INT_BOUNDS.has(v as number)) continue;
-    out[k] = cleanSchema(v);
+    if (!KEEP.has(k)) continue;
+    if (k === "properties") {
+      const props = Object.entries(v as Record<string, Record<string, unknown>>);
+      out[k] = Object.fromEntries(props.map(([name, schema]) => [name, cleanSchema(schema)]));
+    } else if (k === "items") out[k] = cleanSchema(v as Record<string, unknown>);
+    else out[k] = v;
   }
   return out;
 }
@@ -183,9 +184,6 @@ export function vapiFunctions() {
   return Object.entries(VAPI_TOOLS).map(([name, t]) => ({
     name,
     description: t.description,
-    parameters: cleanSchema(z.toJSONSchema(t.parameters, { io: "input" })) as Record<
-      string,
-      unknown
-    >,
+    parameters: cleanSchema(z.toJSONSchema(t.parameters, { io: "input" })),
   }));
 }
