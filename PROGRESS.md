@@ -17,9 +17,11 @@
 - 2026-10-17 SMS from a French phone to the US number: Jean replied, but French carriers rewrote the
   sender (Twilio FR: international long code sender not preserved). Switched VAPI_PHONE_NUMBER to
   +33757599216 ("French Ag", already in VAPI), linked to Jean, SMS on. US number still linked to Jean.
+- 2026-10-17 Calls + SMS work on the French number (user). PR #1 to main:
+  https://github.com/tell-ia/tellia-force/pull/1
 
 ## In progress
-- SMS test on the French number +33 7 57 59 92 16 (user).
+- Follow-ups: resolve_field fallback ("corn"), setup guard against taking over another dev's URL.
 
 ## Key decisions
 - English only (user choice).
