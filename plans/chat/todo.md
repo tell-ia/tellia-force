@@ -1,39 +1,40 @@
-# Chat backend: TODO
+# Chat & irrigation advisor: TODO
 
-Detailed steps are in [plan.md](plan.md). Tick items here as tasks land, and log details in [progress.md](progress.md).
+The detailed behavior is in [plan.md](plan.md), and the log is in [progress.md](progress.md).
 
 ## Setup / accounts
-- [ ] LLM API key (Anthropic for the default `anthropic/claude-haiku-5-5`, or set `MODEL` for another provider) → `backend/.env`
+- [x] OpenAI key (`apps/api/.env` → `OPENAI_API_KEY`), used by the default model `openai/gpt-5-mini`
+- [x] Supabase tables and data exist (read on 2026-10-16)
 - [x] Open-Meteo needs no account
 - [x] Mastra needs no account (OSS, local LibSQL)
 
 ## MVP (plan tasks)
-- [ ] 1. Scaffold `backend/` (deno.json pinned, config, date utils)
-- [ ] 2. FAO-56 crop and soil tables, Kc curve
-- [ ] 3. Water balance, parcel report (decision + one-sentence reason), ranking
-- [ ] 4. Scenario events: drought, flood, frost, hail, rain, irrigation
-- [ ] 5. Open-Meteo provider with cache
-- [ ] 6. Seed farmers/parcels, `resolveParcel`, irrigation record store (LibSQL)
-- [ ] 7. Advisor services (report, farm advice, simulate, weather, record)
-- [ ] 8. Mastra workflows: farm-advice, simulate-scenario, record-irrigation (suspend → confirm → save), morning-warmup (05:00)
-- [ ] 9. Mastra tools: 7 keys are the UI contract, including `confirmIrrigation`
-- [ ] 10. Advisor agent (instructions forbid invented numbers, memory per farmer, two-turn confirmation)
-- [ ] 11. HTTP: `POST /chat` (v7 stream), `GET /chat/history`, `/v1/*` REST, bearer auth, CORS for Capacitor, schedule, `main.ts`
-- [ ] 12. Real-model smoke + latency numbers + `backend/README.md` API contract
+- [ ] 1. Setup: deno.json (Mastra deps, permissions), env (`MODEL`, `MASTRA_DB_URL`, `DEMO_DATE`, `TIMEZONE`), shared `irrigation.ts` contracts, `FarmData` interface, utils
+- [ ] 2. Engine: Saxton–Rawls soil water, root depth and p, Kc from `crop_stage` by GDD fraction (falling back to `crop_ref`)
+- [ ] 3. Engine: water balance, field report (decision and a one-sentence reason), ranking
+- [ ] 4. Engine: scenario events (drought, flood, frost, hail, rain, irrigation) and comparison
+- [ ] 5. Data: Supabase `FarmData` (paginated reads, irrigation writes), the in-memory twin, the fixture
+- [ ] 6. Weather: DB history plus Open-Meteo gap and forecast, GDD, climatology, cache
+- [ ] 7. Irrigation service: report, advice, simulate, weather, preview, draft, confirm, cancel, record
+- [ ] 8. REST `/irrigation/*` (the fast path for VAPI)
+- [ ] 9. Mastra workflows: farm-advice, simulate-scenario, record-irrigation (suspend/resume), morning-warmup (05:00)
+- [ ] 10. Mastra tools: the 7 keys that make up the UI contract
+- [ ] 11. Advisor agent: no invented numbers, memory per member, two-turn confirmation
+- [ ] 12. Chat module: `POST /chat` (v7), `GET /chat/history`, `x-member-id` middleware, `startWorkers`
+- [ ] 13. Docs (module README, api CLAUDE.md), smoke script, latency
 
 ## Hand-offs to teammates
-- [ ] Share `backend/README.md` chat contract with UI (Marceau): `useChat` config + tool card table
-- [ ] Share `/v1/advice` + `/v1/irrigations` with the VAPI owner (voice path without an LLM)
-- [ ] Ask the Data teammate to review `src/domain/fao56.ts` values and the hackathon data format
+- [ ] UI (Marceau): the chat contract and tool-card table in `apps/api/src/modules/chat/README.md`, plus typed client methods in `apps/web/src/lib/api.ts`
+- [ ] VAPI owner: `GET /irrigation/advice` and `POST /irrigation/operations` (voice path with no LLM)
+- [ ] Data teammate: review the root depth and p table and the GDD/stage method
+- [ ] Human-run check: the record → confirm flow against the real DB (agents must not write to Supabase)
 
 ## Backlog (after MVP, ranked by demo value)
-- [ ] `mm-grounded` custom scorer: check that every "N mm" in the reply matches tool output (research 03 §4). Inspect `run.output` shape first
-- [ ] Mastra Studio for the demo: a small Node entry (`npx mastra dev`) importing the same agent/tools
-- [ ] VAPI voice confirmation: let the VAPI owner start and resume `record-irrigation` (e.g. `/v1/irrigations/start` and `/v1/irrigations/:runId/confirm`)
-- [ ] Structured output `{ parcelId, decision, mm, reason }` for a typed final answer
-- [ ] Guardrails on chat only: PromptInjectionDetector, PIIDetector (they cost latency, so keep them off voice)
-- [ ] Tracing: `MastraStorageExporter` (no account), optional Langfuse link for judges
-- [ ] Hackathon dataset adapter replacing `data/seed.json` (regional soil, 1,151 EU regions)
-- [ ] Water-restriction quota: share a limited volume across parcels by urgency
-- [ ] Water and pumping saved vs fixed-schedule irrigation (the "proof" metric in the product plan)
-- [ ] Deploy (Railway/Fly/VPS; not Deno Deploy, issue #14503) with Turso or a persisted volume
+- [ ] Morning `alert` rows ("actions of the day") from `morning-warmup`, once the table's owner agrees
+- [ ] `mm-grounded` custom scorer: every "N mm" in a reply must match the tool output (research 03 §4)
+- [ ] Mastra Studio for the demo: a Node entry point using the same agent and workflows
+- [ ] VAPI voice confirmation: REST start/resume for `record-irrigation`
+- [ ] Log WhatsApp and call messages to the `message` table
+- [ ] Structured output for the final answer; guardrails on chat only; tracing (`MastraStorageExporter`, optional Langfuse)
+- [ ] Water-restriction quota across fields; water and pumping saved compared with a fixed schedule
+- [ ] Move Mastra storage to Supabase Postgres if needed

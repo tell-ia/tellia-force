@@ -1,74 +1,85 @@
-# Chat backend: progress log
+# Chat & irrigation advisor: progress log
 
 Plan: [plan.md](plan.md) · Checklist: [todo.md](todo.md) · Research: [../../research/mastra/README.md](../../research/mastra/README.md)
 
-Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code lives in `backend/`.
+Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` (modules `irrigation` and `chat`), and contracts go in `packages/shared/src/irrigation.ts`.
 
 ## Status
 
 | # | Task | Status | Date | Notes |
 |---|---|---|---|---|
-| 0 | Research + verification spikes | ✅ done | 2026-10-16 | see "Verified before planning" |
-| 1 | Scaffold Deno backend (config, utils) | ⬜ todo | | |
-| 2 | FAO-56 tables + Kc curve | ⬜ todo | | |
-| 3 | Water balance, report, ranking | ⬜ todo | | |
-| 4 | Scenario events (drought/flood/frost/hail) | ⬜ todo | | |
-| 5 | Open-Meteo provider + cache | ⬜ todo | | |
-| 6 | Farm data: seed, resolver, irrigation store | ⬜ todo | | |
-| 7 | Advisor services | ⬜ todo | | |
-| 8 | Mastra workflows: farm-advice, simulate-scenario, record-irrigation (suspend/resume), morning-warmup | ⬜ todo | | |
-| 9 | Mastra tools (7, direct or workflow-backed) | ⬜ todo | | |
-| 10 | Advisor agent | ⬜ todo | | |
-| 11 | HTTP app: /chat, auth, CORS, history, /v1, schedule, main | ⬜ todo | | |
-| 12 | Real-model smoke + API contract README | ⬜ todo | | |
+| 0 | Research, verification spikes, real-data check | ✅ done | 2026-10-16 | see below |
+| 1 | Setup, shared contracts, FarmData interface, utils | ⬜ todo | | |
+| 2 | Engine: soil water (Saxton–Rawls), crop Kc, season fraction | ⬜ todo | | |
+| 3 | Engine: water balance, field report, ranking | ⬜ todo | | |
+| 4 | Engine: scenario events + comparison | ⬜ todo | | |
+| 5 | Data: Supabase FarmData + in-memory twin + fixture | ⬜ todo | | |
+| 6 | Weather service: DB + Open-Meteo gap/forecast, GDD, climatology | ⬜ todo | | |
+| 7 | Irrigation service (use cases) | ⬜ todo | | |
+| 8 | REST `/irrigation` | ⬜ todo | | |
+| 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ⬜ todo | | |
+| 10 | Mastra tools (7) | ⬜ todo | | |
+| 11 | Advisor agent | ⬜ todo | | |
+| 12 | Chat module: `/chat`, member identity, history, workers | ⬜ todo | | |
+| 13 | Docs, smoke test, latency | ⬜ todo | | |
 
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⛔ blocked
 
 ## Verified before planning (2026-10-16)
 
-All on Deno 2.7.7 with `@mastra/core` 1.78.0, using mock models. Spike code is in the session scratchpad and is not committed.
-
-- **Runtime:** Agent, tool, Memory on a LibSQL file, workflow, and `@mastra/hono` on `Deno.serve` all work. `mastra.startWorkers()` registers the cron schedule (research file 01).
-- **Chat endpoint:** `chatRoute({ path, version: 'v7' })` from `@mastra/ai-sdk` 1.11.1 streams SSE with `tool-input-available` and `tool-output-available` parts. It is mounted at the path given, with **no** `/api` prefix.
-- **Middleware:** Mastra `server.middleware` can return 401, and `c.get('requestContext')` is available inside it. Setting `MASTRA_RESOURCE_ID_KEY` and `MASTRA_THREAD_ID_KEY` there **overrides** any `memory` the client puts in the body: a fake `ATTACKER` resource was ignored.
-- **Memory:** sending only the last user message per request keeps a clean thread (2 requests gave 4 messages). `memory.recall({ threadId, resourceId })` plus `toAISdkMessages(msgs, { version: 'v7' })` returns UI messages with `tool-<toolKey>` parts. `memory.listThreads({ filter: { resourceId } })` works.
-- **Tools:** an error thrown in `execute` propagates to a direct caller. Invalid input returns `{ error: true, message }` instead.
-- **Models:** the Mastra model router knows `anthropic/claude-haiku-5-5`, `anthropic/claude-sonnet-5-5`, `openai/gpt-5-mini` and others.
-- **Workflows (second spike):**
-  - start → `suspended`, with `runId` and `suspendPayload` keyed by step;
-  - a fresh `createRun({ runId }).resume({ step, resumeData, requestContext })` → success, and later steps see the resuming request context;
-  - `.foreach` returns an array, and `.parallel` returns an object keyed by step id;
-  - a tool's `execute` context includes `mastra`, and a tool can start a workflow.
-- **Open-Meteo:** the forecast endpoint rejects dates older than about 3 months. The **historical-forecast** endpoint serves 2021 to today+14 days from one URL, and `timezone=auto` works. No key is needed.
+The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their code is in the session scratchpad and is not committed.
+- **Mastra runtime:** Agent, tool, Memory (LibSQL file), workflow and `@mastra/hono` on `Deno.serve` all work. `startWorkers()` registers the cron schedule.
+- **Chat route:** `chatRoute({ path, version: "v7" })` streams `tool-input-available` and `tool-output-available` parts. It is mounted at the given path, with **no** `/api` prefix.
+- **Middleware:** Mastra `server.middleware` can short-circuit with 401 or 400, and has `c.get("requestContext")`.
+- **Memory ids:** the reserved `MASTRA_RESOURCE_ID_KEY` and `MASTRA_THREAD_ID_KEY` override any `memory` sent in the body; a fake "ATTACKER" resource was ignored.
+- **History:** sending only the newest message keeps a clean thread. `memory.recall` plus `toAISdkMessages(msgs, { version: "v7" })` gives UI messages with `tool-<key>` parts. `memory.listThreads({ filter: { resourceId } })` works.
+- **Tools:** an error thrown in `execute` propagates, and invalid input returns `{ error: true, message }`. The tool context has `mastra`.
+- **Workflows:**
+  - Start returns `suspended` with a `runId` and a `suspendPayload` keyed by step.
+  - A fresh `createRun({ runId }).resume({ step, resumeData, requestContext })` succeeds, and later steps see the resuming context.
+  - `.foreach` returns an array; `.parallel` returns an object keyed by step.
+- **Model router:** knows `openai/gpt-5-mini`, `anthropic/claude-haiku-5-5` and others. The repo has `OPENAI_API_KEY`.
+- **Open-Meteo:** the forecast endpoint rejects dates older than about 3 months. The historical-forecast endpoint serves 2021 to today + 14 days, with `timezone=auto`.
+- **Supabase data**, read only:
+  - 1 farm (FRB06, 48.05 N, 1.79 E) with 4 `fr` members; member 1 is the main contact.
+  - 11 fields. Two are irrigable: 10 La Vallée, with MAIZ sown 2026-04-16 and harvested 2026-10-17, and 11 Le Puits, with COWT sown 2026-10-09.
+  - `crop_stage` holds Kc per BBCH point against the GDD season fraction.
+  - `weather_daily` runs from 2015 to 2026-10-13.
+  - `operation` has 39 irrigation rows. Its `status` values are confirmed and planned, its `source` is import, and its `origin` is dataset_adjusted or generated. The `alert` and `message` tables are empty.
+- **Saxton–Rawls reference:**
+  - field 10: θFC 0.2071, θWP 0.0868, TAW 144.3 mm at 1.2 m
+  - field 11: θFC 0.3188, θWP 0.1750, TAW 215.8 mm at 1.5 m
 
 ## Decisions
 
 | Date | Decision | Why |
 |---|---|---|
-| 2026-10-16 | Run Mastra as a library inside Deno (`@mastra/hono` + `Deno.serve`), with no Studio in the Deno process | Studio and `mastra dev` are Node-only (issue #5681); everything else works on Deno |
-| 2026-10-16 | The deterministic FAO-56 engine sits behind services shared by the tools and `/v1` REST | The AI never computes numbers. The VAPI teammate calls `/v1/advice` directly to stay under 2 s |
-| 2026-10-16 | Use Mastra workflows for the multi-step use cases: farm-advice (`.foreach`), simulate-scenario, record-irrigation (suspend/resume confirmation) and morning-warmup (cron) | User's choice ("we can use workflows"). Gives durable confirmations that also work for voice, plus step traces. `/v1` REST stays a direct fast path for VAPI |
-| 2026-10-16 | Confirm irrigation records with a suspended workflow run plus a `confirmIrrigation` tool, not with `requireApproval` | Suspend/resume was verified on Deno; the tool-approval round trip through `chatRoute` v7 was not |
-| 2026-10-16 | Run the build with the Workflow tool, using Sonnet agents | User's choice; earlier instruction was to use only Sonnet for sub-agents |
-| 2026-10-16 | Write the plan as prose and test cases, with no code | User's instruction |
-| 2026-10-16 | Identity comes from a Bearer demo token in the seed. Memory resource = farmer id; thread = `farmerId-YYYY-MM-DD` | Simple for the hackathon. The reserved request-context keys prevent cross-farmer memory access |
-| 2026-10-16 | Default model is `anthropic/claude-haiku-5-5`, configurable with `MODEL` | Fast for chat; any router model string works |
-| 2026-10-16 | `DEMO_DATE=2026-07-05` | Today (October) is outside the seed crops' season; the timeline can still move with `date` |
+| 2026-10-16 | Build inside `apps/api` as the modules `irrigation` and `chat`, with contracts in `@tellia/shared` | The team scaffolded a monorepo with these conventions |
+| 2026-10-16 | Data comes from Supabase behind a `FarmData` interface, with an in-memory twin for tests | Real farm, crop, stage, soil, weather and irrigation data already exists; tests must not touch the shared DB |
+| 2026-10-16 | Identity is `x-member-id`, defaulting to the main contact. Memory is `member-{id}`, thread `member-{id}-{date}` | Team decision: no auth. The reserved keys still keep members' memory apart |
+| 2026-10-16 | Kc comes from `crop_stage` by GDD season fraction, using climatology for future days, with the `crop_ref` 4-segment curve as fallback | It matches the DB's documented stage model and the plan's "Degree day" item |
+| 2026-10-16 | Soil water comes from Saxton–Rawls applied to `soil_analysis` texture and OM | Uses the real per-field data; FAO Table 19 lacks some textures, such as clay loam |
+| 2026-10-16 | The assistant writes `operation` rows as `status: draft`, and confirms them by resuming a suspended `record-irrigation` workflow. Only confirmed rows count | The `operation` table defines "draft" this way; suspend/resume is verified |
+| 2026-10-16 | Use Mastra workflows: farm-advice, simulate-scenario, record-irrigation and morning-warmup | User's choice; durable confirmations and step traces |
+| 2026-10-16 | The REST `/irrigation` module is the fast path for VAPI, with no LLM and no workflow | The 2 s call budget |
+| 2026-10-16 | Default model is `openai/gpt-5-mini` (env `MODEL`) | The repo already has an OpenAI key |
+| 2026-10-16 | `DEMO_DATE=2026-07-05` | Maize mid-season, with real weather and irrigations; today is near harvest |
+| 2026-10-16 | Build with the Workflow tool using Sonnet agents, on branch `feat/chat-backend` (root CLAUDE.md says to work on main; we merge when it's done) | User's choice; earlier instruction to use only Sonnet for sub-agents |
+| 2026-10-16 | The plan contains no code | User's instruction |
 
 ## Open questions
 
-- Who owns the FAO-56 engine: is it this part or the Data teammate's? The plan includes it in Tasks 2 to 4, behind a clean interface. If Data owns it, those tasks become integration work.
-- Where does the hackathon dataset (soil and regional values) live, and in what format? The seed JSON stands in for it for now.
-- Crop and soil values in `fao56.ts` come from FAO-56 tables; the Data teammate should cross-check them.
-- Which LLM key do we have (Anthropic or OpenAI)?
+- Is there a compute spec in Notion for irrigation (the link is in the root CLAUDE.md)? Our method may need to line up with it.
+- Who owns the `alert` table ("3 actions of the day")? The morning job could write irrigation alerts once that's agreed.
+- Is Mastra memory and workflow storage in a local LibSQL file fine for the demo, or should it move to Supabase Postgres (`@mastra/pg`, untested on Deno)?
 
 ## Latency
 
-Filled in by Task 12 from `deno task smoke`. Target: first text under 2 s for chat. Voice goes through `/v1` and has no LLM in the loop.
+Filled in by Task 13. The target is first text under 2 s for chat; voice uses `/irrigation`, which has no LLM.
 
 | Date | Question | First byte | First text | Total | Model |
 |---|---|---|---|---|---|
 
 ## Log
 
-- 2026-10-16: Research done (`research/mastra/`). Spikes verified chatRoute v7, auth middleware, memory override, history conversion and the Open-Meteo range. Plan written.
+- 2026-10-16: research and spikes done; the plan was adapted to the monorepo and the real Supabase data.
