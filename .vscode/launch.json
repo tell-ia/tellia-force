@@ -47,7 +47,15 @@
   ],
   "compounds": [
     {
-      "name": "Full stack: API + Android web (debug)",
+      // Launch the way the setup was verified: start the API (debug) AND build +
+      // run the native Android app on a device/emulator, in one click.
+      "name": "Android app + API (debug)",
+      "configurations": ["API: Deno (debug)", "Android app: build + run on device"],
+      "stopAll": true
+    },
+    {
+      // API + debug the app's web code in Chrome (fast inner loop, breakpoints).
+      "name": "Full stack: API + web code (debug)",
       "configurations": ["API: Deno (debug)", "Android app: web code (Chrome, debug)"],
       "stopAll": true
     }

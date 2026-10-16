@@ -31,13 +31,15 @@ cd apps/api && deno task dev
 cd apps/web && pnpm dev
 ```
 
-## Android
+## Android (TL;DR)
 ```bash
-cd apps/web
-pnpm build
-npx cap add android      # first time only
-pnpm cap:sync
-pnpm cap:open            # opens Android Studio
+# 0. API running: cd apps/api && deno task start
+# 1. Set apps/web/.env  ->  emulator: http://10.0.2.2:8000 | real phone: http://<Mac-LAN-IP>:8000
+cd apps/web && pnpm build && pnpm cap:sync && pnpm cap:run   # pick device/emulator
 ```
+- `android/` is committed — networking (cleartext/mixed-content) works out of the box.
+- VS Code: run **"Android app + API (debug)"** (one click, starts API too).
+- Debug the WebView on device: `chrome://inspect`.
+- Prod (https API): drop `cleartext`/`allowMixedContent` in `capacitor.config.ts`.
 
 See `CLAUDE.md` (root + each package) for conventions. Plans live in `plans/`.
