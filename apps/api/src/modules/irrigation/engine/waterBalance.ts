@@ -34,6 +34,12 @@ export interface WaterBalanceInput {
   startDepletion?: number;
   /** Share of the pumped water that reaches the roots. Defaults to 1. */
   efficiency?: number;
+  /**
+   * Dry region: at sowing the whole soil profile is `share` empty, down to the full root depth
+   * (`tawMax` = TAW at Zr max). The roots bring that deficit with them as they grow, and water
+   * draining below the roots refills it first. Unset = the soil below the roots is full.
+   */
+  dryStart?: { share: number; tawMax: number };
 }
 
 /**
@@ -50,11 +56,23 @@ export function runWaterBalance(input: WaterBalanceInput): DayBalance[] {
   const days = [...input.days].sort((a, b) => a.date.localeCompare(b.date));
 
   const firstTaw = days.find((d) => d.kc !== null)?.taw ?? input.taw;
-  let prev = Math.min(Math.max(input.startDepletion ?? 0, 0), firstTaw);
+  const dry = input.dryStart;
+  const start = input.startDepletion ?? (dry ? dry.share * firstTaw : 0);
+  let prev = Math.min(Math.max(start, 0), firstTaw);
+  // Deficit of the soil the roots have not reached yet (0 when it is full).
+  let below = dry ? dry.share * Math.max(0, dry.tawMax - firstTaw) : 0;
+  let reachedTaw = firstTaw;
   const out: DayBalance[] = [];
   for (const d of days) {
     if (d.kc === null) continue;
     const taw = d.taw ?? input.taw;
+    if (dry && below > 0 && taw > reachedTaw) {
+      // Roots grew into new soil: its share of the deep deficit joins the root zone.
+      const moved = below * Math.min(1, (taw - reachedTaw) / (dry.tawMax - reachedTaw));
+      below -= moved;
+      prev += moved;
+    }
+    reachedTaw = Math.max(reachedTaw, taw);
     // FAO-56 eq. 5 on the crop's ETc (before stress), then the sensitive-window cap.
     const base = d.pTable != null ? adjustP(d.pTable, d.kc * d.et0) : input.p;
     const p = Math.min(base, d.pCap ?? Infinity);
@@ -64,6 +82,11 @@ export function runWaterBalance(input: WaterBalanceInput): DayBalance[] {
     const irrigation = (irrByDate.get(d.date) ?? 0) * efficiency;
     const balance = prev - d.rain - irrigation + etc;
     const depletion = Math.min(Math.max(balance, 0), taw);
+    // Water below the roots refills the deep soil first; only the rest is lost.
+    let drainage = Math.max(0, -balance);
+    const refill = Math.min(drainage, below);
+    below -= refill;
+    drainage -= refill;
     out.push({
       date: d.date,
       et0: d.et0,
@@ -72,7 +95,7 @@ export function runWaterBalance(input: WaterBalanceInput): DayBalance[] {
       etc,
       rain: d.rain,
       irrigation,
-      drainage: Math.max(0, -balance),
+      drainage,
       depletion,
       taw,
       p,

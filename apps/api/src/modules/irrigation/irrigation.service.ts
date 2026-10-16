@@ -445,14 +445,18 @@ export function createIrrigationService(
     const morningDay = cropDay(params, phases, morning);
     const flowered = phases.flowering !== null && morning >= phases.flowering;
 
-    // Start: soil full at sowing, except in a dry region.
+    // Start: soil full at sowing, except in a dry region where the whole profile (down to the
+    // full root depth) starts partly empty; growing roots bring that deficit with them.
     const aridity = farm.aridityIndex ?? null;
-    let startDepletion = 0;
+    let dryStart: { share: number; tawMax: number } | null = null;
     let startNote = "Season start: soil full at sowing (region aridity unknown).";
     if (aridity !== null && aridity < DRY_ARIDITY) {
-      startDepletion = DRY_START_SHARE * (days[0]?.taw ?? 0);
-      startNote = `Season start: ${DRY_START_SHARE * 100} % of the soil reserve empty ` +
-        `(dry region, aridity ${round2(aridity)}).`;
+      dryStart = {
+        share: DRY_START_SHARE,
+        tawMax: totalAvailableWater(sw.thetaFC, sw.thetaWP, params.zrMaxM),
+      };
+      startNote = `Season start: ${DRY_START_SHARE * 100} % of the soil reserve empty, down to ` +
+        `the full root depth (dry region, aridity ${round2(aridity)}).`;
     } else if (aridity !== null) {
       startNote = "Season start: soil full at sowing (wet region).";
     }
@@ -509,7 +513,7 @@ export function createIrrigationService(
           }
           : null,
         phase: morningDay.phase,
-        startDepletion,
+        dryStart,
       },
     };
   }

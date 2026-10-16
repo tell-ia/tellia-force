@@ -32,8 +32,10 @@ export interface ReportInput {
   system?: ReportSystem | null;
   /** Crop phase on `asOf`; late or mature stops irrigating. */
   phase?: Phase | null;
-  /** Depletion at sowing, mm. Defaults to 0 (field capacity). */
+  /** Depletion at sowing, mm. Defaults to 0 (field capacity), or the dry-start share. */
   startDepletion?: number;
+  /** Dry region: the whole profile starts this share empty (see runWaterBalance). */
+  dryStart?: { share: number; tawMax: number } | null;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -50,6 +52,7 @@ export function reportBalance(input: ReportInput): DayBalance[] {
     p: input.p,
     startDepletion: input.startDepletion,
     efficiency: input.system?.efficiency ?? 1,
+    dryStart: input.dryStart ?? undefined,
   });
 }
 
@@ -61,7 +64,9 @@ export function buildFieldReport(input: ReportInput): FieldReport {
 
   // Morning depletion: end of the last balanced day before asOf (start depletion at sowing).
   const before = series.filter((d) => d.date < asOf);
-  const start = Math.min(Math.max(input.startDepletion ?? 0, 0), series[0]?.taw ?? input.taw);
+  const firstTaw = series[0]?.taw ?? input.taw;
+  const startMm = input.startDepletion ?? (input.dryStart ? input.dryStart.share * firstTaw : 0);
+  const start = Math.min(Math.max(startMm, 0), firstTaw);
   const depletion = before.length ? before[before.length - 1].depletion : start;
   // TAW and RAW of today: roots and p change every day.
   const todayBalance = series.find((d) => d.date === asOf);

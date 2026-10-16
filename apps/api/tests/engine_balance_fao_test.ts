@@ -121,3 +121,44 @@ Deno.test("balance: Ks uses the day's RAW", () => {
   assertAlmostEquals(r[0].ks, 0.5, 1e-9); // (100 − 75) / (100 − 50)
   assertAlmostEquals(r[0].depletion, 77.5, 1e-9);
 });
+
+// ---- dry region: the whole profile starts partly empty ----
+
+Deno.test("balance: dry start — growing roots bring the deep deficit with them", () => {
+  // Profile 30 % empty down to TAW max 144. Roots: TAW 24 → 84 → 144, ETc 5/day, no rain.
+  const r = runWaterBalance({
+    days: days(3, { 0: { taw: 24 }, 1: { taw: 84 }, 2: { taw: 144 } }),
+    irrigations: [],
+    taw: 100,
+    p: 0.6,
+    dryStart: { share: 0.3, tawMax: 144 },
+  });
+  // start 7.2 (30 % of 24); day 2 reaches half of the deep soil (+18); day 3 the rest (+18)
+  assertEquals(r.map((d) => Math.round(d.depletion * 10) / 10), [12.2, 35.2, 58.2]);
+  // with full roots: 30 % of 144 (43.2) plus 3 days of ETc (15)
+});
+
+Deno.test("balance: dry start — drainage refills the deep soil before it is lost", () => {
+  const r = runWaterBalance({
+    days: days(2, { 0: { taw: 24, rain: 50 }, 1: { taw: 144 } }),
+    irrigations: [],
+    taw: 100,
+    p: 0.6,
+    dryStart: { share: 0.3, tawMax: 144 },
+  });
+  // day 1: 7.2 − 50 + 5 = −37.8 → 36 refill the deep deficit, 1.8 really drains
+  assertAlmostEquals(r[0].drainage, 1.8, 1e-9);
+  assertEquals(r[0].depletion, 0);
+  // day 2: the deep soil is full again, so growing roots bring no deficit
+  assertEquals(r[1].depletion, 5);
+});
+
+Deno.test("balance: no dry start → deep soil counted full (wet region, unchanged)", () => {
+  const r = runWaterBalance({
+    days: days(2, { 0: { taw: 24 }, 1: { taw: 144 } }),
+    irrigations: [],
+    taw: 100,
+    p: 0.6,
+  });
+  assertEquals(r.map((d) => d.depletion), [5, 10]);
+});

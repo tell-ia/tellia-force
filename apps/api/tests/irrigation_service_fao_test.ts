@@ -100,3 +100,15 @@ Deno.test("fao service: crop phase method and Open-Meteo days are listed", async
   assert(r.assumptions!.includes("Crop stages: Flowering published (Arvalis)."));
   assert(r.assumptions!.includes("Weather after 2022-07-10 from Open-Meteo."));
 });
+
+Deno.test("fao service: the dry-start deficit follows the roots down (2022 season)", async () => {
+  const wet = await service().getFieldReport(10, "2022-07-13");
+  const dry = await service((f) => (f.farm.aridityIndex = 0.42)).getFieldReport(10, "2022-07-13");
+  // With full roots the dry profile is still about 20 mm drier (30 % of the deep soil,
+  // minus what the June rains refilled): water now, not by the 15th.
+  assert(dry.depletionMm >= wet.depletionMm + 15, `${dry.depletionMm} vs ${wet.depletionMm}`);
+  assertEquals(dry.decision, "irrigate_today");
+  // The June rains refilled the deep soil instead of draining away.
+  assertEquals(dry.season!.drainageMm, 0);
+  assert(dry.assumptions!.some((a) => a.includes("down to the full root depth")));
+});
