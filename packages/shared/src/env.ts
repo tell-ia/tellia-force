@@ -6,6 +6,10 @@ import { IsoDateSchema } from "./irrigation";
 // Keep server-only secrets (service role key) OUT of the client schema.
 // ---------------------------------------------------------------------------
 
+/** Optional var: empty string counts as unset. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
+
 /** apps/api (Deno) — read from Deno.env. Uses the new Supabase API keys. */
 export const ServerEnvSchema = z.object({
   PORT: z.coerce.number().int().default(8000),
@@ -16,6 +20,12 @@ export const ServerEnvSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   // VAPI phone number (E.164) — used server-side for calls/telephony.
   VAPI_PHONE_NUMBER: z.string().min(1),
+  // VAPI private API key — server-only, used by `deno task vapi:setup`.
+  VAPI_PRIVATE_KEY: optional(z.string().min(1)),
+  // Shared secret VAPI sends as `x-vapi-secret` on tool calls. Unset = /vapi/tools refuses all.
+  VAPI_WEBHOOK_SECRET: optional(z.string().min(16)),
+  // Public base URL of this API (the tunnel), where VAPI sends tool calls. Setup script only.
+  VAPI_SERVER_URL: optional(z.url()),
   // comma-separated allowed origins for CORS; "*" in dev.
   CORS_ORIGINS: z.string().default("*"),
   // Chat / irrigation advisor (Mastra). Model router id; uses OPENAI_API_KEY.
@@ -44,6 +54,8 @@ export const ClientEnvSchema = z.object({
   VITE_API_URL: z.url().default("http://localhost:8000"),
   // VAPI phone number (E.164) — safe to expose, shown/used in the front.
   VITE_VAPI_PHONE_NUMBER: z.string().min(1),
+  // VAPI public key — safe to expose, for in-browser voice calls (Web SDK).
+  VITE_VAPI_PUBLIC_KEY: optional(z.string().min(1)),
 });
 export type ClientEnv = z.infer<typeof ClientEnvSchema>;
 
