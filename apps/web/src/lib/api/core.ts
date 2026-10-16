@@ -7,6 +7,7 @@ import { clientEnv } from "../../env";
 
 export type ApiMode = "mock" | "live";
 export const API_MODE: ApiMode = clientEnv.VITE_API_MODE;
+export const API_URL = clientEnv.VITE_API_URL;
 
 /** Fake latency so mocked screens exercise their loading states. */
 export const mockDelay = (ms = 320): Promise<void> =>
@@ -18,11 +19,15 @@ let memberId: number | null = null;
 export const setMemberId = (id: number | null): void => {
   memberId = id;
 };
+export const getMemberId = (): number | null => memberId;
+
+/** `x-member-id` header for the selected farm member (chat + irrigation scope). */
+export function memberHeaders(): Record<string, string> {
+  return memberId != null ? { "x-member-id": String(memberId) } : {};
+}
 
 function headers(): Record<string, string> {
-  const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (memberId != null) h["x-member-id"] = String(memberId);
-  return h;
+  return { "Content-Type": "application/json", ...memberHeaders() };
 }
 
 async function unwrap<T>(res: Response, schema: z.ZodType<T>): Promise<T> {
