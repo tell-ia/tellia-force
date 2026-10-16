@@ -70,6 +70,12 @@ class Datasets:
                 out.setdefault((r['parcel_id'], r['year']), {}).setdefault(t, []).append(r)
         return out
 
+    def irrigated_years(self, parcel_ids):
+        """Number of years each parcel was irrigated in the dataset."""
+        rows = self.rows(f"select parcel_id, sum(irrigated)::int n from {self.synthetic('irrigation', True)} "
+                         "where parcel_id in (select unnest(?)) group by 1", [parcel_ids])
+        return {r['parcel_id']: r['n'] for r in rows}
+
     def market_prices(self, crops):
         return self.rows(f"select * from {self.synthetic('market_price')} where product in (select unnest(?))", [crops])
 

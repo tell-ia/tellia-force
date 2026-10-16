@@ -156,6 +156,8 @@ EPHY_FUNCTION = {'HERBICIDE': 'Herbicide', 'FUNGICIDE': 'Fongicide', 'INSECTICID
 # Crop rotations used to replace the dataset's "same crop every year".
 ROTATION = ['RAPE', 'COWT', 'BARL', 'SUNF', 'COWT', 'BARL']
 ROTATION_IRRIGATED = ['MAIZ', 'MAIZ', 'COWT']
+ROTATION_IRRIGATED_SUNF = ['SUNF', 'COWT', 'MAIZ']   # irrigated sunflower fields
+IRRIGATED_CROPS = ('MAIZ', 'SUNF')
 
 GOOD_SPRAY_WIND_M_S = 4.5   # daily mean at 10 m, a proxy for "calm enough"
 GOOD_SPRAY_RAIN_MM = 1.0

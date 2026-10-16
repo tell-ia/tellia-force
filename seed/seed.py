@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load one demo farm into the farm database (Supabase / PostgreSQL).
+"""Load the demo farms into the farm database (Supabase / PostgreSQL).
 
     python seed.py --dry-run   build everything and print a summary, write nothing
     python seed.py             create the tables and load the data (empty database)
@@ -9,11 +9,11 @@
 Settings come from seed/.env (see .env.example and README.md).
 
 What it does:
-  1. Reads the demo farm from the hackathon synthetic tables.
+  1. Reads the demo farms (FARM_IDS) from the hackathon synthetic tables.
   2. Fixes what is not realistic: adds a crop rotation, moves sprays and
      fertiliser to the right crop stages using real weather, removes sprays
      after harvest, splits yearly irrigation into watering turns.
-  3. Replaces the fake product names with real products from E-Phy.
+  3. Replaces the fake product names with real products from E-Phy (French farms only).
   4. Adds real weather (AgERA5 to 2024, then Open-Meteo), regional benchmarks,
      and the FAO-56 reference tables from FAO_DIR (Marceau's files).
   5. Writes everything in one transaction: if something fails, nothing changes.
@@ -21,6 +21,7 @@ What it does:
 
 import argparse
 import csv
+import math
 import os
 import re
 import sys
@@ -51,8 +52,6 @@ FAO_FILES = {
     'fao33_ky': 'fao33_ky.csv',
     'stage_thresholds_gdd': 'stage_thresholds_gdd.csv',
 }
-# Variety earliness group per crop for the demo (the dataset variety codes carry none).
-EARLINESS = {'MAIZ': 'early', 'SUNF': 'early'}
 # stage_thresholds_gdd rows that belong to one variety group, by the start of anchor_stage.
 EARLINESS_ANCHORS = {
     'MAIZ': [('Female flowering - very early', 'very_early'), ('Female flowering - early', 'early'),
@@ -63,27 +62,62 @@ EARLINESS_ANCHORS = {
              ('Full cycle - half-early varieties', 'half_early'), ('Full cycle - normal varieties', 'normal')],
 }
 FAO_DERIVED = {'gdd_from_sowing_default_num', 'earliness_group'}
-SERIAL_TABLES = ['product', 'product_use', 'member', 'irrigation_system', 'field', 'soil_analysis', 'crop_season', 'message',
+SERIAL_TABLES = ['product', 'product_use', 'farm', 'member', 'irrigation_system', 'field', 'soil_analysis', 'crop_season', 'message',
                  'operation', 'operation_input', 'alert', 'document', 'sale', 'subsidy']
 
-# ── Invented details (the demo farm is fictional) ──
-FARM_NAME = 'GAEC des Trois Chênes'
-FARM_LEGAL_FORM = 'GAEC'
-# One reel gun shared by the irrigable fields (typical French values, invented for the demo).
-REEL_GUN = dict(id=1, name='Reel gun 1', system_type='reel_gun', efficiency=0.75, dose_min_mm=20, dose_max_mm=40,
+# ── Invented details (the demo farms are fictional) ──
+DEFAULT_FARMS = ['FARM-02580', 'FARM-07712', 'FARM-08422']   # Loiret (FR), Valladolid (ES), Bologna (IT)
+# One reel gun per farm, shared by its irrigable fields (typical values, invented for the demo).
+REEL_GUN = dict(name='Reel gun 1', system_type='reel_gun', efficiency=0.75, dose_min_mm=20, dose_max_mm=40,
                 round_days=3, notes='Hose reel with a water gun, shared by the irrigable fields.', origin='invented')
-LAYOUT_ORIGIN = (48.020, 1.760)  # south-west corner of the field layout, in the Beauce part of Loiret
-FIELD_NAMES = ['Le Moulin', 'La Grande Pièce', 'Les Longues Raies', 'Le Bois Carré', 'La Mare',
-               'Le Petit Clos', 'Les Sablons', 'La Croix Blanche', 'Le Chemin Vert', 'La Vallée', 'Le Puits']
-# Paired with the dataset's workers from oldest to youngest. id 1 is the main contact.
-MEMBER_PROFILES = [
-    dict(id=3, full_name='Monique Lefèvre', certiphyto=False, notes='Accounts and CAP declarations.'),
-    dict(id=2, full_name='Sophie Lefèvre', certiphyto=True, notes='Does the spraying.'),
-    dict(id=1, full_name='Claire Lefèvre', certiphyto=True, main_contact=True,
-         notes='Runs the farm. Main contact. Does sowing and fertiliser.'),
-    dict(id=4, full_name='Camille Lefèvre', certiphyto=True, notes='Irrigation and crop scouting.'),
-]
-OPERATOR = {'sowing': 1, 'fertilisation': 1, 'spraying': 2, 'irrigation': 4}
+# A sunflower field counts as irrigable when the dataset irrigated it at least this many years out of 10.
+IRRIGABLE_SUNF_MIN_YEARS = 5
+# Names and settings per farm. `members` are paired with the dataset's workers from oldest to youngest.
+# `rank` sets the member id order inside the farm (1 = main contact). `jobs` = operations recorded under
+# that person (default: the main contact). `fields` follow the dataset parcel order.
+FARM_PROFILES = {
+    'FARM-02580': dict(
+        name='GAEC des Trois Chênes', legal_form='GAEC', language='fr', timezone='Europe/Paris',
+        layout_origin=(48.020, 1.760),  # south-west corner of the field layout, Beauce part of Loiret
+        earliness={'MAIZ': 'early', 'SUNF': 'early'},
+        fields=['Le Moulin', 'La Grande Pièce', 'Les Longues Raies', 'Le Bois Carré', 'La Mare', 'Le Petit Clos',
+                'Les Sablons', 'La Croix Blanche', 'Le Chemin Vert', 'La Vallée', 'Le Puits'],
+        members=[
+            dict(rank=3, full_name='Monique Lefèvre', certiphyto=False, notes='Accounts and CAP declarations.'),
+            dict(rank=2, full_name='Sophie Lefèvre', certiphyto=True, jobs=['spraying'], notes='Does the spraying.'),
+            dict(rank=1, full_name='Claire Lefèvre', certiphyto=True, main_contact=True,
+                 jobs=['sowing', 'fertilisation'], notes='Runs the farm. Main contact. Does sowing and fertiliser.'),
+            dict(rank=4, full_name='Camille Lefèvre', certiphyto=True, jobs=['irrigation'],
+                 notes='Irrigation and crop scouting.'),
+        ]),
+    'FARM-07712': dict(
+        name='SAT Los Olmos', legal_form='SAT', language='es', timezone='Europe/Madrid',
+        layout_origin=(41.580, -4.950),  # irrigated plain west of Valladolid
+        earliness={'MAIZ': 'late', 'SUNF': 'normal'},
+        fields=['El Molino', 'La Vega', 'Los Cascajares', 'El Pozo', 'La Hoya', 'Las Eras', 'El Prado',
+                'La Cañada', 'Los Llanos', 'El Soto'],
+        members=[
+            dict(rank=3, full_name='Carmen Martín', certiphyto=False, notes='Accounts and CAP declarations.'),
+            dict(rank=2, full_name='Javier Martín', certiphyto=True, jobs=['spraying'], notes='Does the spraying.'),
+            dict(rank=4, full_name='Lucía Martín', certiphyto=True, jobs=['irrigation'], notes='Irrigation.'),
+            dict(rank=1, full_name='Elena Martín', certiphyto=True, main_contact=True,
+                 jobs=['sowing', 'fertilisation'], notes='Runs the farm. Main contact. Does sowing and fertiliser.'),
+        ]),
+    'FARM-08422': dict(
+        name="Società Agricola Ca' dei Pioppi", legal_form='Società agricola semplice', language='it',
+        timezone='Europe/Rome',
+        layout_origin=(44.600, 11.480),  # plain north-east of Bologna
+        earliness={'MAIZ': 'late', 'SUNF': 'normal'},
+        fields=['Il Mulino', 'La Chiusa', 'Il Pozzo', 'Campo Lungo', 'La Fornace', 'Le Valli', 'Il Canale',
+                'La Corte', 'Campo Grande', 'Il Gelso', 'La Bassa', 'Il Prato', 'La Torre', 'Il Fosso'],
+        members=[
+            dict(rank=1, full_name='Marco Bianchi', certiphyto=True, main_contact=True,
+                 jobs=['sowing', 'fertilisation'], notes='Runs the farm. Main contact. Does sowing and fertiliser.'),
+            dict(rank=2, full_name='Paolo Bianchi', certiphyto=True, jobs=['spraying'], notes='Does the spraying.'),
+            dict(rank=3, full_name='Giulia Bianchi', certiphyto=False, jobs=['irrigation'],
+                 notes='Irrigation and accounts.'),
+        ]),
+}
 DOSE_FACTORS = [0.5, 0.6, 0.7, 0.75, 0.8, 1.0]
 
 stats = Counter()
@@ -103,9 +137,11 @@ def r2(v):
 
 # ───────────────────────── reference data ─────────────────────────
 
-def build_weather(ds, nuts3, lat, lon, today):
-    rows = []
+def build_weather(ds, nuts3, location, today):
+    """Daily weather of a region. AgERA5 to 2024; then Open-Meteo at `location` (lat, lon), or the region centroid."""
+    rows, centroid = [], None
     for w in ds.weather(nuts3):
+        centroid = centroid or (w['centroid_latitude'], w['centroid_longitude'])
         rows.append(dict(
             date=w['date'], tmin_c=w['temperature_min_c'], tmean_c=w['temperature_mean_c'],
             tmax_c=w['temperature_max_c'], precip_mm=w['precipitation_mm'], rh_pct=w['relative_humidity_pct'],
@@ -115,14 +151,16 @@ def build_weather(ds, nuts3, lat, lon, today):
     last = max(r['date'] for r in rows)
     end = min(today, date.today()) - timedelta(days=1)
     if end > last:
-        print(f'  Open-Meteo {last + timedelta(days=1)} → {end}')
+        print(f'  {nuts3}: Open-Meteo {last + timedelta(days=1)} → {end}')
+        lat, lon = location or centroid
         rows += open_meteo(lat, lon, last + timedelta(days=1), end)
     for r in rows:
+        r['nuts3_id'] = nuts3
         for k in ('tmin_c', 'tmean_c', 'tmax_c', 'precip_mm', 'rh_pct', 'wind_m_s', 'radiation_mj_m2', 'et0_mm'):
             r[k] = r2(r[k])
         for base in (0, 5, 6, 10):
             r[f'gdd_base{base}'] = round(max(0.0, r['tmean_c'] - base), 2)
-    return rows
+    return rows, centroid
 
 
 def build_reference(ds, nuts3):
@@ -150,7 +188,7 @@ def build_reference(ds, nuts3):
         typical_sowing=c['sowing'], typical_harvest=c['harvest']) for code, c in ag.CROPS.items()]
     groups = sorted({c['group'] for c in ag.CROPS.values()})
     bench = [dict(
-        crop_group_code=b['crop_group_code'], crop_group_name=b['crop_group_name'], year=b['year'],
+        nuts3_id=nuts3, crop_group_code=b['crop_group_code'], crop_group_name=b['crop_group_name'], year=b['year'],
         yield_t_ha=r2(b['yield_t_ha']), yield_source_geography=b['yield_source_geography'],
         yield_value_type=b['yield_value_type'], n_kg_ha=r2(b['nitrogen_kg_ha']),
         p2o5_kg_ha=r2(b['phosphate_p2o5_kg_ha']), k2o_kg_ha=r2(b['potash_k2o_kg_ha']),
@@ -261,22 +299,28 @@ class Catalogue:
 
 # ───────────────────────── the farm ─────────────────────────
 
-def field_geometry(wkt):
+def field_geometry(wkt, origin):
+    """Place the dataset's local square (metres) at `origin` (lat, lon). Returns GeoJSON and the centroid."""
     pts = [tuple(map(float, p.split())) for p in re.findall(r'(-?[\d.]+ -?[\d.]+)', wkt)]
-    lat0, lon0 = LAYOUT_ORIGIN
+    lat0, lon0 = origin
     m_per_deg_lat = 111_320
-    m_per_deg_lon = 111_320 * 0.6683  # cos(48.02°)
+    m_per_deg_lon = 111_320 * math.cos(math.radians(lat0))
     ring = [[round(lon0 + x / m_per_deg_lon, 6), round(lat0 + y / m_per_deg_lat, 6)] for x, y in pts]
     lons, lats = [p[0] for p in ring[:-1]], [p[1] for p in ring[:-1]]
     return dict(type='Polygon', coordinates=[ring]), sum(lats) / len(lats), sum(lons) / len(lons)
 
 
-def plan_rotation(parcels):
+def plan_rotation(parcels, irrigable):
     """Give each field a rotation that ends on the dataset's crop for the last year."""
     plan, seen = {}, Counter()
     for p in parcels:
         crop = p['crop_current']
-        cycle = ag.ROTATION_IRRIGATED if crop == 'MAIZ' else ag.ROTATION
+        if crop == 'MAIZ':
+            cycle = ag.ROTATION_IRRIGATED
+        elif crop == 'SUNF' and p['parcel_id'] in irrigable:
+            cycle = ag.ROTATION_IRRIGATED_SUNF
+        else:
+            cycle = ag.ROTATION
         if crop not in cycle:
             plan[p['parcel_id']] = ([crop], 0)
             continue
@@ -291,62 +335,106 @@ def crop_in(plan, parcel_id, year, last_year):
     return cycle[(pos + year - last_year) % len(cycle)]
 
 
-def build_farm(ds, farm_id, today, weather_rows, catalogue, phones):
-    holding = ds.holding(farm_id)
-    nuts3 = holding['nuts3']
-    parcels = ds.parcels(farm_id)
-    weather = ag.Weather(weather_rows)
-    out = defaultdict(list)
+class Ids:
+    """Row ids shared by all farms, so ids stay unique across the database."""
 
-    # Fields
+    def __init__(self):
+        self.last = Counter()
+
+    def next(self, table):
+        self.last[table] += 1
+        return self.last[table]
+
+
+def farm_profile(code, holding, n_parcels, n_workers):
+    """Invented names for a farm; generic ones if the farm has no profile."""
+    prof = FARM_PROFILES.get(code)
+    if prof is None:
+        warnings.append(f'{code}: no profile in FARM_PROFILES, generic names used')
+        prof = dict(name=f'Farm {code}', legal_form=None, language='en', timezone='Europe/Brussels',
+                    layout_origin=None, earliness={'MAIZ': 'early', 'SUNF': 'early'}, fields=[],
+                    members=[dict(rank=i + 1, full_name=f'Worker {i + 1}', main_contact=i == 0) for i in range(n_workers)])
+    if len(prof['fields']) < n_parcels:
+        warnings.append(f'{code}: {n_parcels} parcels but {len(prof["fields"])} field names, generic names added')
+    return prof
+
+
+def build_farm(ds, code, farm_pk, today, weather_rows, catalogue, main_phone, prices, ids, region_centroid):
+    """All rows of one farm. Every farm row gets farm_id = farm_pk."""
+    holding = ds.holding(code)
+    nuts3 = holding['nuts3']
+    country = nuts3[:2]
+    parcels = ds.parcels(code)
+    labour = sorted(ds.by_holding('labour', code), key=lambda r: r['birth_year'])
+    prof = farm_profile(code, holding, len(parcels), len(labour))
+    origin = prof['layout_origin'] or region_centroid
+    weather = ag.Weather(weather_rows)
+    irrigated_years = ds.irrigated_years([p['parcel_id'] for p in parcels])
+    irrigable = {p['parcel_id'] for p in parcels
+                 if p['crop_current'] == 'MAIZ'
+                 or (p['crop_current'] == 'SUNF' and irrigated_years.get(p['parcel_id'], 0) >= IRRIGABLE_SUNF_MIN_YEARS)}
+    out = defaultdict(list)
+    tenant = dict(farm_id=farm_pk)
+
+    # Irrigation equipment and fields
+    system_id = None
+    if irrigable:
+        system_id = ids.next('irrigation_system')
+        out['irrigation_system'] = [dict(id=system_id, **tenant, **REEL_GUN)]
     fields = {}
-    for i, p in enumerate(parcels, start=1):
-        shape, lat, lon = field_geometry(p['shape_wkt'])
+    for i, p in enumerate(parcels):
+        shape, lat, lon = field_geometry(p['shape_wkt'], origin)
+        is_irrigable = p['parcel_id'] in irrigable
         fields[p['parcel_id']] = dict(
-            id=i, name=FIELD_NAMES[i - 1] if i <= len(FIELD_NAMES) else f'Parcelle {i}', area_ha=r2(p['area_ha']),
-            tenure=(p['tenure'] or '').lower() or None, irrigable=p['crop_current'] == 'MAIZ',
-            irrigation_system_id=REEL_GUN['id'] if p['crop_current'] == 'MAIZ' else None,
+            id=ids.next('field'), **tenant, name=prof['fields'][i] if i < len(prof['fields']) else f'Field {i + 1}',
+            area_ha=r2(p['area_ha']), tenure=(p['tenure'] or '').lower() or None, irrigable=is_irrigable,
+            irrigation_system_id=system_id if is_irrigable else None,
             centroid_lat=round(lat, 6), centroid_lon=round(lon, 6), shape_geojson=shape, source_parcel_id=p['parcel_id'])
     out['field'] = list(fields.values())
-    out['irrigation_system'] = [dict(REEL_GUN)] if any(f['irrigable'] for f in out['field']) else []
     farm_lat = sum(f['centroid_lat'] for f in out['field']) / len(out['field'])
     farm_lon = sum(f['centroid_lon'] for f in out['field']) / len(out['field'])
 
     out['farm'] = [dict(
-        id=1, name=FARM_NAME, legal_form=FARM_LEGAL_FORM, nuts3_id=nuts3, lat=round(farm_lat, 6), lon=round(farm_lon, 6),
+        id=farm_pk, name=prof['name'], legal_form=prof['legal_form'], nuts3_id=nuts3, country_code=country,
+        language=prof['language'], timezone=prof['timezone'], lat=round(farm_lat, 6), lon=round(farm_lon, 6),
         uaa_ha=r2(holding['uaa_ha']), organic=bool(holding['organic']), farm_type=f"TF8 class {holding['farm_type_tf8']}",
-        source_holding_id=farm_id,
+        source_holding_id=code,
         notes=('Fictional farm for the EU Agri Hackathon demo. Records come from the synthetic holding '
-               f'{farm_id}, made realistic by seed.py. Weather, regional statistics and products are real.'))]
+               f'{code}, made realistic by seed.py. Weather, regional statistics and FAO-56 tables are real'
+               + ('; products from the French E-Phy register.' if country == 'FR' else
+                  '; no national product register loaded, so sprays keep the synthetic substance codes.')))]
 
-    # Members
-    labour = sorted(ds.by_holding('labour', farm_id), key=lambda r: r['birth_year'])
-    members = []
-    for i, w in enumerate(labour):
-        prof = MEMBER_PROFILES[i] if i < len(MEMBER_PROFILES) else dict(id=i + 1, full_name=f'Worker {i + 1}')
+    # Members: paired with the dataset workers from oldest to youngest, ids ordered by rank (1 = main contact)
+    offset = ids.last['member']
+    members, operator = [], {}
+    for w, mp in zip(labour, prof['members']):
+        mid = offset + mp['rank']
         members.append(dict(
-            id=prof['id'], full_name=prof['full_name'], role=(w['worker_category'] or 'worker').lower(), phone=None,
-            language='fr', birth_year=w['birth_year'], annual_hours=w['annual_hours'],
-            certiphyto=prof.get('certiphyto', False), main_contact=prof.get('main_contact', False),
-            notes=prof.get('notes')))
+            id=mid, **tenant, full_name=mp['full_name'], role=(w['worker_category'] or 'worker').lower(),
+            phone=(main_phone or None) if mp.get('main_contact') else None, language=prof['language'],
+            birth_year=w['birth_year'], annual_hours=w['annual_hours'], certiphyto=mp.get('certiphyto', False),
+            main_contact=mp.get('main_contact', False), notes=mp.get('notes')))
+        for job in mp.get('jobs', []):
+            operator[job] = mid
+    if len(labour) != len(prof['members']):
+        warnings.append(f'{code}: {len(labour)} workers in the dataset, {len(prof["members"])} member profiles')
     members.sort(key=lambda m: m['id'])
-    for m, phone in zip(members, phones):
-        m['phone'] = phone or None
+    ids.last['member'] = max([offset] + [m['id'] for m in members])
+    main_id = next((m['id'] for m in members if m['main_contact']), members[0]['id'] if members else None)
+    operator = {job: operator.get(job, main_id) for job in ('sowing', 'fertilisation', 'spraying', 'irrigation')}
     out['member'] = members
-    member_ids = {m['id'] for m in members}
-    operator = {k: v if v in member_ids else None for k, v in OPERATOR.items()}
 
     # Soil
     for i, s in enumerate(ds.soil([p['parcel_id'] for p in parcels])):
         row = {k: r2(v) for k, v in s.items() if k != 'parcel_id'}
-        out['soil_analysis'].append(dict(id=i + 1, field_id=fields[s['parcel_id']]['id'],
+        out['soil_analysis'].append(dict(id=ids.next('soil_analysis'), **tenant, field_id=fields[s['parcel_id']]['id'],
                                          sampled_on=date(2024, 9, 10) + timedelta(days=i), origin='dataset', **row))
 
     # Which synthetic records feed each crop season
-    plan = plan_rotation(parcels)
+    plan = plan_rotation(parcels, irrigable)
     years = sorted({y for (_, y) in ds.season_records([parcels[0]['parcel_id']])})
     first_year, last_year = years[0], years[-1]
-    donors = ds.donor_parcels(nuts3, holding['farm_type_tf8'], farm_id)
+    donors = ds.donor_parcels(nuts3, holding['farm_type_tf8'], code)
     jobs = []
     for p in parcels:
         for y in range(first_year, last_year + 2):
@@ -358,14 +446,12 @@ def build_farm(ds, farm_id, today, weather_rows, catalogue, phones):
 
     seasons = []
     prev_harvest = {}
-    op_id = inp_id = 0
 
     def add_op(**kw):
-        nonlocal op_id
-        op_id += 1
-        out['operation'].append(dict(id=op_id, **kw))
+        oid = ids.next('operation')
+        out['operation'].append(dict(id=oid, **tenant, **kw))
         stats[f"op {kw['op_type']} {kw['status']}"] += 1
-        return op_id
+        return oid
 
     for p, y, crop, src, data_year, shift in jobs:
         pid, field = p['parcel_id'], fields[p['parcel_id']]
@@ -386,12 +472,13 @@ def build_farm(ds, farm_id, today, weather_rows, catalogue, phones):
         season = ag.Season(crop, sow, harvest, weather)
         status = 'planned' if sow > today else 'growing' if harvest > today else 'harvested'
         irr = (rec.get('irrigation') or [{}])[0]
-        water = float(irr.get('water_mm') or 0) if field['irrigable'] and crop == 'MAIZ' and irr.get('irrigated') else 0
-        cs_id = len(seasons) + 1
+        water = (float(irr.get('water_mm') or 0)
+                 if field['irrigable'] and crop in ag.IRRIGATED_CROPS and irr.get('irrigated') else 0)
+        cs_id = ids.next('crop_season')
         borrowed = src != pid
         seasons.append(dict(
-            id=cs_id, field_id=field['id'], harvest_year=y, crop_code=crop, variety=pl['variety'],
-            earliness_group=EARLINESS.get(crop),
+            id=cs_id, **tenant, field_id=field['id'], harvest_year=y, crop_code=crop, variety=pl['variety'],
+            earliness_group=prof['earliness'].get(crop),
             previous_crop_code=crop_in(plan, pid, y - 1, last_year), sowing_date=sow, harvest_date=harvest,
             status=status, irrigated=water > 0,
             yield_t_ha=r2(hv['yield_t_ha']) if status == 'harvested' else None,
@@ -439,7 +526,7 @@ def build_farm(ds, farm_id, today, weather_rows, catalogue, phones):
                    details=dict(source_table='synthetic_fertilisation', source_id=f['fertilisation_id'],
                                 source_parcel=src, source_date=str(f['app_date'])))
 
-        # Sprays: same number and types as the dataset, moved to the right stage, real products.
+        # Sprays: same number and types as the dataset, moved to the right stage. Real products in France only.
         by_type = defaultdict(list)
         for s in sorted(rec.get('plant_protection', []), key=lambda r: r['app_date']):
             by_type[s['product_type']].append(s)
@@ -459,22 +546,27 @@ def build_farm(ds, farm_id, today, weather_rows, catalogue, phones):
                 if d > today:
                     stats['spray dropped (future)'] += 1
                     continue
-                product, use = catalogue.choose(crop, ptype, targets, key)
-                if product is None:
-                    stats[f'spray dropped (no product for {crop} {ptype})'] += 1
-                    continue
+                if country == 'FR':
+                    product, use = catalogue.choose(crop, ptype, targets, key)
+                    if product is None:
+                        stats[f'spray dropped (no product for {crop} {ptype})'] += 1
+                        continue
+                    target = (use['identifiant usage'].split('*') + ['', '', ''])[2] or 'Désherbage'
+                    spray_input = dict(product_id=product['id'], product_name=product['name'],
+                                       dose=round(num(use['dose retenue']) * ag.pick(DOSE_FACTORS, key, 'dose'), 2),
+                                       dose_unit=use['dose retenue unite'], target=target)
+                else:  # no national register loaded: keep the dataset substance code, say it is synthetic
+                    spray_input = dict(product_id=None,
+                                       product_name=f"{ptype.title()} {s['active_substance']} (synthetic)",
+                                       dose=r2(s['dose_l_or_kg_ha']), dose_unit='L or kg/ha', target=label)
                 oid = add_op(**base, op_date=d, op_type='spraying', status='confirmed', member_id=operator['spraying'],
                              bbch=season.bbch(d), notes=label,
                              details=dict(source_table='synthetic_plant_protection', source_id=s['pp_id'],
                                           source_parcel=src, source_date=str(s['app_date']),
                                           source_product=s['product_name'], source_substance=s['active_substance'],
                                           source_dose=s['dose_l_or_kg_ha'], source_bbch=s['crop_stage_bbch']))
-                inp_id += 1
-                target = (use['identifiant usage'].split('*') + ['', '', ''])[2] or 'Désherbage'
-                out['operation_input'].append(dict(
-                    id=inp_id, operation_id=oid, product_id=product['id'], product_name=product['name'],
-                    dose=round(num(use['dose retenue']) * ag.pick(DOSE_FACTORS, key, 'dose'), 2),
-                    dose_unit=use['dose retenue unite'], target=target))
+                out['operation_input'].append(dict(id=ids.next('operation_input'), **tenant, operation_id=oid,
+                                                   **spray_input))
 
         # Irrigation: split the yearly total into watering turns.
         if water:
@@ -500,17 +592,16 @@ def build_farm(ds, farm_id, today, weather_rows, catalogue, phones):
     out['crop_season'] = seasons
 
     # Business data
-    out['subsidy'] = [dict(id=i + 1, year=s['year'], scheme=s['scheme'], amount_eur=r2(s['amount_eur']), origin='dataset')
-                      for i, s in enumerate(ds.by_holding('subsidy', farm_id, 'year, scheme'))]
+    out['subsidy'] = [dict(id=ids.next('subsidy'), **tenant, year=s['year'], scheme=s['scheme'],
+                           amount_eur=r2(s['amount_eur']), origin='dataset')
+                      for s in ds.by_holding('subsidy', code, 'year, scheme')]
     econ_cols = ['total_output_eur', 'seeds_eur', 'fertiliser_eur', 'crop_protection_eur', 'energy_eur',
                  'contract_work_eur', 'wages_eur', 'depreciation_eur', 'total_inputs_eur', 'farm_net_value_added_eur']
-    out['farm_economics'] = [dict(year=e['year'], origin='dataset', **{c: r2(e[c]) for c in econ_cols})
-                             for e in ds.by_holding('farm_economics', farm_id, 'year')]
-    prices = ds.market_prices(list(ag.CROPS))
-    out['market_price'] = [dict(crop_code=m['product'], year=m['year'], month=m['month'],
-                                price_eur_t=r2(m['price_eur_t'])) for m in prices]
-    buyers = sorted({s['buyer_id'] for s in ds.by_holding('transaction_sale', farm_id)}) or ['BUYER-001']
-    out['sale'] = build_sales(seasons, fields, prices, buyers, today)
+    out['farm_economics'] = [dict(**tenant, year=e['year'], origin='dataset', **{c: r2(e[c]) for c in econ_cols})
+                             for e in ds.by_holding('farm_economics', code, 'year')]
+    buyers = sorted({s['buyer_id'] for s in ds.by_holding('transaction_sale', code)}) or ['BUYER-001']
+    out['sale'] = [dict(id=ids.next('sale'), **tenant, **row)
+                   for row in build_sales(seasons, fields, prices, buyers, today)]
     return out
 
 
@@ -534,7 +625,7 @@ def build_sales(seasons, fields, prices, buyers, today):
             if d > today or p is None:
                 continue
             grade = ag.pick(['A', 'B', 'B', 'C'], y, crop, contract)
-            rows.append(dict(id=len(rows) + 1, sale_date=d, crop_code=crop, harvest_year=y,
+            rows.append(dict(sale_date=d, crop_code=crop, harvest_year=y,
                              volume_t=round(tonnes * share, 1),
                              price_eur_t=round(p * {'A': 1.02, 'B': 1.0, 'C': 0.96}[grade], 2),
                              buyer=ag.pick(buyers, y, crop, contract), contract_type=contract,
@@ -685,29 +776,51 @@ def main():
     datasets_dir = os.environ.get('DATASETS_DIR')
     if not datasets_dir:
         raise SystemExit('Set DATASETS_DIR in .env (the folder dg-agri-hackathon-datasets).')
-    farm_id = os.environ.get('FARM_ID') or 'FARM-02580'
+    farm_codes = [c.strip() for c in (os.environ.get('FARM_IDS') or ','.join(DEFAULT_FARMS)).split(',') if c.strip()]
     today = date.fromisoformat(os.environ['DEMO_TODAY']) if os.environ.get('DEMO_TODAY') else date.today()
     phones = [p.strip() for p in os.environ.get('MEMBER_PHONES', '').split(',')]
 
-    print(f'Farm {farm_id}, demo date {today}')
+    print(f'Farms {", ".join(farm_codes)}, demo date {today}')
     ds = Datasets(datasets_dir)
-    holding = ds.holding(farm_id)
+    holdings = {c: ds.holding(c) for c in farm_codes}
 
-    print('Reading E-Phy (French product register)...')
-    usages, ephy_file = ephy_usages(ROOT / '.cache')
-    catalogue = Catalogue(usages, ephy_file)
-    catalogue.add_preferred()
+    catalogue = None
+    if any(h['nuts3'].startswith('FR') for h in holdings.values()):
+        print('Reading E-Phy (French product register)...')
+        usages, ephy_file = ephy_usages(ROOT / '.cache')
+        catalogue = Catalogue(usages, ephy_file)
+        catalogue.add_preferred()
 
     print('Reading reference data and weather...')
-    region, crop_ref, crop_stage, bench = build_reference(ds, holding['nuts3'])
-    lat = LAYOUT_ORIGIN[0] + 0.02
-    lon = LAYOUT_ORIGIN[1] + 0.03
-    weather = build_weather(ds, holding['nuts3'], lat, lon, today)
+    tables = defaultdict(list)
+    weather, centroids = {}, {}
+    for code, h in holdings.items():
+        nuts3 = h['nuts3']
+        if nuts3 in weather:
+            continue
+        region, crop_ref, crop_stage, bench = build_reference(ds, nuts3)
+        origin = (FARM_PROFILES.get(code) or {}).get('layout_origin')
+        location = (origin[0] + 0.02, origin[1] + 0.03) if origin else None   # about the middle of the fields
+        weather[nuts3], centroids[nuts3] = build_weather(ds, nuts3, location, today)
+        region['centroid_lat'], region['centroid_lon'] = centroids[nuts3]
+        tables['region'].append(region)
+        tables['regional_benchmark'] += bench
+        tables['weather_daily'] += weather[nuts3]
+        tables['crop_ref'], tables['crop_stage'] = crop_ref, crop_stage
+    prices = ds.market_prices(list(ag.CROPS))
+    tables['market_price'] = [dict(crop_code=m['product'], year=m['year'], month=m['month'],
+                                   price_eur_t=r2(m['price_eur_t'])) for m in prices]
 
-    print('Building the farm...')
-    tables = build_farm(ds, farm_id, today, weather, catalogue, phones)
-    tables.update(region=[region], crop_ref=crop_ref, crop_stage=crop_stage, weather_daily=weather,
-                  regional_benchmark=bench, product=list(catalogue.products.values()), product_use=catalogue.uses)
+    ids = Ids()
+    for i, (code, h) in enumerate(holdings.items()):
+        print(f'Building {code} ({h["nuts3"]})...')
+        farm_pk = ids.next('farm')
+        rows = build_farm(ds, code, farm_pk, today, weather[h['nuts3']], catalogue,
+                          phones[i] if i < len(phones) else None, prices, ids, centroids[h['nuts3']])
+        for t, r in rows.items():
+            tables[t] += r
+    if catalogue:
+        tables['product'], tables['product_use'] = list(catalogue.products.values()), catalogue.uses
     if fao_dir.exists():
         tables.update(build_fao(fao_dir))
     else:
