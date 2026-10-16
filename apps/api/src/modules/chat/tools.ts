@@ -92,7 +92,7 @@ export function createAdvisorTools(registry: FarmRegistry) {
   const getFieldReport = createTool({
     id: "get_field_report",
     description:
-      "Irrigation advice for one field: decision, mm to apply, root-zone depletion, rain forecast and the reason. All numbers come from the calculation; never compute your own.",
+      "Irrigation advice for one field: decision, mm to pump (irrigateGrossMm: the number to tell the farmer; irrigateMm is the net water that reaches the roots), the date to irrigate by, root-zone depletion, rain forecast and the reason. All numbers come from the calculation; never compute your own.",
     inputSchema: z.object({ fieldId, date }),
     outputSchema: FieldReportSchema,
     execute: async ({ fieldId, date }, ctx) => (await serviceOf(ctx)).getFieldReport(fieldId, date),
