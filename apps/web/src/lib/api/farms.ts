@@ -32,8 +32,8 @@ export async function listFarms(): Promise<FarmSummary[]> {
   try {
     const [farms, members, fields] = await Promise.all([
       list("farm", { limit: 100 }),
-      list("member", { limit: 300 }),
-      list("field", { limit: 1000 }),
+      list("member", { limit: 100 }),
+      list("field", { limit: 100 }),
     ]);
     const built = [...farms.data]
       .sort((a, b) => a.id - b.id)

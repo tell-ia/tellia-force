@@ -25,7 +25,7 @@ export async function getFarmToday(farm: FarmSummary): Promise<FarmToday> {
   try {
     const [advice, fields] = await Promise.all([
       http.get("/irrigation/advice", FarmAdviceSchema),
-      list("field", { limit: 1000 }),
+      list("field", { limit: 100 }),
     ]);
     return toFarmToday(advice, farm, fields.data.filter((f) => f.farm_id === farm.id));
   } catch {
@@ -40,7 +40,7 @@ export async function getParcelReport(parcelId: number): Promise<ParcelReport> {
   try {
     const [report, fields] = await Promise.all([
       http.get(`/irrigation/fields/${parcelId}/report`, FieldReportSchema),
-      list("field", { limit: 1000 }),
+      list("field", { limit: 100 }),
     ]);
     const field = fields.data.find((f) => f.id === parcelId);
     return fieldReportToParcelReport(report, { farmId: field?.farm_id ?? 0, areaHa: field?.area_ha });
