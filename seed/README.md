@@ -21,7 +21,8 @@ cp .env.example .env                    # fill DATABASE_URL and DATASETS_DIR
 - **One transaction**: if it fails, nothing changes.
 - **`--reset` rewrites the shared database for the whole team.** Anything added by hand (live demo
   waterings, drafts) is lost. Tell the team first.
-- `--only-fao` (with `--reset` to reload): only the 6 FAO-56 tables.
+- `--only-fao` (with `--reset` to reload): only the 6 FAO-56 tables and `crop_phase_gdd`. Needs `DATASETS_DIR`
+  too (Loiret reference weather, 2019 and 2020 files).
 - Small change on the live database without a rebuild: write a file in `migrations/`, run
   `.venv/bin/python migrate.py migrations/00X_name.sql`, and put the same change in `schema.sql`
   and `seed.py`, so the next `--reset` gives the same result.
@@ -45,12 +46,16 @@ Maize earliness: `early` in Loiret, `late` in Spain and Italy (longer season).
 | Seasons | `crop_season` | One row per field and harvest year, 2017–2027. `earliness_group` for maize and sunflower (`early`) |
 | Journal | `operation`, `operation_input` | Sowing, fertiliser, spraying, irrigation, harvest. Aug 2016 → Oct 2026, plus planned work |
 | Weather | `weather_daily` | Real, daily, **per region** (`nuts3_id`, join `farm.nuts3_id`), 1 Jan 2015 → seed day. ET0, rain, Tmin, Tmean, Tmax, wind, degree-days |
-| FAO-56 | `fao56_crop_stages`, `fao56_kc`, `fao56_root_depletion`, `fao56_soil_water`, `fao33_ky`, `stage_thresholds_gdd` | Marceau's tables (see `fao56/fao56_README.md`). `stage_thresholds_gdd.earliness_group` joins `crop_season.earliness_group` |
+| FAO-56 | `fao56_crop_stages`, `fao56_kc`, `fao56_root_depletion`, `fao56_soil_water`, `fao33_ky`, `stage_thresholds_gdd`, `crop_phase_gdd` | Marceau's tables (see `fao56/fao56_README.md`). `stage_thresholds_gdd.earliness_group` joins `crop_season.earliness_group` |
 | Products | `product`, `product_use` | 34 real products from the French E-Phy register, with max dose, days before harvest, buffer zones. France only: Spanish and Italian sprays keep the synthetic substance code, named `... (synthetic)` |
 | Region | `region`, `regional_benchmark` | Real averages per region (`nuts3_id`): climate, topsoil, yield and N per crop group |
 | Business | `sale`, `subsidy`, `farm_economics`, `market_price` | Synthetic. Sales are generated from harvests; unsold grain = stock |
 | Assistant | `message`, `alert`, `document` | Empty, filled by the app |
 | Old | `crop_ref`, `crop_stage` | My first simple stage model. Replace with the FAO-56 tables |
+
+`crop_phase_gdd` is built by `seed.py`, not read from a file: degree-days from sowing at the end of each FAO-56 phase
+(ini, dev, mid, late), flowering and the sensitive window, per crop and `earliness_group` (empty = default row).
+Published anchors first, FAO day lengths on a real Loiret 2019-20 season elsewhere; `method` says which.
 
 Views: `v_field_current`, `v_spray_register`, `v_nutrients_by_season`.
 Row level security is on with no policies: the public key reads nothing; the API uses the secret key.

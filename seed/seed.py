@@ -4,7 +4,7 @@
     python seed.py --dry-run   build everything and print a summary, write nothing
     python seed.py             create the tables and load the data (empty database)
     python seed.py --reset     drop the farm tables first, then rebuild them
-    python seed.py --only-fao  load only the FAO-56 reference tables (add --reset to reload)
+    python seed.py --only-fao  load only the FAO-56 reference tables and crop_phase_gdd (add --reset to reload)
 
 Settings come from seed/.env (see .env.example and README.md).
 
@@ -15,7 +15,7 @@ What it does:
      after harvest, splits yearly irrigation into watering turns.
   3. Replaces the fake product names with real products from E-Phy (French farms only).
   4. Adds real weather (AgERA5 to 2024, then Open-Meteo), regional benchmarks,
-     and the FAO-56 reference tables from FAO_DIR (Marceau's files).
+     the FAO-56 reference tables from FAO_DIR (Marceau's files), and crop_phase_gdd built from them.
   5. Writes everything in one transaction: if something fails, nothing changes.
 """
 
@@ -62,6 +62,21 @@ EARLINESS_ANCHORS = {
              ('Full cycle - half-early varieties', 'half_early'), ('Full cycle - normal varieties', 'normal')],
 }
 FAO_DERIVED = {'gdd_from_sowing_default_num', 'earliness_group'}
+# All FAO tables in insert order: the CSV tables, then crop_phase_gdd, built by the seed from them.
+FAO_TABLES = list(FAO_FILES) + ['crop_phase_gdd']
+# crop_phase_gdd: where no published anchor exists, FAO-56 day lengths become degree-days on one real season
+# (Marceau's recipe, fao56/fao56_README.md section 1): Loiret weather from the hackathon files, our calendar.
+REFERENCE_NUTS3 = 'FRB06'
+REFERENCE_SEASONS = {'COWT': (date(2019, 10, 25), date(2020, 7, 20)),   # (sowing, harvest)
+                     'SUNF': (date(2020, 4, 20), date(2020, 9, 15)),
+                     'RAPE': (date(2019, 8, 31), date(2020, 7, 5))}
+# Maize and sunflower: sensitive from 100 degree-days before flowering to the end of the grain-abortion risk
+# (flowering + 200 to 250, Isagri). p capped at 0.45 inside (fao56_root_depletion notes).
+FLOWERING_WINDOW = (100, 250, 0.45)
+WHEAT_END_OF_FLOWERING = 1768   # Isagri; only in the note of the wheat "Start of flowering" anchor
+WHEAT_P_SENSITIVE = 0.45        # heading to flowering (fao56_root_depletion note)
+BARLEY_FACTOR = 0.9             # no published barley sums: wheat anchors minus about 10 % (proxy)
+RAPE_WINDOW = (300, 0.50)       # flowering + 300 degree-days, p lowered to 0.50 (fao56_root_depletion note)
 SERIAL_TABLES = ['product', 'product_use', 'farm', 'member', 'irrigation_system', 'field', 'soil_analysis', 'crop_season', 'message',
                  'operation', 'operation_input', 'alert', 'document', 'sale', 'subsidy']
 
@@ -692,6 +707,180 @@ def build_fao(fao_dir):
     return out
 
 
+def reference_weather(ds):
+    """(Tmin, Tmax) per day in the reference region, for the years of the reference seasons."""
+    seasons = REFERENCE_SEASONS.values()
+    years = range(min(s.year for s, _ in seasons), max(h.year for _, h in seasons) + 1)
+    return {w['date']: (w['temperature_min_c'], w['temperature_max_c'])
+            for w in ds.weather_years(REFERENCE_NUTS3, years)}
+
+
+def daily_gdd(tmin, tmax, base, cap):
+    """Degree-days of one day. Same rule as the API engine (cropModel.ts dailyGdd)."""
+    if cap is not None:
+        tmax = min(tmax, cap)
+    return max(0.0, (tmax + tmin) / 2 - base)
+
+
+def reference_ends(stage, weather):
+    """Degree-days from sowing at the end of ini, dev, mid and late, in the reference season of the crop.
+
+    The FAO day lengths are stretched to the real season (k = season days / FAO days); each end date then
+    gets the degree-days summed from sowing to that date, both days included (like the engine).
+    """
+    sow, harvest = REFERENCE_SEASONS[stage['crop_code']]
+    lengths = [stage['l_ini_days'], stage['l_dev_days'], stage['l_mid_days'], stage['l_late_days']]
+    k = (harvest - sow).days / sum(lengths)
+    ends, total, day, gdd = [], 0, sow, 0.0
+    for n in lengths:
+        total += n
+        end = sow + timedelta(days=round(k * total))
+        while day <= end:
+            if day not in weather:
+                raise SystemExit(f'No {REFERENCE_NUTS3} weather on {day} for the {stage["crop_code"]} reference season.')
+            gdd += daily_gdd(*weather[day], stage['t_base_c'], stage['t_max_cap_c'])
+            day += timedelta(days=1)
+        ends.append(gdd)
+    return ends
+
+
+def anchor(anchors, crop, text):
+    """Default degree-days of the one anchor of `crop` whose anchor_stage contains `text`."""
+    found = [r for r in anchors if r['crop_code'] == crop and text in r['anchor_stage']]
+    if len(found) != 1 or found[0]['gdd_from_sowing_default_num'] is None:
+        raise SystemExit(f'stage_thresholds_gdd: expected one {crop} anchor "{text}" with a number, found {len(found)}.')
+    return found[0]['gdd_from_sowing_default_num']
+
+
+def after_flowering(anchors, crop, boundary):
+    """N of the `crop` anchor written "flowering + N" that ends the FAO phase `boundary` (e.g. "end of mid")."""
+    for r in anchors:
+        m = re.fullmatch(r'flowering \+ (\d+)', r['gdd_from_sowing_default'] or '')
+        if r['crop_code'] == crop and r['fao56_phase_boundary'] == boundary and m:
+            return float(m.group(1))
+    raise SystemExit(f'stage_thresholds_gdd: no {crop} anchor "flowering + N" for {boundary}.')
+
+
+def group_ranges(anchors, crop, boundary):
+    """Published (min, max) per variety group of the `crop` anchor that ends `boundary`.
+
+    The ranges are only in the source text ("1340-1410 / 1390-1460 / ..."), one per group, in the order
+    of EARLINESS_ANCHORS (earliest first).
+    """
+    groups = [g for _, g in EARLINESS_ANCHORS[crop]]
+    for r in anchors:
+        if r['crop_code'] == crop and r['fao56_phase_boundary'] == boundary:
+            ranges = [(float(lo), float(hi)) for lo, hi in re.findall(r'(\d+)-(\d+)', r['source'] or '')]
+            if len(ranges) != len(groups) or any(lo > hi for lo, hi in ranges):
+                raise SystemExit(f'stage_thresholds_gdd: {crop} {boundary}: expected {len(groups)} ranges '
+                                 f'"min-max" in the source, found {ranges}.')
+            return dict(zip(groups, ranges))
+    raise SystemExit(f'stage_thresholds_gdd: no {crop} anchor for {boundary}.')
+
+
+def build_crop_phase_gdd(fao, weather):
+    """Rows of crop_phase_gdd: degree-days from sowing at the end of each FAO-56 phase, per crop and variety group.
+
+    Published anchors first; FAO day lengths on the Loiret reference season elsewhere (method says which).
+    The mid / late split, when not published, follows the FAO day lengths. Values in whole degree-days.
+    """
+    anchors = fao['stage_thresholds_gdd']
+    stages = {r['crop_code']: r for r in fao['fao56_crop_stages']}
+    before, after, p_flower = FLOWERING_WINDOW
+    rows = []
+
+    def add(crop, group, ends, flowering, sensitive, method):
+        ends = [round(v) for v in ends]
+        if not ends[0] < ends[1] < ends[2] < ends[3]:
+            raise SystemExit(f'crop_phase_gdd {crop} {group}: phase ends do not increase {ends}.')
+        rows.append(dict(crop_code=crop, earliness_group=group, ini_end=ends[0], dev_end=ends[1], mid_end=ends[2],
+                         late_end=ends[3], flowering=round(flowering), sensitive_from=round(sensitive[0]),
+                         sensitive_to=round(sensitive[1]), sensitive_p=sensitive[2], method=method))
+        return rows[-1]
+
+    def default_row(crop, group):
+        """The row with no variety group = the row of `group`."""
+        row = next(r for r in rows if r['crop_code'] == crop and r['earliness_group'] == group)
+        rows.append(dict(row, earliness_group=None, method=f'Default = {group} group. {row["method"]}'))
+
+    def mid_end(crop, dev, late):
+        """Split dev end .. late end like the FAO mid and late day lengths."""
+        st = stages[crop]
+        return dev + (late - dev) * st['l_mid_days'] / (st['l_mid_days'] + st['l_late_days'])
+
+    def fao_days(crop):
+        st = stages[crop]
+        return f'FAO days {st["l_mid_days"]}/{st["l_late_days"]}'
+
+    def derived(crop):
+        sow, harvest = REFERENCE_SEASONS[crop]
+        years = f'{sow.year}' if sow.year == harvest.year else f'{sow.year}-{harvest.year % 100:02d}'
+        return f'derived (FAO days on Loiret {years})'
+
+    # Maize: flowering per variety group is published. The full-cover anchor (760) is given for the early group:
+    # every group keeps the same gap to flowering. Mid and late ends: the default is published relative to
+    # flowering (+ 590, + 780), and a range is published per group. Later groups need more degree-days after
+    # flowering, so the default is kept only inside the range of the group; else the middle of the range.
+    flowering = {r['earliness_group']: r['gdd_from_sowing_default_num']
+                 for r in anchors if r['crop_code'] == 'MAIZ' and r['earliness_group']}
+    ini = anchor(anchors, 'MAIZ', '= end of ini')
+    dev_gap = flowering['early'] - anchor(anchors, 'MAIZ', '= end of dev')
+    mid_gap, late_gap = after_flowering(anchors, 'MAIZ', 'end of mid'), after_flowering(anchors, 'MAIZ', 'end of late')
+    mid_ranges, late_ranges = group_ranges(anchors, 'MAIZ', 'end of mid'), group_ranges(anchors, 'MAIZ', 'end of late')
+
+    def maize_end(name, f, gap, rng):
+        """(value, method text) of a maize phase end: flowering + gap inside the group range, else its middle."""
+        lo, hi = rng
+        if lo <= f + gap <= hi:
+            return f + gap, f'{name} end flowering + {gap:g} published (in the group range {lo:g}-{hi:g})'
+        middle = round((lo + hi) / 2)
+        return middle, f'{name} end {middle:g} = middle of the published group range {lo:g}-{hi:g}'
+
+    for group, f in flowering.items():
+        mid, mid_text = maize_end('mid', f, mid_gap, mid_ranges[group])
+        late, late_text = maize_end('late', f, late_gap, late_ranges[group])
+        add('MAIZ', group, [ini, f - dev_gap, mid, late], f, (f - before, f + after, p_flower),
+            f'Flowering published (Isagri, Arvalis); ini end {ini:g} derived (5-6 leaves); dev end flowering - '
+            f'{dev_gap:g} derived; {mid_text}; {late_text}.')
+    default_row('MAIZ', 'early')
+
+    # Sunflower: full cycle per variety group is published; flowering to harvest is a published span.
+    # The star-bud anchor (720) is given for the early group: every group keeps the same gap to flowering.
+    cycle = {r['earliness_group']: r['gdd_from_sowing_default_num']
+             for r in anchors if r['crop_code'] == 'SUNF' and r['earliness_group']}
+    to_harvest = anchor(anchors, 'SUNF', 'Flowering (F1) to whole-plant harvest')
+    bud_gap = cycle['early'] - to_harvest - anchor(anchors, 'SUNF', 'Star bud')
+    ini = reference_ends(stages['SUNF'], weather)[0]
+    for group, c in cycle.items():
+        f = c - to_harvest
+        add('SUNF', group, [ini, f - bud_gap, mid_end('SUNF', f - bud_gap, c), c], f, (f - before, f + after, p_flower),
+            f'Late end = full cycle published (Terres Inovia); flowering = cycle - {to_harvest:g} (published span); '
+            f'dev end flowering - {bud_gap:g} derived; mid end split by {fao_days("SUNF")}; '
+            f'ini end {derived("SUNF")}.')
+    default_row('SUNF', 'early')
+
+    # Winter wheat: published stage sums (Isagri) except harvest maturity (derived in the file).
+    dev, late = anchor(anchors, 'COWT', 'Booting complete'), anchor(anchors, 'COWT', 'Harvest maturity')
+    heading, f = anchor(anchors, 'COWT', 'Start of heading'), anchor(anchors, 'COWT', 'Start of flowering')
+    wheat = add('COWT', None, [reference_ends(stages['COWT'], weather)[0], dev, mid_end('COWT', dev, late), late], f,
+                (heading, WHEAT_END_OF_FLOWERING, WHEAT_P_SENSITIVE),
+                f'Dev end (booting), flowering, sensitive heading to end of flowering published (Isagri); late end '
+                f'{late:g} derived; mid end split by {fao_days("COWT")}; ini end {derived("COWT")}.')
+
+    # Winter barley: no published sums. Proxy = the wheat row minus about 10 %.
+    add('BARL', None, [wheat[k] * BARLEY_FACTOR for k in ('ini_end', 'dev_end', 'mid_end', 'late_end')],
+        wheat['flowering'] * BARLEY_FACTOR,
+        (wheat['sensitive_from'] * BARLEY_FACTOR, wheat['sensitive_to'] * BARLEY_FACTOR, wheat['sensitive_p']),
+        f'Proxy: winter wheat row x {BARLEY_FACTOR:g} (no published barley sums).')
+
+    # Winter rapeseed: no stage sums published. All ends from the reference season; flowering at the end of dev.
+    ends = reference_ends(stages['RAPE'], weather)
+    add('RAPE', None, ends, ends[1], (ends[1], ends[1] + RAPE_WINDOW[0], RAPE_WINDOW[1]),
+        f'All ends {derived("RAPE")}; flowering = dev end; sensitive flowering to + '
+        f'{RAPE_WINDOW[0]}, p {RAPE_WINDOW[1]:.2f}.')
+    return rows
+
+
 # ───────────────────────── database ─────────────────────────
 
 def normalise(rows):
@@ -709,7 +898,7 @@ def write(db_url, tables, reset, yes, only_fao=False):
 
     with psycopg.connect(db_url, prepare_threshold=None, connect_timeout=20) as conn:
         print(f'\nDatabase: {conn.info.host}:{conn.info.port}/{conn.info.dbname} as {conn.info.user}')
-        target = list(FAO_FILES) if only_fao else TABLES + list(FAO_FILES)
+        target = FAO_TABLES if only_fao else TABLES + FAO_TABLES
         existing = [t for t in target if conn.execute('select to_regclass(%s)', [f'public.{t}']).fetchone()[0]]
         if existing and not reset:
             raise SystemExit(f'These tables already exist: {", ".join(existing)}.\n'
@@ -760,10 +949,15 @@ def main():
     if not args.dry_run and not db_url:
         raise SystemExit('Set DATABASE_URL in .env, or use --dry-run.')
 
+    datasets_dir = os.environ.get('DATASETS_DIR')
+    if not datasets_dir:
+        raise SystemExit('Set DATASETS_DIR in .env (the folder dg-agri-hackathon-datasets).')
+
     if args.only_fao:
-        print(f'Reading FAO-56 tables from {fao_dir}')
+        print(f'Reading FAO-56 tables from {fao_dir}, {REFERENCE_NUTS3} reference weather from {datasets_dir}')
         tables = build_fao(fao_dir)
-        for t in FAO_FILES:
+        tables['crop_phase_gdd'] = build_crop_phase_gdd(tables, reference_weather(Datasets(datasets_dir)))
+        for t in FAO_TABLES:
             print(f'  {t:<22} {len(tables[t]):>4}')
         for w in warnings:
             print(f'  ! {w}')
@@ -773,9 +967,6 @@ def main():
         write(db_url, tables, args.reset, args.yes, only_fao=True)
         return tables
 
-    datasets_dir = os.environ.get('DATASETS_DIR')
-    if not datasets_dir:
-        raise SystemExit('Set DATASETS_DIR in .env (the folder dg-agri-hackathon-datasets).')
     farm_codes = [c.strip() for c in (os.environ.get('FARM_IDS') or ','.join(DEFAULT_FARMS)).split(',') if c.strip()]
     today = date.fromisoformat(os.environ['DEMO_TODAY']) if os.environ.get('DEMO_TODAY') else date.today()
     phones = [p.strip() for p in os.environ.get('MEMBER_PHONES', '').split(',')]
@@ -823,11 +1014,12 @@ def main():
         tables['product'], tables['product_use'] = list(catalogue.products.values()), catalogue.uses
     if fao_dir.exists():
         tables.update(build_fao(fao_dir))
+        tables['crop_phase_gdd'] = build_crop_phase_gdd(tables, reference_weather(ds))
     else:
         warnings.append(f'FAO_DIR {fao_dir} not found: FAO-56 tables stay empty')
 
     print('\nRows to load:')
-    for t in TABLES + list(FAO_FILES):
+    for t in TABLES + FAO_TABLES:
         print(f'  {t:<22} {len(tables.get(t) or []):>6}')
     print('\nOperations:')
     for k, v in sorted(stats.items()):
