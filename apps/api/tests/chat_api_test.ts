@@ -101,7 +101,10 @@ Deno.test("history: empty before the first chat, 2 messages after", opts, async 
 });
 
 Deno.test("after startWorkers, the morning-warmup schedule is listed", opts, async () => {
-  const { app, mastra } = await makeTestChatApp({ model: scriptedModel([]) });
+  const { app, mastra } = await makeTestChatApp({
+    model: scriptedModel([]),
+    openMastraApi: true,
+  });
   await mastra.startWorkers();
   try {
     const res = await app.request("/api/schedules", { headers: { "x-member-id": "1" } });
@@ -118,4 +121,34 @@ Deno.test("member middleware matches /chat and /chat/..., not /chatter", opts, a
   assertEquals((await app.request("/chat", { method: "POST", headers: h })).status, 400);
   const other = await app.request("/chatter", { method: "POST", headers: h });
   assertEquals(other.status, 404);
+});
+
+Deno.test(
+  "OPEN_MASTRA_API off: /api/* is 404 in the envelope, /chat still works",
+  opts,
+  async () => {
+    const { app } = await makeTestChatApp({ model: scriptedModel(script()) });
+    const res = await app.request("/api/agents", { headers: { "x-member-id": "1" } });
+    assertEquals(res.status, 404);
+    assertEquals((await res.json()).error, { code: "http_404", message: "Mastra API disabled" });
+    const wf = await app.request("/api/workflows/record-irrigation/start-async", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assertEquals(wf.status, 404);
+    const chat = await post(app, { "x-member-id": "1" });
+    assertEquals(chat.status, 200);
+    assertStringIncludes(await chat.text(), "Arrosez La Vallée : 90 mm.");
+    assertEquals(
+      (await app.request("/chat/history", { headers: { "x-member-id": "1" } })).status,
+      200,
+    );
+  },
+);
+
+Deno.test("OPEN_MASTRA_API on: /api/agents is 200", opts, async () => {
+  const { app } = await makeTestChatApp({ model: scriptedModel([]), openMastraApi: true });
+  const res = await app.request("/api/agents", { headers: { "x-member-id": "1" } });
+  assertEquals(res.status, 200);
 });

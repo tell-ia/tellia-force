@@ -16,6 +16,21 @@ import {
 import { createWeatherService } from "../../src/modules/irrigation/weather/weatherService";
 import { makeFarmFixture } from "../fixtures/farm";
 
+const tempDirs: string[] = [];
+globalThis.addEventListener("unload", () => {
+  for (const d of tempDirs) {
+    try {
+      Deno.removeSync(d, { recursive: true });
+    } catch { /* already gone */ }
+  }
+});
+/** A temp dir for a LibSQL file, removed when the test process exits. */
+async function tempDbDir() {
+  const d = await Deno.makeTempDir();
+  tempDirs.push(d);
+  return d;
+}
+
 /** Offline Open-Meteo: returns no extra days. Never touches the network. */
 export const emptyOpenMeteoFetch: typeof fetch = () =>
   Promise.resolve(Response.json({
@@ -54,7 +69,7 @@ export async function makeTestMastra(
   const workflows = createAdvisorWorkflows(opts.service, opts.data);
   const storage = new LibSQLStore({
     id: "test-store",
-    url: `file:${await Deno.makeTempDir()}/t.db`,
+    url: `file:${await tempDbDir()}/t.db`,
   });
   return new Mastra({
     storage,
@@ -82,7 +97,7 @@ export async function makeTestMastra(
  * The full app: CORS, /irrigation, GET /chat/history and Mastra (POST /chat, /api/*) on the
  * in-memory farm, the scripted model and a temp LibSQL store. `today` is 2026-07-05.
  */
-export async function makeTestChatApp(opts: { model: unknown }) {
+export async function makeTestChatApp(opts: { model: unknown; openMastraApi?: boolean }) {
   const { app, data, service } = makeTestApp();
   app.use(
     "*",
@@ -93,7 +108,8 @@ export async function makeTestChatApp(opts: { model: unknown }) {
     data,
     // deno-lint-ignore no-explicit-any
     model: opts.model as any,
-    storageUrl: `file:${await Deno.makeTempDir()}/chat.db`,
+    openMastraApi: opts.openMastraApi,
+    storageUrl: `file:${await tempDbDir()}/chat.db`,
   });
   await mountChat(app, { mastra, service, data });
   return { app, data, service, mastra };

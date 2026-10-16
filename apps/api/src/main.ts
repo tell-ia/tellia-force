@@ -52,6 +52,8 @@ const mastra = createMastra({
   model: config.MODEL,
   modelMini: config.MODEL_MINI,
   storageUrl: config.MASTRA_DB_URL,
+  timezone: config.TIMEZONE,
+  openMastraApi: config.OPEN_MASTRA_API,
 });
 await mountChat(app, { mastra, service: irrigation, data: farmData });
 

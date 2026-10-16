@@ -5,7 +5,7 @@ import type { MastraModelConfig } from "@mastra/core/llm";
 import { chatRoute } from "@mastra/ai-sdk";
 import { MastraServer } from "@mastra/hono";
 import { LibSQLStore } from "@mastra/libsql";
-import type { Hono } from "hono";
+import type { Hono, MiddlewareHandler } from "hono";
 import type { FarmData } from "../irrigation/data/farmData";
 import type { IrrigationService } from "../irrigation/irrigation.service";
 import { ADVISOR_ID, createAdvisorAgent } from "./advisor.agent";
@@ -15,6 +15,12 @@ import { createAdvisorWorkflows } from "./workflows/index";
 
 export const MAX_CHAT_STEPS = 6;
 
+/** Mastra's /api/* is unauthenticated (anyone could start a workflow as any member). */
+const apiDisabled: MiddlewareHandler = (c) =>
+  Promise.resolve(
+    c.json({ error: { code: "http_404", message: "Mastra API disabled" } }, 404),
+  );
+
 export function createMastra(
   opts: {
     service: IrrigationService;
@@ -23,10 +29,14 @@ export function createMastra(
     /** Cheap model for thread titles. */
     modelMini?: MastraModelConfig;
     storageUrl: string;
+    /** IANA zone for the morning-warmup schedule. */
+    timezone?: string;
+    /** Expose Mastra's built-in /api/* routes (unauthenticated). Default false. */
+    openMastraApi?: boolean;
   },
 ) {
   const { service, data } = opts;
-  const workflows = createAdvisorWorkflows(service, data);
+  const workflows = createAdvisorWorkflows(service, data, opts.timezone);
   return new Mastra({
     storage: new LibSQLStore({ id: "mastra-store", url: opts.storageUrl }),
     agents: {
@@ -46,7 +56,10 @@ export function createMastra(
     server: {
       // The app's own CORS (registered first) handles preflights, including x-member-id.
       cors: false,
-      middleware: createMemberMiddleware(service, data),
+      middleware: [
+        ...(opts.openMastraApi ? [] : [{ path: "/api/*", handler: apiDisabled }]),
+        ...createMemberMiddleware(service, data),
+      ],
       apiRoutes: [
         chatRoute({
           path: "/chat",
