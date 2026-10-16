@@ -15,18 +15,36 @@ import {
 } from "@tellia/shared/irrigation";
 import {
   cropNameIn,
+  type CropRef,
+  type CropSeason,
   type CropStage,
   type FarmData,
   type Field,
   type IrrigationOperation,
+  type IrrigationSystem,
   type OperationStatus,
 } from "./data/farmData";
 import { cropWaterParams, kcAtFraction, kcFromRef, seasonFraction } from "./engine/crop";
-import { buildFieldReport, rankReports, type ReportInput } from "./engine/report";
+import {
+  type CropDay,
+  cropDay,
+  type CropParams,
+  type CropPhases,
+  dailyGdd,
+  type Phase,
+} from "./engine/cropModel";
+import { buildFieldReport, rankReports, reportBalance, type ReportInput } from "./engine/report";
 import { applyScenario, compareReports } from "./engine/scenario";
-import { DEFAULT_LOAM, soilWaterFromTexture, totalAvailableWater } from "./engine/soil";
-import { addDays } from "./engine/util";
-import { runWaterBalance, type WeatherInput } from "./engine/waterBalance";
+import {
+  DEFAULT_LOAM,
+  type SoilWater,
+  soilWaterFromClass,
+  soilWaterFromTexture,
+  totalAvailableWater,
+  usdaTextureClass,
+} from "./engine/soil";
+import { addDays, daysBetween, round1, round2 } from "./engine/util";
+import type { IrrigationInput, WeatherInput } from "./engine/waterBalance";
 import type { WeatherService } from "./weather/weatherService";
 
 export interface FieldMatch {
@@ -55,7 +73,15 @@ export interface IrrigationService {
   /** Main contact's member id, or null when the farm has none. */
   defaultMemberId(): Promise<number | null>;
   resolveField(query: string): Promise<FieldMatch[]>;
-  getFieldReport(fieldId: number, asOf?: string): Promise<FieldReport>;
+  /**
+   * One field's report. `full` (default true) adds the season totals and the series; the
+   * farm advice leaves them out.
+   */
+  getFieldReport(
+    fieldId: number,
+    asOf?: string,
+    opts?: { full?: boolean },
+  ): Promise<FieldReport>;
   getFarmAdvice(asOf?: string): Promise<FarmAdvice>;
   simulateScenario(
     fieldId: number,
@@ -85,6 +111,22 @@ const words = (s: string) => normalize(s).split(" ").filter((w) => w.length > 2)
 /** Largest single application advised; deeper deficits are split over several days. */
 export const MAX_APPLICATION_MM = 35;
 
+/** Latest advice date, in days after today: the engine reads 7 days ahead, Open-Meteo gives 14. */
+export const MAX_DAYS_AHEAD = 7;
+
+/** Below this aridity (annual rain ÷ annual ET0) a region is dry: the soil is not full at sowing. */
+const DRY_ARIDITY = 0.5;
+/** Share of the soil reserve already empty at sowing in a dry region. */
+const DRY_START_SHARE = 0.3;
+
+const PHASE_LABELS: Record<Phase, string> = {
+  ini: "Initial",
+  dev: "Development",
+  mid: "Mid-season",
+  late: "Late season",
+  mature: "Mature",
+};
+
 const bad = (message: string) => new HTTPException(400, { message });
 
 function toRecord(op: IrrigationOperation): IrrigationRecord {
@@ -97,10 +139,79 @@ function toRecord(op: IrrigationOperation): IrrigationRecord {
   };
 }
 
+/** Report details only the FAO-56 path knows: crop stage, soil, what the numbers rely on. */
+interface Details {
+  sowingDate: string;
+  stage: NonNullable<FieldReport["stage"]>;
+  rootDepthM: number;
+  textureClass: string | null;
+  assumptions: string[];
+}
+
 interface Context {
   input: ReportInput;
   /** Kept separately so scenarios can rebuild the report. */
   field: Field;
+  /** Null on the old model (a crop without FAO-56 data). */
+  details: Details | null;
+}
+
+/** What every season context starts from. */
+interface SeasonBase {
+  field: Field;
+  season: CropSeason;
+  ref: CropRef;
+  /** Confirmed, gross, on or before asOf. */
+  irrigations: IrrigationInput[];
+  asOf: string;
+}
+
+/** "Reel gun 1: 75 % of the pumped water reaches the roots, at most 40 mm per pass." */
+function systemNote(system: IrrigationSystem): string {
+  return `${system.name}: ${Math.round(system.efficiency * 100)} % of the pumped water reaches ` +
+    "the roots" + (system.doseMaxMm === null ? "." : `, at most ${system.doseMaxMm} mm per pass.`);
+}
+
+/** Stage name for people: "Flowering" once the flowering degree-days are reached in the window. */
+function stageLabelOf(day: CropDay, flowered: boolean): string {
+  return day.phase === "mid" && day.sensitive && flowered ? "Flowering" : PHASE_LABELS[day.phase];
+}
+
+/**
+ * Adds the FAO-56 details to a report. `full` (one field) also adds the season totals and
+ * the series from 10 days back to 5 days ahead; the farm advice leaves them out.
+ */
+function withDetails(report: FieldReport, ctx: Context, full: boolean): FieldReport {
+  const d = ctx.details;
+  if (!d) return report;
+  const out: FieldReport = {
+    ...report,
+    stage: d.stage,
+    rootDepthM: d.rootDepthM,
+    soil: { textureClass: d.textureClass, tawMm: report.tawMm },
+    assumptions: d.assumptions,
+  };
+  if (!full) return out;
+
+  const { asOf } = ctx.input;
+  const balance = reportBalance(ctx.input);
+  // Season totals: from sowing to the day before asOf.
+  const past = balance.filter((b) => b.date < asOf);
+  const sum = (value: (b: DayBalance) => number) => round1(past.reduce((s, b) => s + value(b), 0));
+  const pumped = ctx.input.irrigations.filter((i) => i.date >= d.sowingDate && i.date < asOf);
+  out.season = {
+    daysSinceSowing: daysBetween(d.sowingDate, asOf),
+    rainMm: sum((b) => b.rain),
+    irrigationGrossMm: round1(pumped.reduce((s, i) => s + i.mm, 0)),
+    irrigationNetMm: sum((b) => b.irrigation),
+    etcMm: sum((b) => b.etc),
+    drainageMm: sum((b) => b.drainage),
+    stressDays: past.filter((b) => b.ks < 1).length,
+  };
+  const from = addDays(asOf, -10);
+  const to = addDays(asOf, 5);
+  out.series = balance.filter((b) => b.date >= from && b.date <= to);
+  return out;
 }
 
 export function createIrrigationService(
@@ -121,8 +232,18 @@ export function createIrrigationService(
     }
     return date;
   };
-  const resolveAsOf = (asOf?: string) =>
-    asOf === undefined ? deps.today() : checkDate(asOf, "asOf");
+  /** The advice date: today by default, never after today + 7 (the forecast stops there). */
+  const resolveAsOf = (asOf?: string) => {
+    if (asOf === undefined) return deps.today();
+    checkDate(asOf, "asOf");
+    const latest = addDays(deps.today(), MAX_DAYS_AHEAD);
+    if (asOf > latest) {
+      throw bad(
+        `date ${asOf} is more than ${MAX_DAYS_AHEAD} days ahead; the forecast reaches ${latest} at most`,
+      );
+    }
+    return asOf;
+  };
 
   async function getField(fieldId: number): Promise<Field> {
     const field = (await data.listFields()).find((f) => f.id === fieldId);
@@ -152,6 +273,7 @@ export function createIrrigationService(
       const taw = totalAvailableWater(DEFAULT_LOAM.thetaFC, DEFAULT_LOAM.thetaWP, rootDepthM);
       return {
         field,
+        details: null,
         input: {
           field,
           season: null,
@@ -167,15 +289,34 @@ export function createIrrigationService(
       };
     }
 
-    const [ref, stages, soil, ops] = await Promise.all([
-      memoized(memo, `ref:${season.cropCode}`, () => data.getCropRef(season.cropCode)),
-      memoized(memo, `stages:${season.cropCode}`, () => data.getCropStages(season.cropCode)),
-      data.getSoil(field.id),
+    const code = season.cropCode;
+    const group = season.earlinessGroup ?? null;
+    const [ref, params, phases, ops] = await Promise.all([
+      memoized(memo, `ref:${code}`, () => data.getCropRef(code)),
+      memoized(memo, `params:${code}`, () => data.getCropParams(code)),
+      memoized(memo, `phases:${code}:${group}`, () => data.getCropPhases(code, group)),
       data.listIrrigations(field.id, { includeDrafts: false }),
     ]);
     if (!ref) {
-      throw new HTTPException(500, { message: `crop reference ${season.cropCode} is missing` });
+      throw new HTTPException(500, { message: `crop reference ${code} is missing` });
     }
+    // Confirmed waterings only, and none after the chosen date: a later one did not happen yet.
+    const irrigations = ops
+      .filter((o) => o.status === "confirmed" && o.date <= asOf)
+      .map((o) => ({ date: o.date, mm: o.mm }));
+
+    const base = { field, season, ref, irrigations, asOf };
+    // FAO-56 degree-day model when the crop has its values and phases; else the old model.
+    return params && phases ? faoContext(base, params, phases, memo) : oldModelContext(base, memo);
+  }
+
+  /** Old model: Kc from the season fraction, fixed roots and p (crops without FAO-56 data). */
+  async function oldModelContext(base: SeasonBase, memo?: Memo): Promise<Context> {
+    const { field, season, ref, irrigations, asOf } = base;
+    const [stages, soil] = await Promise.all([
+      memoized(memo, `stages:${season.cropCode}`, () => data.getCropStages(season.cropCode)),
+      data.getSoil(field.id),
+    ]);
     const { rootDepthM, p } = cropWaterParams(season.cropCode);
     const sw = soil ? soilWaterFromTexture(soil) : DEFAULT_LOAM;
     const taw = totalAvailableWater(sw.thetaFC, sw.thetaWP, rootDepthM);
@@ -212,12 +353,9 @@ export function createIrrigationService(
       return { date: d.date, et0: d.et0, rain: d.rain, tmin: d.tmin, kc };
     });
 
-    const irrigations = ops
-      .filter((o) => o.status === "confirmed")
-      .map((o) => ({ date: o.date, mm: o.mm }));
-
     return {
       field,
+      details: null,
       input: {
         field,
         season: { cropCode: season.cropCode },
@@ -233,8 +371,161 @@ export function createIrrigationService(
     };
   }
 
-  async function reportFor(field: Field, asOf: string, memo?: Memo): Promise<FieldReport> {
-    return buildFieldReport((await buildContext(field, asOf, memo)).input);
+  /**
+   * FAO-56 path: degree-days from sowing give the phase, Kc, root depth and p of each day;
+   * TAW grows with the roots. Soil from FAO-56 Table 19 by texture class. Dry regions start
+   * with part of the reserve empty. The field's irrigation system sets efficiency and doses.
+   */
+  async function faoContext(
+    base: SeasonBase,
+    params: CropParams,
+    crop: { phases: CropPhases; method: string | null },
+    memo?: Memo,
+  ): Promise<Context> {
+    const { field, season, ref, irrigations, asOf } = base;
+    const { phases } = crop;
+    const to = addDays(asOf, 7);
+    const [soil, classes, system, farm, series] = await Promise.all([
+      data.getSoil(field.id),
+      memoized(memo, "soilClasses", () => data.getSoilWaterClasses()),
+      data.getIrrigationSystem(field.id),
+      memoized(memo, "farm", () => data.getFarm()),
+      memoized(
+        memo,
+        `series:${season.sowingDate}:${to}:${params.tBaseC}`,
+        () => weather.getDailySeries({ from: season.sowingDate, to, gddBase: params.tBaseC }),
+      ),
+    ]);
+
+    // Soil: Table 19 row of the USDA class, else Saxton-Rawls, else a typical loam.
+    let sw: SoilWater = DEFAULT_LOAM;
+    let textureClass: string | null = null;
+    let soilNote = "No soil analysis: a typical loam is assumed.";
+    if (soil) {
+      const usda = usdaTextureClass(soil.sandPct, soil.clayPct);
+      const fromClass = soilWaterFromClass(classes, usda);
+      if (fromClass) {
+        sw = fromClass;
+        textureClass = usda;
+        soilNote = `Soil reserve from FAO-56 Table 19 (${usda}).`;
+      } else {
+        sw = soilWaterFromTexture(soil);
+        soilNote =
+          `Soil reserve from the soil analysis (Saxton-Rawls; no Table 19 row for ${usda}).`;
+      }
+    }
+
+    // Degree-days summed from sowing. `morning` = end of the day before asOf.
+    let cumulative = 0;
+    let morning = 0;
+    let floweringDate: string | null = null;
+    const days: WeatherInput[] = series.map((d) => {
+      cumulative += d.tmax !== null
+        ? dailyGdd({ tmin: d.tmin, tmax: d.tmax }, params.tBaseC, params.tMaxCapC)
+        : Math.max(0, d.tmean - params.tBaseC);
+      if (d.date < asOf) {
+        morning = cumulative;
+        if (floweringDate === null && phases.flowering !== null && cumulative >= phases.flowering) {
+          floweringDate = d.date;
+        }
+      }
+      const day = cropDay(params, phases, cumulative);
+      return {
+        date: d.date,
+        et0: d.et0,
+        rain: d.rain,
+        tmin: d.tmin,
+        kc: d.date <= season.harvestDate ? day.kc : null,
+        taw: totalAvailableWater(sw.thetaFC, sw.thetaWP, day.rootDepthM),
+        pTable: day.pTable,
+        pCap: day.pCap,
+      };
+    });
+    // Phase, roots and window of the morning: they drive the decision and the stage.
+    const morningDay = cropDay(params, phases, morning);
+    const flowered = phases.flowering !== null && morning >= phases.flowering;
+
+    // Start: soil full at sowing, except in a dry region where the whole profile (down to the
+    // full root depth) starts partly empty; growing roots bring that deficit with them.
+    const aridity = farm.aridityIndex ?? null;
+    let dryStart: { share: number; tawMax: number } | null = null;
+    let startNote = "Season start: soil full at sowing (region aridity unknown).";
+    if (aridity !== null && aridity < DRY_ARIDITY) {
+      dryStart = {
+        share: DRY_START_SHARE,
+        tawMax: totalAvailableWater(sw.thetaFC, sw.thetaWP, params.zrMaxM),
+      };
+      startNote = `Season start: ${DRY_START_SHARE * 100} % of the soil reserve empty, down to ` +
+        `the full root depth (dry region, aridity ${round2(aridity)}).`;
+    } else if (aridity !== null) {
+      startNote = "Season start: soil full at sowing (wet region).";
+    }
+
+    const assumptions = [
+      "Rain counted in full (no runoff).",
+      startNote,
+      soilNote,
+      `Degree-days from sowing, base ${params.tBaseC} °C` +
+      (params.tMaxCapC === null ? "." : `, Tmax capped at ${params.tMaxCapC} °C.`),
+      ...(crop.method ? [`Crop stages: ${crop.method}`] : []),
+      system ? systemNote(system) : "No irrigation system recorded: pumped water counted in full.",
+    ];
+    const firstForecast = series.find((d) => d.source === "open-meteo");
+    if (firstForecast) {
+      assumptions.push(
+        firstForecast.date > season.sowingDate
+          ? `Weather after ${addDays(firstForecast.date, -1)} from Open-Meteo.`
+          : "Weather from Open-Meteo.",
+      );
+    }
+
+    return {
+      field,
+      details: {
+        sowingDate: season.sowingDate,
+        stage: {
+          phase: morningDay.phase,
+          gddSinceSowing: Math.round(morning),
+          sensitive: morningDay.sensitive,
+          floweringDate,
+        },
+        rootDepthM: round2(morningDay.rootDepthM),
+        textureClass,
+        assumptions,
+      },
+      input: {
+        field,
+        season: { cropCode: season.cropCode },
+        cropName: cropNameIn(ref, language),
+        days,
+        irrigations,
+        // Fallbacks for a day without its own values (the days all carry them).
+        taw: totalAvailableWater(sw.thetaFC, sw.thetaWP, morningDay.rootDepthM),
+        p: Math.min(morningDay.pTable, morningDay.pCap ?? Infinity),
+        asOf,
+        stageLabel: stageLabelOf(morningDay, flowered),
+        maxApplicationMm: MAX_APPLICATION_MM,
+        system: system
+          ? {
+            efficiency: system.efficiency,
+            doseMaxMm: system.doseMaxMm,
+            roundDays: system.roundDays,
+          }
+          : null,
+        phase: morningDay.phase,
+        dryStart,
+      },
+    };
+  }
+
+  async function reportFor(
+    field: Field,
+    asOf: string,
+    memo?: Memo,
+    full = false,
+  ): Promise<FieldReport> {
+    const ctx = await buildContext(field, asOf, memo);
+    return withDetails(buildFieldReport(ctx.input), ctx, full);
   }
 
   async function validateIrrigation(
@@ -333,9 +624,9 @@ export function createIrrigationService(
         .map(({ score: _s, ...m }) => m);
     },
 
-    async getFieldReport(fieldId, asOf) {
+    async getFieldReport(fieldId, asOf, opts) {
       const date = resolveAsOf(asOf);
-      return reportFor(await getField(fieldId), date);
+      return reportFor(await getField(fieldId), date, undefined, opts?.full ?? true);
     },
 
     async getFarmAdvice(asOf) {
@@ -349,24 +640,26 @@ export function createIrrigationService(
     async simulateScenario(fieldId, events, asOf) {
       const date = resolveAsOf(asOf);
       const field = await getField(fieldId);
-      const { input } = await buildContext(field, date);
-      const baseline = buildFieldReport(input);
-      const applied = applyScenario(input.days, input.irrigations, events);
+      const ctx = await buildContext(field, date);
+      const baseline = withDetails(buildFieldReport(ctx.input), ctx, false);
+      // Events may add waterings after the date: they are applied after the date filter.
+      const applied = applyScenario(ctx.input.days, ctx.input.irrigations, events);
       const scenarioInput: ReportInput = {
-        ...input,
+        ...ctx.input,
         days: applied.days,
         irrigations: applied.irrigations,
         extraWarnings: applied.warnings,
       };
-      const scenario = buildFieldReport(scenarioInput);
+      const scenario = withDetails(
+        buildFieldReport(scenarioInput),
+        { ...ctx, input: scenarioInput },
+        false,
+      );
       const from = addDays(date, -14);
       const to = addDays(date, 6);
-      const series: DayBalance[] = runWaterBalance({
-        days: applied.days,
-        irrigations: applied.irrigations,
-        taw: input.taw,
-        p: input.p,
-      }).filter((d) => d.date >= from && d.date <= to);
+      // Same TAW, p, start and efficiency as the reports.
+      const series: DayBalance[] = reportBalance(scenarioInput)
+        .filter((d) => d.date >= from && d.date <= to);
       return {
         asOf: date,
         baseline,

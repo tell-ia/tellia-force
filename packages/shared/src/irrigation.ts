@@ -20,11 +20,39 @@ export const DecisionSchema = z.enum([
   "irrigate_today",
   "frost_hold",
   "wait_for_rain",
+  /** Stress comes within the irrigation system's round days: water by `irrigateBy`. */
+  "plan_irrigation",
   "no_irrigation",
+  /** Late phase or mature: stop irrigating. */
+  "crop_maturing",
   "not_irrigable",
   "outside_season",
 ]);
 export type Decision = z.infer<typeof DecisionSchema>;
+
+/** Crop phase on the degree-day axis (FAO-56 stages, then mature). */
+export const PhaseSchema = z.enum(["ini", "dev", "mid", "late", "mature"]);
+export type CropPhase = z.infer<typeof PhaseSchema>;
+
+/** One day of the water balance series. */
+export const DayBalanceSchema = z.object({
+  date: IsoDateSchema,
+  et0: z.number(),
+  kc: z.number(),
+  ks: z.number(),
+  etc: z.number(),
+  rain: z.number(),
+  /** Net: the water that reached the roots (gross × efficiency). */
+  irrigation: z.number(),
+  /** Water above field capacity that left the root zone. */
+  drainage: z.number(),
+  depletion: z.number(),
+  taw: z.number(),
+  /** Depletion fraction of the day; RAW = p × TAW. */
+  p: z.number(),
+  raw: z.number(),
+});
+export type DayBalance = z.infer<typeof DayBalanceSchema>;
 
 /** Advice for one field on one day. Water amounts in mm, depletion in mm of the root zone. */
 export const FieldReportSchema = z.object({
@@ -49,23 +77,43 @@ export const FieldReportSchema = z.object({
   rainNext3DaysMm: z.number(),
   reason: z.string(),
   warnings: z.array(z.string()),
+  /** Water to pump, mm: `irrigateMm` (net) ÷ efficiency, capped per pass. */
+  irrigateGrossMm: z.number(),
+  /** Last day to water (today for irrigate_today and frost_hold), else null. */
+  irrigateBy: IsoDateSchema.nullable(),
+  /** One short sentence for voice and SMS. */
+  headline: z.string(),
+  // Details below; the farm advice may leave them out.
+  stage: z.object({
+    phase: PhaseSchema,
+    /** Degree-days since sowing. */
+    gddSinceSowing: z.number(),
+    /** In the stress-sensitive window (p capped). */
+    sensitive: z.boolean(),
+    /** Day the flowering degree-days were reached, null if not yet. */
+    floweringDate: IsoDateSchema.nullable(),
+  }).nullable().optional(),
+  rootDepthM: z.number().nullable().optional(),
+  soil: z.object({
+    /** USDA texture class, null when the TAW comes from another method. */
+    textureClass: z.string().nullable(),
+    tawMm: z.number(),
+  }).nullable().optional(),
+  /** Totals from sowing to the day before `asOf`. Water in mm. */
+  season: z.object({
+    daysSinceSowing: z.number().int(),
+    rainMm: z.number(),
+    irrigationGrossMm: z.number(),
+    irrigationNetMm: z.number(),
+    etcMm: z.number(),
+    drainageMm: z.number(),
+    stressDays: z.number().int(),
+  }).optional(),
+  series: z.array(DayBalanceSchema).optional(),
+  /** What the numbers rely on, in plain words. */
+  assumptions: z.array(z.string()).optional(),
 });
 export type FieldReport = z.infer<typeof FieldReportSchema>;
-
-/** One day of the water balance series. */
-export const DayBalanceSchema = z.object({
-  date: IsoDateSchema,
-  et0: z.number(),
-  kc: z.number(),
-  ks: z.number(),
-  etc: z.number(),
-  rain: z.number(),
-  irrigation: z.number(),
-  depletion: z.number(),
-  taw: z.number(),
-  raw: z.number(),
-});
-export type DayBalance = z.infer<typeof DayBalanceSchema>;
 
 /** What-if events applied on top of the baseline. */
 export const ScenarioEventSchema = z.discriminatedUnion("type", [
@@ -104,6 +152,7 @@ export type ScenarioEvent = z.infer<typeof ScenarioEventSchema>;
 
 export const ScenarioComparisonSchema = z.object({
   decisionChanged: z.boolean(),
+  /** Water to pump (`irrigateGrossMm`), mm, before and after the scenario. */
   mmBefore: z.number(),
   mmAfter: z.number(),
   summary: z.string(),
@@ -131,6 +180,7 @@ export const WeatherDaySchema = z.object({
   rain: z.number(),
   tmin: z.number(),
   tmean: z.number(),
+  tmax: z.number().nullable().optional(),
   source: z.enum(["db", "open-meteo"]),
 });
 export type WeatherDay = z.infer<typeof WeatherDaySchema>;

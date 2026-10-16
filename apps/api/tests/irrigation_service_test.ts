@@ -252,7 +252,9 @@ Deno.test("farm advice shares weather and crop lookups across fields", async () 
 
 Deno.test("farm advice caps one application at 35 mm", async () => {
   const { service } = setup();
-  const r = (await service.getFarmAdvice("2026-08-20")).reports.find((x) => x.fieldId === 10)!;
+  // today + 7 at most (engine v2 date rule). The old 2026-08-20 had no weather, so it never irrigated.
+  const r = (await service.getFarmAdvice("2026-07-12")).reports.find((x) => x.fieldId === 10)!;
+  assertEquals(r.decision, "irrigate_today");
   assert(r.irrigateMm <= 35);
 });
 

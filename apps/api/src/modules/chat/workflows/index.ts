@@ -47,8 +47,11 @@ export function createAdvisorWorkflows(
     id: "field-report",
     inputSchema: FieldTargetSchema,
     outputSchema: FieldReportSchema,
+    // The short report, as the REST farm advice: no season totals, no series.
     execute: async ({ inputData }) =>
-      (await serviceFor(inputData.farmId)).getFieldReport(inputData.fieldId, inputData.asOf),
+      (await serviceFor(inputData.farmId)).getFieldReport(inputData.fieldId, inputData.asOf, {
+        full: false,
+      }),
   });
   const rank = createStep({
     id: "rank",
@@ -226,7 +229,7 @@ export function createAdvisorWorkflows(
         for (const f of await data.listFields()) targets.push({ service, fieldId: f.id });
       }
       const settled = await Promise.allSettled(
-        targets.map((t) => t.service.getFieldReport(t.fieldId, asOf)),
+        targets.map((t) => t.service.getFieldReport(t.fieldId, asOf, { full: false })),
       );
       const firstFailure = settled.find((s) => s.status === "rejected") as
         | PromiseRejectedResult

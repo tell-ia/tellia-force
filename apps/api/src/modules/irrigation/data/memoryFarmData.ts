@@ -1,6 +1,9 @@
 import { HTTPException } from "hono/http-exception";
 import { notFound } from "./supabaseFarmData";
+import type { CropParams } from "../engine/cropModel";
+import type { SoilWaterClass } from "../engine/soil";
 import type {
+  CropPhaseRow,
   CropRef,
   CropSeason,
   CropStage,
@@ -9,6 +12,7 @@ import type {
   FarmDirectory,
   Field,
   IrrigationOperation,
+  IrrigationSystem,
   IsoDate,
   Member,
   NewIrrigation,
@@ -16,6 +20,7 @@ import type {
   SoilAnalysis,
   StoredWeatherDay,
 } from "./farmData";
+import { pickCropPhases } from "./farmData";
 
 export interface FarmFixture {
   farm: Farm;
@@ -30,6 +35,14 @@ export interface FarmFixture {
   /** base -> ("MM-DD" -> mean GDD) */
   climatology: Record<number, Record<string, number>>;
   irrigations: IrrigationOperation[];
+  /** FAO-56 crop values keyed by crop code. Missing = the crop has none. */
+  cropParams?: Record<string, CropParams>;
+  /** crop_phase_gdd rows; earlinessGroup null = default row of the crop. */
+  cropPhases?: CropPhaseRow[];
+  /** fao56_soil_water rows. */
+  soilClasses?: SoilWaterClass[];
+  /** Irrigation equipment keyed by field id. */
+  irrigationSystems?: Record<number, IrrigationSystem>;
 }
 
 /** In-memory FarmData for tests. Copies the fixture so tests can't leak state. */
@@ -61,6 +74,11 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
     getCropRef: async (code) => f.cropRefs.find((c) => c.code === code) ?? null,
     getCropStages: async (code) =>
       [...(f.cropStages[code] ?? [])].sort((a, b) => a.seasonFraction - b.seasonFraction),
+    getCropParams: async (code) => f.cropParams?.[code] ?? null,
+    getCropPhases: async (code, earlinessGroup) =>
+      pickCropPhases(f.cropPhases ?? [], code, earlinessGroup),
+    getSoilWaterClasses: async () => f.soilClasses ?? [],
+    getIrrigationSystem: async (fieldId) => f.irrigationSystems?.[fieldId] ?? null,
     getWeather: async (from, to) =>
       f.weather.filter((d) => d.date >= from && d.date <= to).sort((a, b) =>
         a.date < b.date ? -1 : 1

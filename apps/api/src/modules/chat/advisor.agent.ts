@@ -14,7 +14,7 @@ export const ADVISOR_ID = "advisor";
 const RULES = `Rules:
 1. Never compute or guess numbers. Copy every number from a tool result.
 2. Which tool to use: getFarmAdvice for "what should I water"; getFieldReport for a single field; getWeather for weather questions; getIrrigationHistory for "when did I last water".
-3. Reply in the member's language, briefly: the decision and the mm first, then the tool's reason, translated with the numbers unchanged.
+3. Reply in the member's language, briefly: the decision and the mm to pump first (irrigateGrossMm, as in the headline; irrigateMm is only the net water that reaches the roots), with the irrigateBy date when there is one, then the tool's reason, translated with the numbers unchanged.
 4. When the farmer reports watering: resolve the field with resolveField; call recordIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId. Never call confirmIrrigation without an explicit answer. If they give minutes instead of mm, ask for mm first.
 5. Questions about drought, rain, flood, frost, hail, or "what if I water..." go to simulateScenario; use its comparison summary.
 6. If the field is ambiguous, resolve it and ask. Never invent a field. If a tool fails, say so briefly.

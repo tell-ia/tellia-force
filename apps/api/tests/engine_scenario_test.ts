@@ -54,8 +54,8 @@ Deno.test("frost, hail, irrigation, ignored", () => {
 });
 
 Deno.test("compareReports", () => {
-  const a = { decision: "irrigate_today", irrigateMm: 90 } as never;
-  const b = { decision: "wait_for_rain", irrigateMm: 0 } as never;
+  const a = { decision: "irrigate_today", irrigateMm: 90, irrigateGrossMm: 90 } as never;
+  const b = { decision: "wait_for_rain", irrigateMm: 0, irrigateGrossMm: 0 } as never;
   const c = compareReports(a, b);
   assertEquals(c.decisionChanged, true);
   assertEquals(c.mmBefore, 90);
@@ -64,6 +64,32 @@ Deno.test("compareReports", () => {
     c.summary,
     "Scenario changes the decision from irrigate_today (90 mm) to wait_for_rain (0 mm).",
   );
-  const d = compareReports(a, { decision: "irrigate_today", irrigateMm: 70 } as never);
+  const d = compareReports(a, {
+    decision: "irrigate_today",
+    irrigateMm: 70,
+    irrigateGrossMm: 70,
+  } as never);
   assertEquals(d.summary, "Scenario keeps irrigate_today; irrigation 90 mm → 70 mm.");
+});
+
+Deno.test("compareReports quotes the water to pump, and the net when some is lost", () => {
+  // Reel gun at 75 %: 60 mm pumped, 45 mm reach the roots.
+  const a = { decision: "irrigate_today", irrigateMm: 45, irrigateGrossMm: 60 } as never;
+  const b = { decision: "no_irrigation", irrigateMm: 0, irrigateGrossMm: 0 } as never;
+  const c = compareReports(a, b);
+  assertEquals(c.mmBefore, 60);
+  assertEquals(c.mmAfter, 0);
+  assertEquals(
+    c.summary,
+    "Scenario changes the decision from irrigate_today (60 mm to pump, 45 mm net) to no_irrigation (0 mm).",
+  );
+  const d = compareReports(a, {
+    decision: "irrigate_today",
+    irrigateMm: 30,
+    irrigateGrossMm: 40,
+  } as never);
+  assertEquals(
+    d.summary,
+    "Scenario keeps irrigate_today; irrigation 60 mm → 40 mm to pump (45 mm → 30 mm net).",
+  );
 });

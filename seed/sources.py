@@ -92,6 +92,11 @@ class Datasets:
         return self.rows(f"select * from {self._csv('weather/weather_daily_*.csv')} where nuts3_id = ? order by date",
                          [nuts3])
 
+    def weather_years(self, nuts3, years):
+        """Daily weather of a region for some years only. Faster than weather(): one CSV file per year."""
+        return [w for y in years for w in self.rows(
+            f"select * from {self._csv(f'weather/weather_daily_{y}.csv')} where nuts3_id = ? order by date", [nuts3])]
+
     def benchmark(self, nuts3, groups):
         return self.rows(f"""
             select y.*, p.pesticide_total_kg_ai_ha, p.herbicide_kg_ai_ha, p.fungicide_kg_ai_ha,

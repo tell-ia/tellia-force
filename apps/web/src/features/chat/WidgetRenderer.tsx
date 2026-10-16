@@ -258,7 +258,9 @@ const label = (k: string): string => LABELS[k] ?? k;
 const DECISIONS: Record<string, string> = {
   irrigate_today: "Irrigate",
   frost_hold: "Hold · frost",
+  plan_irrigation: "Irrigate soon",
   wait_for_rain: "Wait for rain",
+  crop_maturing: "Maturing · stop",
   no_irrigation: "No water needed",
   not_irrigable: "Not irrigable",
   outside_season: "Off season",

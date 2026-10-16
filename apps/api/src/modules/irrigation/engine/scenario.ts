@@ -60,12 +60,22 @@ export function applyScenario<T extends ScenarioDay>(
   return { days: out, irrigations: irr, warnings };
 }
 
+/** The amounts compare the gross dose: the water to pump, the number the farmer acts on. */
 export function compareReports(baseline: FieldReport, scenario: FieldReport): ScenarioComparison {
   const decisionChanged = baseline.decision !== scenario.decision;
-  const a = baseline.irrigateMm;
-  const b = scenario.irrigateMm;
+  const a = baseline.irrigateGrossMm;
+  const b = scenario.irrigateGrossMm;
+  // The net water is quoted only when part of the pumped water is lost.
+  const lossy = (r: FieldReport) => r.irrigateMm !== r.irrigateGrossMm;
+  const dose = (r: FieldReport) =>
+    `${r.irrigateGrossMm} mm` + (lossy(r) ? ` to pump, ${r.irrigateMm} mm net` : "");
+  const before = `${baseline.decision} (${dose(baseline)})`;
+  const after = `${scenario.decision} (${dose(scenario)})`;
   const summary = decisionChanged
-    ? `Scenario changes the decision from ${baseline.decision} (${a} mm) to ${scenario.decision} (${b} mm).`
-    : `Scenario keeps ${baseline.decision}; irrigation ${a} mm → ${b} mm.`;
+    ? `Scenario changes the decision from ${before} to ${after}.`
+    : `Scenario keeps ${baseline.decision}; irrigation ${a} mm → ${b} mm` +
+      (lossy(baseline) || lossy(scenario)
+        ? ` to pump (${baseline.irrigateMm} mm → ${scenario.irrigateMm} mm net).`
+        : ".");
   return { decisionChanged, mmBefore: a, mmAfter: b, summary };
 }

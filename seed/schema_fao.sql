@@ -118,11 +118,40 @@ comment on column stage_thresholds_gdd.gdd_from_sowing_default is 'Default value
 comment on column stage_thresholds_gdd.gdd_from_sowing_default_num is 'The default as a number when it is a plain number; null when it is relative to another stage.';
 create index stage_thresholds_gdd_crop on stage_thresholds_gdd (crop_code);
 
+-- Built by seed.py (not a CSV file): published anchors of stage_thresholds_gdd first, FAO-56 day lengths turned
+-- into degree-days on one real Loiret season (2019-20) where there is no anchor.
+create table crop_phase_gdd (
+  id serial primary key,
+  crop_code text not null,
+  earliness_group text,
+  ini_end numeric not null,
+  dev_end numeric not null,
+  mid_end numeric not null,
+  late_end numeric not null,
+  flowering numeric,
+  sensitive_from numeric,
+  sensitive_to numeric,
+  sensitive_p numeric,
+  method text not null
+);
+comment on table crop_phase_gdd is 'Degree-days from sowing at the end of each FAO-56 phase, per crop and variety group. The irrigation engine reads its crop stage here. Base temperature and Tmax cap: fao56_crop_stages. Built by seed.py.';
+comment on column crop_phase_gdd.earliness_group is 'Variety group (same values as crop_season.earliness_group). Empty = default row of the crop, used when the season has no group or no row for its group.';
+comment on column crop_phase_gdd.ini_end is 'End of the initial phase (about 10 % ground cover), in degree-days from sowing.';
+comment on column crop_phase_gdd.dev_end is 'End of the development phase (full cover). Roots reach their maximum depth here.';
+comment on column crop_phase_gdd.mid_end is 'End of mid-season (start of senescence). After it the crop is maturing: no more irrigation.';
+comment on column crop_phase_gdd.late_end is 'End of the late phase (harvest maturity).';
+comment on column crop_phase_gdd.flowering is 'Start of flowering, in degree-days from sowing. Empty if not known.';
+comment on column crop_phase_gdd.sensitive_from is 'Start of the window where the crop is most sensitive to water stress (FAO-33). Empty = no window.';
+comment on column crop_phase_gdd.sensitive_to is 'End of the sensitive window.';
+comment on column crop_phase_gdd.sensitive_p is 'Highest depletion fraction p inside the sensitive window (RAW = p x TAW): the crop is watered earlier.';
+comment on column crop_phase_gdd.method is 'Where the values come from: published, relative to flowering, derived (FAO days on Loiret 2019-20) or proxy.';
+create unique index crop_phase_gdd_crop_group on crop_phase_gdd (crop_code, coalesce(earliness_group, ''));
+
 do $$
 declare t text;
 begin
   foreach t in array array['fao56_crop_stages', 'fao56_kc', 'fao56_root_depletion', 'fao56_soil_water',
-    'fao33_ky', 'stage_thresholds_gdd']
+    'fao33_ky', 'stage_thresholds_gdd', 'crop_phase_gdd']
   loop
     execute format('alter table %I enable row level security', t);
   end loop;

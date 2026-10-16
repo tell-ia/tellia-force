@@ -6,8 +6,8 @@ import type { FarmData, StoredWeatherDay } from "../data/farmData";
 import { addDays, daysBetween } from "../engine/util";
 import { createOpenMeteoClient, type OpenMeteoClient } from "./openMeteo";
 
-/** Internal: a weather day plus its growing degree-days. */
-export type WeatherDayGdd = WeatherDay & { gdd: number };
+/** Internal: a weather day plus its growing degree-days. Tmax is null when the source lacks it. */
+export type WeatherDayGdd = WeatherDay & { gdd: number; tmax: number | null };
 
 export interface DailySeriesParams {
   from: string;
@@ -89,6 +89,7 @@ export function createWeatherService(
         rain: d.rain,
         tmin: d.tmin,
         tmean: d.tmean,
+        tmax: d.tmax ?? null,
         gdd: storedGdd(d, gddBase),
         source: "db" as const,
       }));
@@ -106,6 +107,7 @@ export function createWeatherService(
         if (d.date < gapStart || d.date > to) continue;
         days.push({
           ...d,
+          tmax: d.tmax ?? null,
           gdd: Math.max(0, d.tmean - gddBase),
           source: "open-meteo" as const,
         });

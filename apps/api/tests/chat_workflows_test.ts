@@ -5,6 +5,7 @@ import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmD
 import { createAdvisorWorkflows } from "../src/modules/chat/workflows/index.ts";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
 import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
+import { makeReference2022Fixture } from "./fixtures/fao.ts";
 import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
 
 const opts = { sanitizeResources: false, sanitizeOps: false };
@@ -277,4 +278,22 @@ Deno.test("record-irrigation: farm 2 cannot reach a farm 1 field", opts, async (
   });
   assertEquals(res.status, "failed");
   assertEquals((await drafts(data, "draft")).length, 0);
+});
+
+Deno.test("farm-advice: FAO-56 reports stay short, as in the REST advice", opts, async () => {
+  const registry = makeTestRegistry({
+    farms: { 1: createMemoryFarmData(makeReference2022Fixture()) },
+  });
+  const mastra = await makeTestMastra({ registry });
+  const run = await mastra.getWorkflow("farm-advice").createRun();
+  const res = await run.start({ inputData: { farmId: 1, asOf: "2022-07-13" } });
+  assertEquals(res.status, "success");
+  const { service } = await registry.forFarm(1);
+  // deno-lint-ignore no-explicit-any
+  const advice = (res as any).result;
+  assertEquals(advice, await service.getFarmAdvice("2022-07-13"));
+  const f10 = advice.reports.find((r: { fieldId: number }) => r.fieldId === 10);
+  assert(f10.stage, "FAO details are kept");
+  assertEquals(f10.series, undefined);
+  assertEquals(f10.season, undefined);
 });
