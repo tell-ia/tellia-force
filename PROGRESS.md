@@ -13,8 +13,10 @@
 - 2026-10-17 Task 6: `apps/api/src/modules/vapi/README.md`.
 - 2026-10-17 Assistant renamed "Jean" (name, prompt, first message) on VAPI and in the script.
 - 2026-10-17 Jean: female voice Emma (v2), background sound off, Krisp denoising on. Pushed to VAPI.
+- 2026-10-17 Voice call works (user). SMS: smsEnabled on the number (VAPI built-in SMS, US-to-US only). Setup script keeps it on.
 
 ## In progress
+- SMS test from a US phone (user). Unknown: 10DLC status of the Twilio number.
 
 ## Key decisions
 - English only (user choice).

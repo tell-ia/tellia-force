@@ -56,7 +56,6 @@ interface VapiAssistant {
 interface VapiPhoneNumber {
   id: string;
   number?: string;
-  assistantId?: string | null;
 }
 
 async function vapi<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -122,14 +121,11 @@ console.log(
   `assistant "${ASSISTANT_NAME}": ${existingAssistant ? "updated" : "created"} (${assistant.id})`,
 );
 
-// 3. Phone number -> assistant.
+// 3. Phone number -> assistant, for calls and texts. smsEnabled makes VAPI point the Twilio
+// number's SMS webhook at itself (US-to-US only, needs a 10DLC-registered number).
 const phone = (await vapi<VapiPhoneNumber[]>("GET", "/phone-number?limit=1000"))
   .find((p) => p.number === env.VAPI_PHONE_NUMBER);
 if (!phone) throw new Error(`phone number ${env.VAPI_PHONE_NUMBER} is not in this VAPI account`);
-if (phone.assistantId === assistant.id) {
-  console.log(`phone ${phone.number}: already linked`);
-} else {
-  await vapi("PATCH", `/phone-number/${phone.id}`, { assistantId: assistant.id });
-  console.log(`phone ${phone.number}: linked to "${ASSISTANT_NAME}"`);
-}
+await vapi("PATCH", `/phone-number/${phone.id}`, { assistantId: assistant.id, smsEnabled: true });
+console.log(`phone ${phone.number}: calls and SMS go to "${ASSISTANT_NAME}"`);
 console.log(dryRun ? "dry run: nothing was changed" : `done. Tool calls go to ${server.url}`);
