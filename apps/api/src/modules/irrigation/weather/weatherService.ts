@@ -96,7 +96,8 @@ export function createWeatherService(
       if (remaining > 0) {
         const clim = await data.getGddClimatology(gddBase);
         for (let i = 1; i <= remaining; i++) {
-          total += clim.get(addDays(lastKnown, i).slice(5)) ?? 0;
+          const md = addDays(lastKnown, i).slice(5);
+          total += clim.get(md) ?? (md === "02-29" ? clim.get("02-28") : undefined) ?? 0;
         }
       }
       return total;
