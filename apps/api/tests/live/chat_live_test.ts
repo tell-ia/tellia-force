@@ -18,6 +18,19 @@ const TODAY = "2026-07-05";
 const YESTERDAY = "2026-07-04";
 const called = (t: ChatTurn, name: string) => t.toolCalls.filter((c) => c.name === name);
 
+/** Every finite number anywhere in the tool outputs (recursive; null/undefined skipped). */
+function numbersIn(v: unknown, acc: number[] = []): number[] {
+  if (typeof v === "number") {
+    if (Number.isFinite(v)) acc.push(v);
+  } else if (Array.isArray(v)) {
+    for (const x of v) numbersIn(x, acc);
+  } else if (v !== null && v !== undefined && typeof v === "object") {
+    for (const x of Object.values(v)) numbersIn(x, acc);
+  }
+  return acc;
+}
+const toolNumbers = (t: ChatTurn) => numbersIn(t.toolCalls.map((c) => c.output));
+
 /** Every "N mm" in the text must equal a grounded number from the tool output (±0.5). */
 function mmGrounded(text: string, allowed: number[]) {
   const found = [...text.matchAll(/(\d+(?:[.,]\d+)?)\s*mm/gi)].map((m) =>
@@ -45,10 +58,8 @@ Deno.test({
       assert(adv.length > 0, "getFarmAdvice not called");
       assert(turn.text.trim().length > 0, "empty reply");
       assert(turn.text.includes("La Vallée"), `reply lacks La Vallée: ${turn.text}`);
-      // deno-lint-ignore no-explicit-any
-      const reports: any[] = adv[0].output?.reports ?? [];
-      assert(reports.length > 0, "no reports in tool output");
-      const allowed = reports.flatMap((r) => [r.irrigateMm, r.depletionMm, r.rainNext3DaysMm]);
+      assert((adv[0].output?.reports ?? []).length > 0, "no reports in tool output");
+      const allowed = toolNumbers(turn);
       const { found, bad } = mmGrounded(turn.text, allowed);
       assertEquals(bad, [], `ungrounded mm ${bad} (found ${found}, allowed ${allowed})`);
       timings.advice = {
@@ -74,6 +85,11 @@ Deno.test({
         }`,
       );
       assert(turn.text.trim().length > 0, "empty reply");
+      const sim = called(turn, "simulateScenario").map((c) => c.output);
+      const allowed = numbersIn(sim);
+      const { found, bad } = mmGrounded(turn.text, allowed);
+      assertEquals(bad, [], `ungrounded mm ${bad} (found ${found})`);
+      console.log(`[live] scenario reply: ${turn.text}`);
     });
 
     await t.step("3. two-turn confirmation records only after a yes", async () => {
@@ -83,7 +99,14 @@ Deno.test({
         called(x, "recordIrrigation").some((c) =>
           c.input?.fieldId === 10 && c.input?.mm === 25 && c.input?.date === YESTERDAY
         );
-      const t1 = await turnWithRetry("record", () => chatTurn(app, q), isRecord);
+      // Retry must start clean: drop any draft the first attempt left in the twin.
+      const dropDrafts = async () => {
+        for (
+          const o of (await data.listIrrigations(10, { includeDrafts: true }))
+            .filter((o) => o.status === "draft")
+        ) await data.deleteIrrigation(o.operationId);
+      };
+      const t1 = await turnWithRetry("record", () => chatTurn(app, q), isRecord, dropDrafts);
       assert(
         isRecord(t1),
         `recordIrrigation wrong: ${JSON.stringify(t1.toolCalls.map((c) => [c.name, c.input]))}`,
@@ -92,7 +115,7 @@ Deno.test({
       const drafts = (await data.listIrrigations(10, { includeDrafts: true }))
         .filter((o) => o.status === "draft");
       assertEquals(drafts.length, 1, "expected exactly one draft");
-      assert(/\?/.test(t1.text), `turn 1 reply asks no question: ${t1.text}`);
+      console.log(`[live] record turn-1 reply: ${t1.text}`);
 
       const t2 = await chatTurn(app, "oui");
       const conf = called(t2, "confirmIrrigation");

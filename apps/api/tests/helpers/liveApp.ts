@@ -93,9 +93,17 @@ export async function turnWithRetry(
   label: string,
   run: () => Promise<ChatTurn>,
   ok: (t: ChatTurn) => boolean,
+  /** Undo the first attempt's side effects so the retry is idempotent. */
+  beforeRetry?: () => Promise<void>,
 ): Promise<ChatTurn> {
   const first = await run();
   if (ok(first)) return first;
-  console.log(`[live] RETRY ${label}: tools were ${first.toolCalls.map((c) => c.name)}`);
+  const calls = first.toolCalls.map((c) => `${c.name}(${JSON.stringify(c.input)})`);
+  console.log(
+    `[live] RETRY ${label}: first attempt tools=[${calls.join(", ")}] text=${
+      first.text.slice(0, 300)
+    }`,
+  );
+  await beforeRetry?.();
   return await run();
 }
