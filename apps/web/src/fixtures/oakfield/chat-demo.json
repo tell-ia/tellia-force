@@ -1,0 +1,67 @@
+{
+  "messages": [
+    {
+      "role": "assistant",
+      "parts": [
+        { "type": "text", "text": "Good morning, Claire. Three things today:\n1. Irrigate The Valley by Friday — 35 mm.\n2. The Well is fine for three more days.\n3. No spraying Monday: 36 °C forecast." }
+      ]
+    },
+    {
+      "role": "farmer",
+      "parts": [{ "type": "text", "text": "Should I water The Valley?" }]
+    },
+    {
+      "role": "assistant",
+      "parts": [
+        { "type": "text", "text": "Yes — 35 mm by Friday." },
+        {
+          "type": "widget",
+          "key": "getFieldReport",
+          "output": {
+            "fieldId": 101,
+            "fieldName": "The Valley",
+            "irrigable": true,
+            "cropName": "Grain maize",
+            "decision": "irrigate_today",
+            "irrigateMm": 35,
+            "depletionPct": 33,
+            "daysUntilIrrigation": 2,
+            "reason": "Soil water hits the comfort threshold Friday evening, mid-flowering. No rain before the 20th; 36 °C Monday."
+          }
+        }
+      ]
+    },
+    {
+      "role": "farmer",
+      "parts": [{ "type": "text", "text": "OK, I'll run the reel gun Thursday evening." }]
+    },
+    {
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "widget",
+          "key": "recordIrrigation",
+          "output": {
+            "runId": "demo-1",
+            "status": "awaiting_confirmation",
+            "summary": "Log 35 mm net on The Valley, Thursday 14 July (evening)?",
+            "fieldName": "The Valley",
+            "date": "2022-07-14",
+            "mm": 35
+          }
+        }
+      ]
+    },
+    {
+      "role": "farmer",
+      "parts": [{ "type": "text", "text": "Oui" }]
+    },
+    {
+      "role": "assistant",
+      "parts": [
+        { "type": "text", "text": "Saved to the logbook. I'll check the reserve Saturday morning." },
+        { "type": "widget", "key": "confirmIrrigation", "output": { "status": "saved" } }
+      ]
+    }
+  ]
+}

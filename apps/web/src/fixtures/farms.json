@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "code": "FARM-02580",
+    "name": "Trois Chênes",
+    "region": "Loiret",
+    "initials": "TC",
+    "parcelCount": 11,
+    "featured": true,
+    "live": true,
+    "farmerName": "Claire",
+    "memberId": 1
+  },
+  {
+    "id": 2,
+    "code": "FARM-07712",
+    "name": "Los Olmos",
+    "region": "Valladolid",
+    "initials": "LO",
+    "parcelCount": 9,
+    "featured": true,
+    "live": true,
+    "farmerName": "Elena",
+    "memberId": 5
+  },
+  {
+    "id": 3,
+    "code": "FARM-08422",
+    "name": "Ca' dei Pioppi",
+    "region": "Bologna",
+    "initials": "CP",
+    "parcelCount": 8,
+    "featured": true,
+    "live": true,
+    "farmerName": "Marco",
+    "memberId": 9
+  }
+]

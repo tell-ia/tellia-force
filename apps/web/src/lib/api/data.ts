@@ -5,17 +5,19 @@ import {
   tableSchemas,
   type TableName,
 } from "@tellia/shared";
-import { clientEnv } from "../env";
+import { clientEnv } from "../../env";
 
-// Typed API client. Every response is parsed with the SHARED zod schema, so the
-// front fails loud if the backend/DB ever drifts from the contract.
-// The front talks ONLY to the API — never to Supabase directly.
+// Generic read access to Supabase tables via the API (/data/<table>). The front
+// never hits Supabase directly. Every response is parsed with the SHARED schema,
+// so the front fails loud if the backend/DB drifts from the contract.
 
 async function getJSON(path: string): Promise<unknown> {
   const res = await fetch(`${clientEnv.VITE_API_URL}${path}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error((body as { error?: { message?: string } })?.error?.message ?? `HTTP ${res.status}`);
+    throw new Error(
+      (body as { error?: { message?: string } })?.error?.message ?? `HTTP ${res.status}`,
+    );
   }
   return res.json();
 }
@@ -26,7 +28,7 @@ export async function list<T extends TableName>(
   params: Partial<PaginationQuery> = {},
 ) {
   const qs = new URLSearchParams(
-    Object.entries(params).map(([k, v]) => [k, String(v)]),
+    Object.entries(params).map(([k, val]) => [k, String(val)]),
   ).toString();
   const schema = paginated(tableSchemas[table]);
   const json = await getJSON(`/data/${table}${qs ? `?${qs}` : ""}`);
@@ -35,5 +37,3 @@ export async function list<T extends TableName>(
     meta: { total: number; limit: number; offset: number };
   };
 }
-
-export const api = { list };

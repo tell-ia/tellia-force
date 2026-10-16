@@ -56,6 +56,9 @@ export const ClientEnvSchema = z.object({
   VITE_VAPI_PHONE_NUMBER: z.string().min(1),
   // VAPI public key — safe to expose, for in-browser voice calls (Web SDK).
   VITE_VAPI_PUBLIC_KEY: optional(z.string().min(1)),
+  // Data source: "mock" serves fixtures (default), "live" hits the API. Per-
+  // function overrides stay possible in the api client (chat goes live first).
+  VITE_API_MODE: z.enum(["mock", "live"]).default("mock"),
 });
 export type ClientEnv = z.infer<typeof ClientEnvSchema>;
 
