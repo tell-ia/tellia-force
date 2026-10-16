@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { config, corsOrigins } from "./config";
 import { onError } from "./core/middleware";
+import { createMastra, mountChat } from "./modules/chat/mastra";
 import { data, TABLES } from "./modules/data/data.controller";
 import { createSupabaseFarmData } from "./modules/irrigation/data/supabaseFarmData";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
@@ -14,7 +15,14 @@ import { db } from "./supabase";
 const app = new Hono();
 
 app.use("*", logger());
-app.use("*", cors({ origin: corsOrigins, credentials: true }));
+app.use(
+  "*",
+  cors({
+    origin: corsOrigins,
+    credentials: true,
+    allowHeaders: ["Content-Type", "Authorization", "x-member-id"],
+  }),
+);
 app.onError(onError);
 
 // Liveness + the list of readable tables.
@@ -32,5 +40,22 @@ const irrigation = createIrrigationService({
 });
 app.route("/irrigation", createIrrigationController(irrigation));
 
+// Chat advisor (Mastra): GET /chat/history, POST /chat (AI SDK v7 stream) and /api/*.
+// LibSQL needs its directory to exist before it opens the file.
+if (config.MASTRA_DB_URL.startsWith("file:")) {
+  const dir = config.MASTRA_DB_URL.slice("file:".length).replace(/[^/]*$/, "") || ".";
+  Deno.mkdirSync(dir, { recursive: true });
+}
+const mastra = createMastra({
+  service: irrigation,
+  data: farmData,
+  model: config.MODEL,
+  modelMini: config.MODEL_MINI,
+  storageUrl: config.MASTRA_DB_URL,
+});
+await mountChat(app, { mastra, service: irrigation, data: farmData });
+
 Deno.serve({ port: config.PORT }, app.fetch);
+// Workers must start or the 05:00 morning-warmup schedule never fires.
+await mastra.startWorkers();
 console.log(`tellia-force api on http://localhost:${config.PORT}`);

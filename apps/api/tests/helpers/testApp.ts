@@ -1,3 +1,5 @@
+import { cors } from "hono/cors";
+import { createMastra, mountChat } from "../../src/modules/chat/mastra";
 import { Mastra } from "@mastra/core";
 import { LibSQLStore } from "@mastra/libsql";
 import { Hono } from "hono";
@@ -74,4 +76,25 @@ export async function makeTestMastra(
       }
       : {}),
   });
+}
+
+/**
+ * The full app: CORS, /irrigation, GET /chat/history and Mastra (POST /chat, /api/*) on the
+ * in-memory farm, the scripted model and a temp LibSQL store. `today` is 2026-07-05.
+ */
+export async function makeTestChatApp(opts: { model: unknown }) {
+  const { app, data, service } = makeTestApp();
+  app.use(
+    "*",
+    cors({ origin: "*", allowHeaders: ["Content-Type", "x-member-id"] }),
+  );
+  const mastra = createMastra({
+    service,
+    data,
+    // deno-lint-ignore no-explicit-any
+    model: opts.model as any,
+    storageUrl: `file:${await Deno.makeTempDir()}/chat.db`,
+  });
+  await mountChat(app, { mastra, service, data });
+  return { app, data, service, mastra };
 }

@@ -20,7 +20,7 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ✅ done | 2026-10-16 | `chat/workflows/index.ts`, 10 tests; weather TTL cache (10 min) so the warmup warms later calls; capped frost_hold wording fixed; schedule `0 5 * * *` Europe/Paris |
 | 10 | Mastra tools (8) | ✅ done | 2026-10-16 | `chat/tools.ts`, 12 tests; memberId only from request context; foreign confirm refused before resume, run stays suspended |
 | 11 | Advisor agent | ✅ done | 2026-10-16 | `chat/advisor.agent.ts`, `tests/helpers/scriptedModel.ts`, 4 tests; Memory lastMessages 20 + resource-scope template working memory; MODEL_MINI wired as `generateTitle.model` |
-| 12 | Chat module: `/chat`, member identity, history, workers | ⬜ todo | | |
+| 12 | Chat module: `/chat`, member identity, history, workers | ✅ done | 2026-10-16 | `chat/{member.middleware,mastra,chat.routes}.ts`, `main.ts`, 6 tests; real chat verified on port 8125 (getFarmAdvice + French text, ttfb 1.3 s, total 12.7 s) |
 | 13 | Docs, smoke test, latency | ⬜ todo | | |
 | 14 | Live end-to-end tests (real LLM, real data read-only) | ⬜ todo | | |
 
@@ -71,6 +71,7 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 | 2026-10-16 | Lock resolves a single zod (4.6.7, required by Mastra). The lock's `@hono/zod-validator` peer was hand-edited from zod 4.4.3 to 4.6.7 so `deno task check` passes (two zod copies broke `zValidator` types). Re-run `deno install` after any dep change and confirm `grep "zod@4.4.3" apps/api/deno.lock` is empty | Duplicate zod versions are type-incompatible |
 | 2026-10-16 | `confirm_irrigation` loads the run (`getWorkflowRunById`) and refuses a foreign member, an unknown runId or a non-suspended run BEFORE resuming, so the run stays suspended and the owner can still answer. The in-step memberId check stays as defense in depth (a direct wrong-member resume still fails the run) | Fix round 1: a foreign attempt must not orphan the draft |
 | 2026-10-16 | `morning-warmup` computes per-field reports (allSettled) so failures are counted; the weather service caches series and season totals for 10 min | Lets one bad field not hide the others; fills the cache for later advice calls |
+| 2026-10-16 | Mastra `server.cors: false`: the app's own Hono CORS (allowing `x-member-id`) is registered first and handles preflights. `GET /api/schedules` lists `wf_morning-warmup` after `startWorkers()`. `generateTitle.model` takes `MODEL_MINI` | Mastra's default CORS would not allow `x-member-id` |
 | 2026-10-16 | `check` now type-checks `src/main.ts tests/`; hono floor not bumped (resolves 4.13.13) | Mastra did not need a newer hono |
 
 ## Open questions
