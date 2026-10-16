@@ -63,6 +63,10 @@ function headlineFor(r: FieldReport): string {
       return "Wait for rain";
     case "frost_hold":
       return "Hold · frost";
+    case "plan_irrigation":
+      return "Irrigate soon";
+    case "crop_maturing":
+      return "Maturing · stop";
     case "no_irrigation":
       return "No water needed";
     case "not_irrigable":
