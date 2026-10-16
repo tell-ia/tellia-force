@@ -79,53 +79,53 @@ export function createWeatherService(
   };
 
   async function loadSeries({ from, to, gddBase }: DailySeriesParams) {
-      if (from > to) return [];
-      const stored = await data.getWeather(from, to);
-      const days: WeatherDayGdd[] = stored
-        .filter((d) => d.date >= from && d.date <= to)
-        .map((d) => ({
-          date: d.date,
-          et0: d.et0,
-          rain: d.rain,
-          tmin: d.tmin,
-          tmean: d.tmean,
-          gdd: storedGdd(d, gddBase),
-          source: "db" as const,
-        }));
-      const lastDb = days.length ? days[days.length - 1].date : null;
-      const gapStart = lastDb ? addDays(lastDb, 1) : from;
-      if (gapStart <= to) {
-        const farm = await data.getFarm();
-        const fetched = await client.fetchDaily({
-          lat: farm.lat,
-          lon: farm.lon,
-          start: gapStart,
-          end: to,
+    if (from > to) return [];
+    const stored = await data.getWeather(from, to);
+    const days: WeatherDayGdd[] = stored
+      .filter((d) => d.date >= from && d.date <= to)
+      .map((d) => ({
+        date: d.date,
+        et0: d.et0,
+        rain: d.rain,
+        tmin: d.tmin,
+        tmean: d.tmean,
+        gdd: storedGdd(d, gddBase),
+        source: "db" as const,
+      }));
+    const lastDb = days.length ? days[days.length - 1].date : null;
+    const gapStart = lastDb ? addDays(lastDb, 1) : from;
+    if (gapStart <= to) {
+      const farm = await data.getFarm();
+      const fetched = await client.fetchDaily({
+        lat: farm.lat,
+        lon: farm.lon,
+        start: gapStart,
+        end: to,
+      });
+      for (const d of fetched) {
+        if (d.date < gapStart || d.date > to) continue;
+        days.push({
+          ...d,
+          gdd: Math.max(0, d.tmean - gddBase),
+          source: "open-meteo" as const,
         });
-        for (const d of fetched) {
-          if (d.date < gapStart || d.date > to) continue;
-          days.push({
-            ...d,
-            gdd: Math.max(0, d.tmean - gddBase),
-            source: "open-meteo" as const,
-          });
-        }
       }
-      return days.sort((a, b) => a.date.localeCompare(b.date));
+    }
+    return days.sort((a, b) => a.date.localeCompare(b.date));
   }
 
   async function loadTotal({ sowing, harvest, gddBase, knownDays }: SeasonGddParams) {
-      const known = knownDays.filter((d) => d.date >= sowing && d.date <= harvest);
-      let total = known.reduce((s, d) => s + d.gdd, 0);
-      const lastKnown = known.reduce((m, d) => (d.date > m ? d.date : m), addDays(sowing, -1));
-      const remaining = daysBetween(lastKnown, harvest);
-      if (remaining > 0) {
-        const clim = await data.getGddClimatology(gddBase);
-        for (let i = 1; i <= remaining; i++) {
-          const md = addDays(lastKnown, i).slice(5);
-          total += clim.get(md) ?? (md === "02-29" ? clim.get("02-28") : undefined) ?? 0;
-        }
+    const known = knownDays.filter((d) => d.date >= sowing && d.date <= harvest);
+    let total = known.reduce((s, d) => s + d.gdd, 0);
+    const lastKnown = known.reduce((m, d) => (d.date > m ? d.date : m), addDays(sowing, -1));
+    const remaining = daysBetween(lastKnown, harvest);
+    if (remaining > 0) {
+      const clim = await data.getGddClimatology(gddBase);
+      for (let i = 1; i <= remaining; i++) {
+        const md = addDays(lastKnown, i).slice(5);
+        total += clim.get(md) ?? (md === "02-29" ? clim.get("02-28") : undefined) ?? 0;
       }
-      return total;
+    }
+    return total;
   }
 }
