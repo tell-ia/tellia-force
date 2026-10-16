@@ -17,8 +17,8 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | 6 | Weather service: DB + Open-Meteo gap/forecast, GDD, climatology | ✅ done | 2026-10-16 | 8830372 + 332adbf (stored-GDD test, Feb 29 fallback) |
 | 7 | Irrigation service (use cases) | ✅ done | 2026-10-16 | `irrigation.service.ts`, 11 tests; adds `listIrrigations`, `defaultMemberId`; cancel only deletes drafts (409 otherwise) |
 | 8 | REST `/irrigation` | ✅ done | 2026-10-16 | controller + test app helper, 6 REST tests; real server advice 200 in ~2 s (11 fields, cold) |
-| 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ⬜ todo | | |
-| 10 | Mastra tools (7) | ⬜ todo | | |
+| 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ✅ done | 2026-10-16 | `chat/workflows/index.ts`, 10 tests; weather TTL cache (10 min) so the warmup warms later calls; capped frost_hold wording fixed; schedule `0 5 * * *` Europe/Paris |
+| 10 | Mastra tools (8) | ✅ done | 2026-10-16 | `chat/tools.ts`, 12 tests; memberId only from request context; wrong-member resume fails the run |
 | 11 | Advisor agent | ⬜ todo | | |
 | 12 | Chat module: `/chat`, member identity, history, workers | ⬜ todo | | |
 | 13 | Docs, smoke test, latency | ⬜ todo | | |
@@ -69,6 +69,8 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 | 2026-10-16 | The plan contains no code | User's instruction |
 | 2026-10-16 | Test files are `apps/api/tests/*_test.ts`, run by `deno task test` (the shared package has no tests; vitest unused). Keep util/contract tests pure: never import `src/config.ts` without setting env first | `deno test` only picks up `*_test.ts`; config parses env at import |
 | 2026-10-16 | Lock resolves a single zod (4.6.7, required by Mastra). The lock's `@hono/zod-validator` peer was hand-edited from zod 4.4.3 to 4.6.7 so `deno task check` passes (two zod copies broke `zValidator` types). Re-run `deno install` after any dep change and confirm `grep "zod@4.4.3" apps/api/deno.lock` is empty | Duplicate zod versions are type-incompatible |
+| 2026-10-16 | A wrong-member resume of `record-irrigation` throws in the confirm step, so the run ends `failed` and the draft stays a draft (it never counts). The owner cannot answer that run afterwards | Matches the brief (reject); re-suspending would be friendlier but returns a non-failed status |
+| 2026-10-16 | `morning-warmup` computes per-field reports (allSettled) so failures are counted; the weather service caches series and season totals for 10 min | Lets one bad field not hide the others; fills the cache for later advice calls |
 | 2026-10-16 | `check` now type-checks `src/main.ts tests/`; hono floor not bumped (resolves 4.13.13) | Mastra did not need a newer hono |
 
 ## Open questions

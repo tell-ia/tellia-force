@@ -17,8 +17,8 @@ The detailed behavior is in [plan.md](plan.md), and the log is in [progress.md](
 - [x] 6. Weather: DB history plus Open-Meteo gap and forecast, GDD, climatology, cache
 - [x] 7. Irrigation service: report, advice, simulate, weather, preview, draft, confirm, cancel, record, list
 - [x] 8. REST `/irrigation/*` (the fast path for VAPI)
-- [ ] 9. Mastra workflows: farm-advice, simulate-scenario, record-irrigation (suspend/resume), morning-warmup (05:00)
-- [ ] 10. Mastra tools: the 7 keys that make up the UI contract
+- [x] 9. Mastra workflows: farm-advice, simulate-scenario, record-irrigation (suspend/resume), morning-warmup (05:00)
+- [x] 10. Mastra tools: the 8 keys that make up the UI contract
 - [ ] 11. Advisor agent: no invented numbers, memory per member, two-turn confirmation
 - [ ] 12. Chat module: `POST /chat` (v7), `GET /chat/history`, `x-member-id` middleware, `startWorkers`
 - [ ] 14. Live end-to-end tests: real OpenAI model (`deno task test:live`), mm-grounded check, two-turn confirmation, latency, read-only real-data advice
