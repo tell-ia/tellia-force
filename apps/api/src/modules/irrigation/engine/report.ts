@@ -62,8 +62,9 @@ export function buildFieldReport(input: ReportInput): FieldReport {
     if (frost) {
       decision = "frost_hold";
       irrigateMm = need;
-      reason =
-        `Frost is forecast today (min ${round1(today.tmin)} °C): irrigate ${need} mm once temperatures are above 0 °C.`;
+      reason = `Frost is forecast today (min ${
+        round1(today.tmin)
+      } °C): irrigate ${need} mm once temperatures are above 0 °C.`;
     } else if (rain3 >= need / 2) {
       decision = "wait_for_rain";
       reason =
