@@ -74,6 +74,7 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 | 2026-10-16 | Mastra `server.cors: false`: the app's own Hono CORS (allowing `x-member-id`) is registered first and handles preflights. `GET /api/schedules` lists `wf_morning-warmup` after `startWorkers()`. `generateTitle.model` takes `MODEL_MINI` | Mastra's default CORS would not allow `x-member-id` |
 | 2026-10-16 | Working memory disabled for latency; member facts come from dynamic instructions. lastMessages 10 (overrides plan's template-mode working memory per controller) | The extra updateWorkingMemory tool round added seconds to every chat |
 | 2026-10-16 | `check` now type-checks `src/main.ts tests/`; hono floor not bumped (resolves 4.13.13) | Mastra did not need a newer hono |
+| 2026-10-16 | `OPEN_MASTRA_API` env (default false): Mastra's built-in `/api/*` is unauthenticated (a caller could start `record-irrigation` with any memberId), so a gate middleware answers 404 `http_404` "Mastra API disabled" unless the flag is `true`. `/chat` and `/chat/history` are unaffected | Controller ruling after the final review; keeps "member comes from context" |
 
 ## Open questions
 
@@ -98,3 +99,4 @@ Filled in by Tasks 13 and 14. luna is not clearly faster than sol (same tool rou
 - 2026-10-16: the operation schema (PostgREST OpenAPI) shows status/source/origin as text with defaults confirmed/import/agent and no enum. Draft rows are likely accepted; CHECK constraints are not visible, so a human verifies one insert.
 - 2026-10-16: Task 1 done (setup, contracts, FarmData interface, util).
 - 2026-10-16: Tasks 13 and 14 done: smoke script, chat README, live suite. Offline: 112 passed, 3 ignored. Live passed twice.
+- 2026-10-16: final review fixes applied (validation envelope, /api gate, empty DEMO_DATE, live-test robustness, minor items). Offline: 117 passed, 3 ignored. Live passed.

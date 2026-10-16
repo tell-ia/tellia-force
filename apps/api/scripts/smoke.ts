@@ -10,6 +10,18 @@ const questions = Deno.args.length > 0 ? [Deno.args.join(" ")] : [
   "Et si une sécheresse de 5 jours commence aujourd'hui sur La Vallée ?",
 ];
 
+// Smoke must never write to Supabase: refuse questions that report an irrigation.
+const WRITE_TOPIC = /arros|irrigu|water(ed)?|mm\b/i;
+const WRITE_PAST = /j'ai|j’ai|\b(arrosé|arrosée|irrigué|watered|irrigated|applied|did)\b/i;
+for (const q of questions) {
+  if (WRITE_TOPIC.test(q) && WRITE_PAST.test(q)) {
+    console.error(
+      `Refusing "${q}": smoke must not write to Supabase (no record/confirm questions).`,
+    );
+    Deno.exit(1);
+  }
+}
+
 async function ask(question: string) {
   const t0 = performance.now();
   const at = () => `${Math.round(performance.now() - t0)} ms`;

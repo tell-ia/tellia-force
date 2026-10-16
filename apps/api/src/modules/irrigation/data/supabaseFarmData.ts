@@ -156,7 +156,7 @@ export function toOperationInsert(
     water_mm: input.mm,
     status: input.status,
     source: input.source,
-    origin: "assistant",
+    origin: input.source === "app" ? "app" : "assistant",
     member_id: input.memberId,
     area_ha: areaHa,
   };

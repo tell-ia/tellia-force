@@ -4,6 +4,7 @@ import type { FarmData } from "../src/modules/irrigation/data/farmData.ts";
 import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmData.ts";
 import { createIrrigationService } from "../src/modules/irrigation/irrigation.service.ts";
 import { createWeatherService } from "../src/modules/irrigation/weather/weatherService.ts";
+import { createAdvisorWorkflows } from "../src/modules/chat/workflows/index.ts";
 import { MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
 import { makeFarmFixture } from "./fixtures/farm.ts";
 import { emptyOpenMeteoFetch, makeTestMastra } from "./helpers/testApp.ts";
@@ -207,6 +208,14 @@ Deno.test("morning-warmup: declares the 05:00 Europe/Paris schedule", opts, asyn
   assertEquals(schedules.length, 1);
   assertEquals(schedules[0].cron, "0 5 * * *");
   assertEquals(schedules[0].timezone, "Europe/Paris");
+});
+
+Deno.test("morning-warmup: schedule timezone is configurable", opts, () => {
+  const data = createMemoryFarmData(makeFarmFixture());
+  const weather = createWeatherService({ data, fetch: emptyOpenMeteoFetch });
+  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
+  const wf = createAdvisorWorkflows(service, data, "America/New_York");
+  assertEquals(wf.morningWarmup.getScheduleConfigs?.()[0].timezone, "America/New_York");
 });
 
 Deno.test("morning-warmup: every field failing fails the run", opts, async () => {

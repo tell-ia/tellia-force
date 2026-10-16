@@ -16,13 +16,14 @@ import type { IrrigationService } from "../../irrigation/irrigation.service";
 import { MEMBER_ID_KEY } from "../requestContext";
 
 export const MORNING_WARMUP_CRON = "0 5 * * *";
-export const MORNING_WARMUP_TIMEZONE = "Europe/Paris";
+export const MORNING_WARMUP_TIMEZONE = "Europe/Paris"; // default
 
 const FieldTargetSchema = z.object({ fieldId: z.number().int(), asOf: IsoDateSchema });
 
 export function createAdvisorWorkflows(
   service: IrrigationService,
   data: Pick<FarmData, "listFields">,
+  timezone: string = MORNING_WARMUP_TIMEZONE,
 ) {
   // --- farm-advice -----------------------------------------------------------
   const listFields = createStep({
@@ -233,7 +234,7 @@ export function createAdvisorWorkflows(
     outputSchema: WarmupOutput,
     schedule: {
       cron: MORNING_WARMUP_CRON,
-      timezone: MORNING_WARMUP_TIMEZONE,
+      timezone,
       inputData: {},
     },
   })

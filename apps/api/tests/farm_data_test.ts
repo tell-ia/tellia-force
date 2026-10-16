@@ -141,6 +141,19 @@ Deno.test("toOperationInsert builds the snake_case row", () => {
   );
 });
 
+Deno.test("toOperationInsert: origin is app for the REST source, assistant otherwise", () => {
+  const base = {
+    fieldId: 10,
+    seasonId: 109,
+    date: "2026-07-05",
+    mm: 25,
+    status: "confirmed" as const,
+    memberId: 1,
+  };
+  assertEquals(toOperationInsert({ ...base, source: "app" }, null).origin, "app");
+  assertEquals(toOperationInsert({ ...base, source: "assistant" }, null).origin, "assistant");
+});
+
 Deno.test("averageByDay averages per MM-DD and folds Feb 29 into Feb 28", () => {
   const m = averageByDay([
     { date: "2015-07-05", value: 10 },
