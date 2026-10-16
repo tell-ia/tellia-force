@@ -72,6 +72,7 @@ The spikes ran on Deno 2.7.7 with `@mastra/core` 1.78.0 and mock models. Their c
 | 2026-10-16 | `confirm_irrigation` loads the run (`getWorkflowRunById`) and refuses a foreign member, an unknown runId or a non-suspended run BEFORE resuming, so the run stays suspended and the owner can still answer. The in-step memberId check stays as defense in depth (a direct wrong-member resume still fails the run) | Fix round 1: a foreign attempt must not orphan the draft |
 | 2026-10-16 | `morning-warmup` computes per-field reports (allSettled) so failures are counted; the weather service caches series and season totals for 10 min | Lets one bad field not hide the others; fills the cache for later advice calls |
 | 2026-10-16 | Mastra `server.cors: false`: the app's own Hono CORS (allowing `x-member-id`) is registered first and handles preflights. `GET /api/schedules` lists `wf_morning-warmup` after `startWorkers()`. `generateTitle.model` takes `MODEL_MINI` | Mastra's default CORS would not allow `x-member-id` |
+| 2026-10-16 | Working memory disabled for latency; member facts come from dynamic instructions. lastMessages 10 (overrides plan's template-mode working memory per controller) | The extra updateWorkingMemory tool round added seconds to every chat |
 | 2026-10-16 | `check` now type-checks `src/main.ts tests/`; hono floor not bumped (resolves 4.13.13) | Mastra did not need a newer hono |
 
 ## Open questions

@@ -53,7 +53,8 @@ export function createMemberMiddleware(service: IrrigationService, data: FarmDat
     return next();
   };
   return [
-    { path: "/chat*", handler },
+    { path: "/chat", handler },
+    { path: "/chat/*", handler },
     { path: "/api/*", handler },
   ];
 }

@@ -10,12 +10,6 @@ import { createAdvisorTools } from "./tools";
 
 export const ADVISOR_ID = "advisor";
 
-const WORKING_MEMORY_TEMPLATE = `# Farmer notes
-- Language:
-- Field nicknames (what the farmer calls each field):
-- Preferences (units, level of detail, usual irrigation amounts):
-`;
-
 const RULES = `Rules:
 1. Never compute or guess numbers. Copy every number from a tool result.
 2. Which tool to use: getFarmAdvice for "what should I water"; getFieldReport for a single field; getWeather for weather questions; getIrrigationHistory for "when did I last water".
@@ -70,8 +64,10 @@ export function createAdvisorAgent(
 ) {
   const memory = new Memory({
     options: {
-      lastMessages: 20,
-      workingMemory: { enabled: true, scope: "resource", template: WORKING_MEMORY_TEMPLATE },
+      lastMessages: 10,
+      // Disabled for latency (an extra updateWorkingMemory tool round); member facts come
+      // from the dynamic instructions.
+      workingMemory: { enabled: false },
       ...(deps.modelMini ? { generateTitle: { model: deps.modelMini } } : {}),
     },
   });

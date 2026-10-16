@@ -111,3 +111,11 @@ Deno.test("after startWorkers, the morning-warmup schedule is listed", opts, asy
     await mastra.shutdown();
   }
 });
+
+Deno.test("member middleware matches /chat and /chat/..., not /chatter", opts, async () => {
+  const { app } = await makeTestChatApp({ model: scriptedModel([]) });
+  const h = { "x-member-id": "999" };
+  assertEquals((await app.request("/chat", { method: "POST", headers: h })).status, 400);
+  const other = await app.request("/chatter", { method: "POST", headers: h });
+  assertEquals(other.status, 404);
+});
