@@ -632,7 +632,7 @@ Steps call the irrigation service, never the FAO maths directly.
 - `createAdvisorAgent({ service, data, model })`:
   - Dynamic instructions that read `memberId` from the request context.
   - The eight tools.
-  - Mastra Memory with the last 20 messages and working memory in **template** mode: language, field nicknames, preferences. Template mode is the one verified on Deno.
+  - Mastra Memory with the last 10 messages. **Working memory is disabled**, because it cost an extra model round per chat (12.7 s measured) and the member facts already come from the dynamic instructions. Thread titles use `MODEL_MINI`.
   - The model is the `MODEL` router string (`openai/gpt-6.1-sol`), or the scripted mock in tests. `MODEL_MINI` (`openai/gpt-6-luna`) is wired through `createMastra` for light helper work.
 - **Test helper `scriptedModel(steps)`:** a `MockLanguageModelV3` from `ai/test` that serves both generate and stream. Each call consumes the next step, either some tool calls or a text. It records the prompts, and answers "OK." once the script runs out.
 
