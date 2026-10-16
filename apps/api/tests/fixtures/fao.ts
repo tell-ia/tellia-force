@@ -94,6 +94,7 @@ export function makeReference2022Fixture(opts: { withJuly9Watering?: boolean } =
       code: "MAIZ",
       nameFr: "Maïs grain",
       nameEn: "Grain maize",
+      names: { fr: "Maïs grain", en: "Grain maize", es: "Maíz grano", it: "Mais da granella" },
       gddBaseC: 6,
       kcIni: 0.3,
       kcMid: 1.2,

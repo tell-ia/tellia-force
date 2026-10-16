@@ -1,6 +1,6 @@
 # Irrigation engine v2 — FAO-56 with degree-day stages
 
-Branch `feat/irrigation-engine-fao56`. Tests first (`apps/api/tests/*fao*`, `*reference_2022*`, `*dates*`, `*farm_rest*`).
+Branch `feat/irrigation-engine-fao56`. Tests first (`apps/api/tests/*fao*`, `*reference_2022*`, `*dates*`).
 Method: Marceau's FAO-56 doc + README (`seed/fao56/`), with the review decisions of 17 Oct.
 
 ## Method (what the code must do)
@@ -47,8 +47,9 @@ Amounts: net need = D (refill to field capacity); gross = net ÷ efficiency, cap
 
 ## API
 
-- `GET /irrigation/advice?farmId=&date=`, `GET /irrigation/fields/:id/report?farmId=&date=`,
-  `POST /irrigation/fields/:id/simulate`. `farmId` defaults to farm 1. The chat stays on farm 1 (next PR).
+- `GET /irrigation/advice?date=`, `GET /irrigation/fields/:id/report?date=`, `POST /irrigation/fields/:id/simulate`.
+  The farm comes from the caller (`x-member-id`, Imad's farm registry, already on `main`); no header = farm 1's
+  main contact. The engine works on one farm's `FarmData`, so it needs nothing more for multi-farm.
 - New report fields: `irrigateGrossMm`, `irrigateBy`, `headline` (one sentence for voice / SMS), `stage`
   (`phase`, `gddSinceSowing`, `sensitive`, `floweringDate`), `rootDepthM`, `soil` (`textureClass`, `tawMm`),
   `season` (rain, irrigation gross/net, ETc, drainage, stress days, days since sowing), `series`
