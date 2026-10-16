@@ -9,6 +9,7 @@ import { createSupabaseFarmDirectory } from "./modules/irrigation/data/supabaseF
 import { createFarmRegistry } from "./modules/irrigation/farmRegistry";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
 import { todayIn } from "./modules/irrigation/engine/util";
+import { createVapiController, memberByPhoneIn } from "./modules/vapi/vapi.controller";
 import { db } from "./supabase";
 
 const app = new Hono();
@@ -37,6 +38,16 @@ const registry = createFarmRegistry({
   today: () => config.DEMO_DATE ?? todayIn(config.TIMEZONE),
 });
 app.route("/irrigation", createIrrigationController(registry));
+
+// VAPI phone assistant: tool calls during a call. The caller's farm comes from their phone number.
+app.route(
+  "/vapi",
+  createVapiController({
+    registry,
+    secret: config.VAPI_WEBHOOK_SECRET,
+    memberByPhone: memberByPhoneIn(db),
+  }),
+);
 
 // Chat advisor (Mastra): GET /chat/history, POST /chat (AI SDK v7 stream) and /api/*.
 // LibSQL needs its directory to exist before it opens the file.
