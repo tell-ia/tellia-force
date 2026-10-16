@@ -1,6 +1,7 @@
 import { Mastra } from "@mastra/core";
 import { LibSQLStore } from "@mastra/libsql";
 import { Hono } from "hono";
+import { ADVISOR_ID, createAdvisorAgent } from "../../src/modules/chat/advisor.agent";
 import { createAdvisorWorkflows } from "../../src/modules/chat/workflows/index";
 import type { FarmData } from "../../src/modules/irrigation/data/farmData";
 import { onError } from "../../src/core/middleware";
@@ -61,6 +62,16 @@ export async function makeTestMastra(
       "record-irrigation": workflows.recordIrrigation,
       "morning-warmup": workflows.morningWarmup,
     },
-    // The agent from Task 11 is added here when a model is given.
+    ...(opts.model
+      ? {
+        agents: {
+          [ADVISOR_ID]: createAdvisorAgent({
+            service: opts.service,
+            data: opts.data,
+            model: opts.model,
+          }),
+        },
+      }
+      : {}),
   });
 }

@@ -19,7 +19,7 @@ Owner: Mastra / chat part. Branch: `feat/chat-backend`. Code goes in `apps/api` 
 | 8 | REST `/irrigation` | ✅ done | 2026-10-16 | controller + test app helper, 6 REST tests; real server advice 200 in ~2 s (11 fields, cold) |
 | 9 | Mastra workflows (farm-advice, simulate-scenario, record-irrigation, morning-warmup) | ✅ done | 2026-10-16 | `chat/workflows/index.ts`, 10 tests; weather TTL cache (10 min) so the warmup warms later calls; capped frost_hold wording fixed; schedule `0 5 * * *` Europe/Paris |
 | 10 | Mastra tools (8) | ✅ done | 2026-10-16 | `chat/tools.ts`, 12 tests; memberId only from request context; foreign confirm refused before resume, run stays suspended |
-| 11 | Advisor agent | ⬜ todo | | |
+| 11 | Advisor agent | ✅ done | 2026-10-16 | `chat/advisor.agent.ts`, `tests/helpers/scriptedModel.ts`, 4 tests; Memory lastMessages 20 + resource-scope template working memory; MODEL_MINI wired as `generateTitle.model` |
 | 12 | Chat module: `/chat`, member identity, history, workers | ⬜ todo | | |
 | 13 | Docs, smoke test, latency | ⬜ todo | | |
 | 14 | Live end-to-end tests (real LLM, real data read-only) | ⬜ todo | | |
