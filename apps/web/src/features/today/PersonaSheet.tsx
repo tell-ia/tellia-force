@@ -103,7 +103,9 @@ function FarmOption({
       <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
         <span style={{ fontWeight: 600, fontSize: 16 }}>{f.name}</span>
         <span style={{ fontSize: 13, color: v("ink2") }}>
-          {f.region} · {f.parcelCount} parcels{f.live ? "" : " · demo data"}
+          {f.region}
+          {f.parcelCount ? ` · ${f.parcelCount} parcels` : ""}
+          {f.live ? "" : " · demo data"}
         </span>
         <span style={{ fontSize: 11, color: v("ink2"), letterSpacing: "0.06em" }}>{f.code}</span>
       </span>

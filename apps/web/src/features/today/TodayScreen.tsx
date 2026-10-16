@@ -38,7 +38,8 @@ export function TodayScreen() {
               <ChevronDown size={16} />
             </span>
             <span style={{ fontSize: 12, color: v("ink2") }}>
-              {farm.region} · {farm.parcelCount} parcels
+              {farm.region}
+              {farm.parcelCount ? ` · ${farm.parcelCount} parcels` : ""}
             </span>
           </span>
         </button>
