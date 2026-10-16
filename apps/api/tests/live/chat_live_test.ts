@@ -138,6 +138,23 @@ Deno.test({
       assert(h.data.messages.length >= 4, `history has ${h.data.messages.length} messages`);
     });
 
+    await t.step("5. a Spanish farm's member gets their own farm only", async () => {
+      const turn = await turnWithRetry(
+        "advice-es",
+        () => chatTurn(app, "¿Qué parcela debo regar hoy?", 5),
+        (x) => called(x, "getFarmAdvice").length > 0,
+      );
+      const adv = called(turn, "getFarmAdvice");
+      assert(adv.length > 0, "getFarmAdvice not called");
+      const ids = (adv[0].output?.reports ?? []).map((r: { fieldId: number }) => r.fieldId);
+      assertEquals(ids, [15], "farm 2 advice must cover its own field only");
+      assert(turn.text.includes("El Pozo"), `reply lacks El Pozo: ${turn.text}`);
+      assert(!turn.text.includes("La Vallée"), "farm 1 field leaked into farm 2's reply");
+      const { found, bad } = mmGrounded(turn.text, toolNumbers(turn));
+      assertEquals(bad, [], `ungrounded mm ${bad} (found ${found})`);
+      console.log(`[live] es reply: ${turn.text}`);
+    });
+
     console.log(
       `[live] model=${Deno.env.get("MODEL") ?? "default"} timings=${JSON.stringify(timings)}`,
     );
