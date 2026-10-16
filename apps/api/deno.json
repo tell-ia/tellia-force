@@ -8,7 +8,8 @@
     "check": "deno check --sloppy-imports src/main.ts tests/",
     "test": "deno test --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys",
     "test:live": "RUN_LIVE_TESTS=1 deno test --sloppy-imports --allow-net --allow-read --allow-env --allow-ffi --allow-write --allow-sys --env-file tests/live/",
-    "smoke": "deno run --sloppy-imports --allow-net --allow-env --env-file scripts/smoke.ts"
+    "smoke": "deno run --sloppy-imports --allow-net --allow-env --env-file scripts/smoke.ts",
+    "vapi:setup": "deno run --sloppy-imports --allow-net --allow-env --allow-read --env-file scripts/vapiSetup.ts"
   },
   "imports": {
     "hono": "npm:hono@^4.6.0",
