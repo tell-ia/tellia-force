@@ -5,7 +5,7 @@ import type { IrrigationRecord, ParcelSummary } from "@tellia/shared";
 import { parseRoute } from "../../app/router";
 import { FieldChips, LogDateRow } from "../log/LogScreen";
 import { MonthCalendar } from "../../components/ui/DateField";
-import { IrrigationLog } from "./IrrigationLog";
+import { IrrigationLog, LogRow } from "./IrrigationLog";
 
 /** Server render without React's text separators ("<!-- -->"). */
 const renderToString = (el: ReactElement): string => ssr(el).replace(/<!-- -->/g, "");
@@ -46,6 +46,55 @@ describe("IrrigationLog", () => {
       .toContain("No watering logged on this field yet.");
     expect(renderToString(<IrrigationLog records={null} loading={false} error="HTTP 500" onLog={() => {}} />))
       .toContain("Couldn&#x27;t load the log: HTTP 500");
+  });
+
+  it("with onDelete: one trash button per row, named after the day", () => {
+    const html = renderToString(
+      <IrrigationLog records={[rec(2, "2026-07-14", 30), rec(1, "2026-06-21", 25)]} loading={false} error={null} onDelete={async () => {}} />,
+    );
+    expect(html.match(/aria-label="Delete the watering of /g)?.length).toBe(2);
+    expect(html).toMatch(/<button type="button" aria-label="Delete the watering of Tue 14 Jul 2026"/);
+    expect(html).toContain('aria-label="Delete the watering of Sun 21 Jun 2026"');
+    expect(html).not.toContain("Delete?");
+  });
+
+  it("without onDelete: no delete buttons", () => {
+    const html = renderToString(<IrrigationLog records={[rec(2, "2026-07-14", 30)]} loading={false} error={null} onLog={() => {}} />);
+    expect(html).not.toContain("Delete");
+  });
+});
+
+describe("IrrigationLog row delete states", () => {
+  const row = rec(2, "2026-07-14", 30);
+  const noop = () => {};
+  const render = (view: Parameters<typeof LogRow>[0]["view"]) =>
+    renderToString(<ul><LogRow record={row} highlighted={false} view={view} canDelete onAsk={noop} onCancel={noop} onConfirm={noop} /></ul>);
+
+  it("confirming: Delete? with Delete and Cancel instead of the trash", () => {
+    const html = render({ mode: "confirming", error: null, locked: false });
+    expect(html).toContain("Delete?");
+    expect(html).toMatch(/<button[^>]*>Delete<\/button>/);
+    expect(html).toMatch(/<button[^>]*>Cancel<\/button>/);
+    expect(html).not.toContain("Delete the watering of");
+    expect(html).toContain("30 mm");
+  });
+
+  it("deleting: says Deleting… and both buttons are off", () => {
+    const html = render({ mode: "deleting", error: null, locked: false });
+    expect(html).toContain("Deleting…");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Delete<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Cancel<\/button>/);
+  });
+
+  it("error: the trash is back with a short alert", () => {
+    const html = render({ mode: "idle", error: "HTTP 404", locked: false });
+    expect(html).toContain('aria-label="Delete the watering of Tue 14 Jul 2026"');
+    expect(html).toMatch(/role="alert"[^>]*>Couldn&#x27;t delete: HTTP 404/);
+  });
+
+  it("another row deleting: this trash waits", () => {
+    const html = render({ mode: "idle", error: null, locked: true });
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Delete the watering of Tue 14 Jul 2026"|aria-label="Delete the watering of Tue 14 Jul 2026"[^>]*disabled=""/);
   });
 });
 

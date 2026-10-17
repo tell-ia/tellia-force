@@ -1,0 +1,59 @@
+// Deleting one row of the irrigation log, with an inline confirm. One row at a time:
+// idle → confirming (the trash) → deleting (the Delete button) → deleted (hidden while the list
+// reloads), or error (the row is back to normal with a message, so the user can retry).
+
+export type RowDeleteState =
+  | { step: "idle" }
+  | { step: "confirming"; id: number }
+  | { step: "deleting"; id: number }
+  | { step: "deleted"; id: number }
+  | { step: "error"; id: number; message: string };
+
+export type RowDeleteAction =
+  | { type: "ask"; id: number } // the trash of a row
+  | { type: "cancel" }
+  | { type: "confirm" } // the Delete button
+  | { type: "done" }
+  | { type: "failed"; message: string };
+
+export const rowDeleteIdle: RowDeleteState = { step: "idle" };
+
+/** The reducer. While a row is deleting, other taps change nothing. */
+export function rowDelete(state: RowDeleteState, action: RowDeleteAction): RowDeleteState {
+  switch (action.type) {
+    case "ask":
+      return state.step === "deleting" ? state : { step: "confirming", id: action.id };
+    case "cancel":
+      return state.step === "confirming" ? rowDeleteIdle : state;
+    case "confirm":
+      return state.step === "confirming" ? { step: "deleting", id: state.id } : state;
+    case "done":
+      return state.step === "deleting" ? { step: "deleted", id: state.id } : state;
+    case "failed":
+      return state.step === "deleting" ? { step: "error", id: state.id, message: action.message } : state;
+  }
+}
+
+export interface RowDeleteView {
+  /** idle: the trash; confirming: "Delete?" + Delete + Cancel; deleting: "Deleting…", buttons off. */
+  mode: "idle" | "confirming" | "deleting";
+  /** Why the last delete of this row failed (shown under it), or null. */
+  error: string | null;
+  /** Another row is deleting: this row's trash waits. */
+  locked: boolean;
+}
+
+/** What one row shows. */
+export function rowDeleteView(state: RowDeleteState, id: number): RowDeleteView {
+  const mine = state.step !== "idle" && state.id === id;
+  return {
+    mode: mine && (state.step === "confirming" || state.step === "deleting") ? state.step : "idle",
+    error: mine && state.step === "error" ? state.message : null,
+    locked: state.step === "deleting" && !mine,
+  };
+}
+
+/** The rows to show: the one just deleted is hidden while the list reloads. */
+export function withoutDeleted<T extends { operationId: number }>(rows: T[], state: RowDeleteState): T[] {
+  return state.step === "deleted" ? rows.filter((r) => r.operationId !== state.id) : rows;
+}

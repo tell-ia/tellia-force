@@ -25,6 +25,10 @@
   otherwise), via tested `cropLine` mapper. Web: 78.
 - 2026-10-17 Chat Oui/Non card locks after an answer (and when already answered). Vincent tested the
   branch live; PR opened.
+- 2026-10-17 Irrigation log: a trash button per row (branch `feat/irrigation-log-delete`), inline confirm
+  (Delete? / Delete / Cancel), "Deleting…", a "Couldn't delete" alert to retry; state in the tested
+  `lib/rowDelete.ts` reducer. After a delete the field page reloads the log + report, the Log screen the
+  log + report + simulation (not while another watering shows as Saved; Undo reloads then). Web: 94.
 
 ## In progress
 

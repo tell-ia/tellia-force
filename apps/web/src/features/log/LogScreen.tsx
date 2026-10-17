@@ -38,9 +38,12 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const action = parcels.find((p) => p.status === "action") ?? parcels[0];
   const parcelId = picked ?? action?.id ?? null;
 
-  const { data, loading, error } = useAsync<ParcelReport | null>(
+  // Bumped after a watering is deleted from the log: the report and the simulation (they count
+  // past waterings) reload in place, keeping the form as it is.
+  const [waterVersion, setWaterVersion] = useState(0);
+  const { data, error } = useAsync<ParcelReport | null>(
     () => (parcelId ? getParcelReport(parcelId) : Promise.resolve(null)),
-    [parcelId],
+    [parcelId, waterVersion],
   );
 
   const eff = data?.recommendation.efficiency ?? 0.8;
@@ -63,6 +66,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   // The day of the watering: today by default, or a past day of this crop season.
   const [day, setDay] = useState<string | null>(null);
   const logged = saved !== null;
+  // A fresh form when a field's report first shows (not when it reloads after a delete).
   useEffect(() => {
     if (data) {
       setAmount(advisedGross || 35);
@@ -70,7 +74,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
       setSaveError(null);
       setDay(null);
     }
-  }, [data, advisedGross]);
+  }, [data?.id]);
 
   const gross = amount ?? advisedGross;
   const net = Math.round(gross * eff); // what actually reaches the soil
@@ -90,7 +94,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const debouncedGross = useDebounced(gross, 350);
   const { data: sim, loading: simLoading } = useAsync<DoseSim | null>(
     () => (parcelId && debouncedGross > 0 ? simulateDose(parcelId, asOf, logDay, debouncedGross) : Promise.resolve(null)),
-    [parcelId, asOf, logDay, debouncedGross],
+    [parcelId, asOf, logDay, debouncedGross, waterVersion],
   );
   const [shown, setShown] = useState<DoseSim | null>(null);
   useEffect(() => {
@@ -138,15 +142,27 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
       await deleteIrrigation(saved.operationId);
       setSaved(null);
       setLogVersion((n) => n + 1);
+      setWaterVersion((n) => n + 1); // another watering may have been deleted from the log meanwhile
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   };
+  // A watering deleted from the log. The report and the simulation count past waterings, so they
+  // reload, except while another watering is saved on screen: its effect is a snapshot (a new
+  // simulation would count the saved one twice), and Undo reloads them.
+  const removeWatering = async (operationId: number) => {
+    await deleteIrrigation(operationId);
+    setLogVersion((n) => n + 1);
+    if (saved && saved.operationId !== operationId) return;
+    setSaved(null); // the watering just saved was deleted: the form is free again
+    setWaterVersion((n) => n + 1);
+  };
   const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={saving} onPick={setPicked} />;
 
-  if (loading || !data || amount === null) {
+  // The loader while this field's report is not there yet (a reload after a delete keeps the screen).
+  if (!data || data.id !== parcelId || amount === null) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "12px 16px 20px" }}>
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, padding: "4px 4px 0" }}>
@@ -266,7 +282,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
 
       <SectionCard id="log" style={{ gap: 10 }}>
         <div ref={logRef} />
-        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} />
+        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} onDelete={removeWatering} />
       </SectionCard>
     </div>
   );
