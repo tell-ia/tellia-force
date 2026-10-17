@@ -21,6 +21,9 @@
   chat API: Jean says 15 July and the 3 fields. Android rebuilt: chip "Wed 15 Jul 2026", sheet
   opens, "Wet summer" switches the app to 15 Jul 2021 (nothing urgent). Date reset to real.
   API 311 passed, web 58, shared OK.
+- 2026-10-17 Bug from Vincent's SMS test: in the same SMS conversation Jean answered "what is
+  today" from memory (old day), no tool call. Fix: a date change closes the open VAPI SMS
+  conversations (`vapi/vapiSessions.ts`, `onDateChange` hook). Live: 1 closed, then 0 open. Suite: 313.
 
 ## In progress
 

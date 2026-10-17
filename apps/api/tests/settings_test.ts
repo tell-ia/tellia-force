@@ -7,6 +7,7 @@ import { createIrrigationController } from "../src/modules/irrigation/irrigation
 import { createClock, type DemoDateStore, fileDemoDateStore } from "../src/modules/settings/clock";
 import { createSettingsController } from "../src/modules/settings/settings.controller";
 import { createVapiController, VAPI_SECRET_HEADER } from "../src/modules/vapi/vapi.controller";
+import { closeOpenSmsConversations } from "../src/modules/vapi/vapiSessions";
 import { makeTestRegistry, TEST_TODAY } from "./helpers/testApp";
 
 /** 2026-07-05 at noon, Paris time: the test farms' "today". */
@@ -157,4 +158,51 @@ Deno.test("the demo date moves the advice and the phone tools' today", async () 
   });
   const result = JSON.parse((await res.json()).results[0].result);
   assertEquals(result.today, "2026-07-01");
+});
+
+Deno.test("PUT /settings/date runs onDateChange only when today changes", async () => {
+  const clock = createClock({ timezone: "Europe/Paris", now });
+  const changes: string[] = [];
+  const app = new Hono();
+  app.onError(onError);
+  app.route("/settings", createSettingsController(clock, { onDateChange: (d) => changes.push(d) }));
+
+  await put(app, { date: "2021-07-15" });
+  await put(app, { date: "2021-07-15" }); // same day: nothing to do
+  await put(app, { date: "2027-01-01" }); // refused
+  await put(app, { date: null });
+  assertEquals(changes, ["2021-07-15", TEST_TODAY]);
+});
+
+Deno.test("closeOpenSmsConversations closes only the open SMS conversations", async () => {
+  const seen: string[] = [];
+  const fakeVapi: typeof fetch = (input, init) => {
+    const url = String(input);
+    seen.push(`${init?.method} ${url.replace("https://api.vapi.ai", "")} ${init?.body ?? ""}`);
+    assertEquals((init?.headers as Record<string, string>).authorization, "Bearer k");
+    if (init?.method === "GET") {
+      return Promise.resolve(Response.json([
+        { id: "a", status: "active", phoneNumberId: "p1" },
+        { id: "b", status: "completed", phoneNumberId: "p1" },
+        { id: "c", status: "active" }, // not an SMS conversation
+        { id: "d", status: "active", phoneNumberId: "p2" },
+      ]));
+    }
+    return Promise.resolve(Response.json({}));
+  };
+  assertEquals(await closeOpenSmsConversations({ privateKey: "k", fetch: fakeVapi }), 2);
+  assertEquals(seen, [
+    "GET /session?limit=1000 ",
+    'PATCH /session/a {"status":"completed"}',
+    'PATCH /session/d {"status":"completed"}',
+  ]);
+
+  const down: typeof fetch = () => Promise.resolve(new Response("nope", { status: 401 }));
+  let failed = false;
+  try {
+    await closeOpenSmsConversations({ privateKey: "k", fetch: down });
+  } catch {
+    failed = true;
+  }
+  assertEquals(failed, true);
 });
