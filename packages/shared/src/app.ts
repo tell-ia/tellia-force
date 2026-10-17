@@ -50,8 +50,11 @@ export const ParcelSummarySchema = z.object({
   badgeLabel: z.string(), // "Irrigate by Fri" / "OK · 3 more days"
   // present when status === "action":
   netMm: z.number().nullable(),
+  grossMm: z.number().nullable().optional(), // what to pump at the gun
   reservePct: z.number().int().nullable(),
   thresholdLabel: z.string().nullable(),
+  /** Big-deficit fields: "then ~N more passes to refill". */
+  refillNote: z.string().nullable().optional(),
 });
 export type ParcelSummary = z.infer<typeof ParcelSummarySchema>;
 
@@ -98,6 +101,17 @@ export const BalancePointSchema = z.object({
   reserveMm: z.number(),
   forecast: z.boolean(),
 });
+
+/** The engine-computed refill plan: each pass + the resulting reserve curve. */
+export const RefillPassSchema = z.object({
+  date: IsoDateSchema,
+  grossMm: z.number(),
+});
+export const RefillPlanSchema = z.object({
+  series: z.array(BalancePointSchema),
+  passes: z.array(RefillPassSchema),
+});
+export type RefillPlanSeries = z.infer<typeof RefillPlanSchema>;
 
 export const CropStageStepSchema = z.object({
   label: z.string(), // "Flowering"
@@ -162,6 +176,8 @@ export const ParcelReportSchema = z.object({
   // lightweight live path (from FieldReport) until that endpoint ships. The UI
   // renders each only when present.
   series: z.array(BalancePointSchema).optional(),
+  /** Multi-pass refill plan (engine-simulated), when the field needs several passes. */
+  plan: RefillPlanSchema.optional(),
   cropStage: CropTimelineSchema.optional(),
   soil: SoilSchema.optional(),
   seasonBalance: SeasonBalanceSchema.optional(),

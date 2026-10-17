@@ -11,6 +11,7 @@ import { http, mock } from "./core";
 import { list } from "./data";
 import { toFarmToday } from "../mappers/today";
 import { fieldReportToParcelReport } from "../mappers/parcel";
+import { buildRefillPlan } from "./plan";
 import oakfieldAdvice from "../../fixtures/oakfield/advice.json";
 import ridgewayAdvice from "../../fixtures/ridgeway/advice.json";
 import valleyReport from "../../fixtures/oakfield/parcel-report.valley.json";
@@ -47,11 +48,13 @@ export async function getParcelReport(parcelId: number): Promise<ParcelReport> {
     const field = fields.data.find((f) => f.id === parcelId);
     const gddBase = crops.data.find((c) => c.crop_code === report.cropCode)?.gdd_base_c;
     const soil = soils.data.find((s) => s.field_id === parcelId) ?? null;
+    const plan = await buildRefillPlan(parcelId, report).catch(() => null);
     return fieldReportToParcelReport(report, {
       farmId: field?.farm_id ?? 0,
       areaHa: field?.area_ha,
       gddBase: gddBase ?? undefined,
       soil,
+      plan,
     });
   } catch {
     const fixture = REPORT_BY_PARCEL[parcelId];

@@ -1,4 +1,4 @@
-import type { BalancePoint, CropPhase, DayBalance, FieldReport, ParcelReport, Reserve } from "@tellia/shared";
+import type { BalancePoint, CropPhase, DayBalance, FieldReport, ParcelReport, RefillPlanSeries, Reserve } from "@tellia/shared";
 
 /** A soil_analysis row's texture + OM, joined by field in the api layer. */
 export interface SoilSample {
@@ -43,6 +43,20 @@ export function eveLabel(asOf: string, daysUntil: number | null): string {
  */
 export const wateredPct = (noWaterPct: number, netMm: number, capacityMm: number): number =>
   Math.min(100, Math.round(noWaterPct + (netMm / capacityMm) * 100));
+
+/**
+ * When the deficit is larger than one pass, the field is refilled over several
+ * passes (the reel gun caps each pass). Returns the plan, or null for a single pass.
+ */
+export function refillPlan(deficitMm: number, netMm: number): { morePasses: number; note: string } | null {
+  if (netMm <= 0 || deficitMm <= netMm) return null;
+  const morePasses = Math.ceil(deficitMm / netMm) - 1;
+  if (morePasses < 1) return null;
+  return {
+    morePasses,
+    note: `then ~${morePasses} more pass${morePasses > 1 ? "es" : ""} to refill (${Math.round(deficitMm)} mm deficit)`,
+  };
+}
 
 /**
  * Engine FieldReport → ReserveGauge props. This is what the fast advisor
@@ -90,7 +104,7 @@ const round1 = (n: number): number => Math.round(n * 10) / 10;
 const dayOfMonth = (iso: string): string => String(Number(iso.split("-")[2] ?? 0));
 
 /** Engine DayBalance → chart BalancePoint. reserve = TAW − depletion. */
-function toBalancePoint(d: DayBalance, asOf: string): BalancePoint {
+export function toBalancePoint(d: DayBalance, asOf: string): BalancePoint {
   return {
     date: d.date,
     dayLabel: dayOfMonth(d.date),
@@ -137,7 +151,7 @@ function stageNote(stage: { sensitive: boolean; floweringDate: string | null }):
  */
 export function fieldReportToParcelReport(
   r: FieldReport,
-  opts: { farmId: number; areaHa?: number; gddBase?: number; soil?: SoilSample | null },
+  opts: { farmId: number; areaHa?: number; gddBase?: number; soil?: SoilSample | null; plan?: RefillPlanSeries | null },
 ): ParcelReport {
   const efficiency =
     r.irrigateMm > 0 && r.irrigateGrossMm > 0
@@ -154,18 +168,19 @@ export function fieldReportToParcelReport(
     asOf: r.asOf,
     recommendation: {
       decision: r.decision,
-      headline: r.headline || headlineFor(r),
+      headline: headlineFor(r), // short pill; the engine's full sentence is in `reason`
       netMm: r.irrigateMm,
       grossMm: r.irrigateGrossMm,
       efficiency,
       reason: r.reason,
-      secondPass: null,
+      secondPass: refillPlan(r.depletionMm, r.irrigateMm)?.note ?? null,
     },
     reserve: fieldReportToReserve(r),
     method: "FAO-56 soil water balance (live). Weather from AgERA5; stages from degree-days.",
   };
 
   if (r.series?.length) report.series = r.series.map((d) => toBalancePoint(d, r.asOf));
+  if (opts.plan) report.plan = opts.plan;
 
   if (r.season) {
     report.seasonBalance = {
@@ -215,13 +230,14 @@ export function fieldReportToParcelReport(
   const forecast = (r.series ?? []).filter((d) => d.date > r.asOf).slice(0, 5);
   if (forecast.length) {
     const cap = report.reserve.capacityMm;
+    // "+ watered" follows the real plan (reserve climbing back) when we have one.
+    const planRes = opts.plan ? new Map(opts.plan.series.map((p) => [p.date, p.reserveMm])) : null;
     report.nextDays = forecast.map((d) => {
       const pctNoWater = Math.round(((d.taw - d.depletion) / d.taw) * 100);
-      return {
-        day: `${weekday(d.date)} ${dayOfMonth(d.date)}`,
-        pctNoWater,
-        pctWatered: wateredPct(pctNoWater, r.irrigateMm, cap),
-      };
+      const planMm = planRes?.get(d.date);
+      const pctWatered =
+        planMm != null ? Math.round((planMm / d.taw) * 100) : wateredPct(pctNoWater, r.irrigateMm, cap);
+      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctWatered };
     });
   }
 

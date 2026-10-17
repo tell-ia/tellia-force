@@ -7,6 +7,7 @@ import { farmAccent, useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { DateChip, Label, StatusPill } from "../../components/ui/primitives";
+import { Loader } from "../../components/ui/Loader";
 import { PersonaSheet } from "./PersonaSheet";
 
 export function TodayScreen() {
@@ -47,6 +48,10 @@ export function TodayScreen() {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+        {loading || !data ? (
+          <Loader />
+        ) : (
+          <>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ fontFamily: font.display, fontWeight: 600, fontSize: 40, lineHeight: 0.98, letterSpacing: "-0.01em", textWrap: "balance" }}>
             {data?.greeting ?? farm.name}
@@ -56,8 +61,7 @@ export function TodayScreen() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Label>Today's actions</Label>
-          {loading && <RowSkeleton />}
-          {data?.parcels.map((p) =>
+          {data.parcels.map((p) =>
             p.status === "action" ? <ActionCard key={p.id} p={p} /> : <ParcelRow key={p.id} p={p} />,
           )}
         </div>
@@ -70,6 +74,8 @@ export function TodayScreen() {
               <span style={{ color: v("ink2") }}>{data.alert.detail}</span>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -107,7 +113,7 @@ function ActionCard({ p }: { p: ParcelSummary }) {
       </div>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 52, lineHeight: 0.9, color: v("act") }}>{p.netMm}</span>
+          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 52, lineHeight: 0.9, color: v("act") }}>{p.grossMm ?? p.netMm}</span>
           <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 22, color: v("act") }}>mm</span>
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, paddingBottom: 4 }}>
@@ -121,6 +127,12 @@ function ActionCard({ p }: { p: ParcelSummary }) {
           </div>
         </div>
       </div>
+      {p.refillNote && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: v("act"), fontWeight: 600 }}>
+          <span style={{ fontSize: 14 }}>↻</span>
+          {p.grossMm ?? p.netMm} mm now, {p.refillNote}
+        </div>
+      )}
     </button>
   );
 }
@@ -147,11 +159,5 @@ function ParcelRow({ p }: { p: ParcelSummary }) {
       </div>
       <StatusPill tone={p.status === "ok" ? "watch" : "ok"} label={p.badgeLabel} />
     </div>
-  );
-}
-
-function RowSkeleton() {
-  return (
-    <div style={{ height: 64, borderRadius: radius.card, background: v("sunk"), opacity: 0.6 }} aria-hidden="true" />
   );
 }

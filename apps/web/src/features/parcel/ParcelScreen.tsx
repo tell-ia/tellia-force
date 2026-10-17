@@ -5,8 +5,9 @@ import { getParcelReport } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
-import { font, radius, v } from "../../theme/tokens";
+import { font, v } from "../../theme/tokens";
 import { DateChip, Label, SectionCard } from "../../components/ui/primitives";
+import { Loader } from "../../components/ui/Loader";
 import { RecommendationCard } from "./RecommendationCard";
 import {
   BalanceLegend,
@@ -52,7 +53,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
         <DateChip>Wed 13 Jul 2022</DateChip>
       </div>
 
-      {loading && <div aria-hidden="true" style={{ height: 280, borderRadius: radius.hero, background: v("sunk"), opacity: 0.6 }} />}
+      {loading && <Loader />}
       {error && <div style={{ color: v("act") }}>Couldn't load this parcel: {error}</div>}
 
       {data && (
@@ -93,8 +94,8 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
                 <Label>Water balance · {data.series.at(0)?.dayLabel}–{data.series.at(-1)?.dayLabel} Jul</Label>
                 <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
               </div>
-              <WaterBalanceChart series={data.series} reserve={data.reserve} />
-              <BalanceLegend />
+              <WaterBalanceChart series={data.series} reserve={data.reserve} plan={data.plan} />
+              <BalanceLegend withPlan={!!data.plan} />
             </SectionCard>
           )}
 
@@ -106,9 +107,9 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
 
           {data.nextDays && (
             <SectionCard style={{ gap: 10 }}>
-              <NextDaysTable days={data.nextDays} />
+              <NextDaysTable days={data.nextDays} hasPlan={!!data.plan} />
               <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
-                Comfort threshold 55%. Right column: with the {data.recommendation.netMm} mm net planned Thursday evening.
+                Each bar: reserve from rain alone, then the recommended {data.plan ? "plan" : "watering"} on top — rain counts in both. Comfort threshold at the tick (55%).
               </div>
             </SectionCard>
           )}

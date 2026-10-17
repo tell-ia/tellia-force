@@ -100,7 +100,7 @@ for (const fn of vapiFunctions()) {
 // 2. Assistant. The transcriber is the one of VAPI's English demo assistant.
 const assistantBody = {
   name: ASSISTANT_NAME,
-  firstMessage: "Hi, this is Jean, your irrigation assistant. What can I check for you today?",
+  firstMessage: "Hi, this is your irrigation assistant. What can I check for you today?",
   model: {
     provider: "openai",
     model: "gpt-4.1",
