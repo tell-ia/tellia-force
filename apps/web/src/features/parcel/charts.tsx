@@ -18,8 +18,9 @@ export function ReserveGauge({ reserve }: { reserve: Reserve }) {
   const usedW = (reserve.usedByThresholdMm / cap) * W;
   const belowComfort = reserve.availableMm < reserve.thresholdMm;
   const fill = belowComfort ? v("act") : v("water");
-  const todayAnchor = todayX < 150 ? "start" : "end";
-  const todayLabelX = todayX < 150 ? todayX + 4 : todayX - 4;
+  // Only label "Today %" when it won't collide with the comfort label (the % is
+  // also in the card header). The fill edge marks today either way.
+  const showToday = Math.abs(todayX - thresholdX) >= 72;
   return (
     <svg viewBox="0 0 326 74" width="100%" role="img" aria-label={`${reserve.availableMm} mm available of ${cap}; comfort threshold ${reserve.thresholdMm} mm, reached ${reserve.thresholdLabel}`} style={{ display: "block", fontFamily: font.body }}>
       <defs>
@@ -36,8 +37,10 @@ export function ReserveGauge({ reserve }: { reserve: Reserve }) {
         {usedW > 0 && <rect x={todayX - usedW} y="20" width={usedW} height="30" fill="url(#tfHatch)" opacity={0.5} />}
       </g>
       <line x1={thresholdX} y1="12" x2={thresholdX} y2="58" stroke={v("ink")} strokeWidth={2} />
-      <text x={thresholdX + 4} y="11" textAnchor="start" fill={v("ink")} fontSize="11" fontWeight={600}>Comfort {reserve.thresholdMm} mm</text>
-      <text x={todayLabelX} y="11" textAnchor={todayAnchor} fill={fill} fontSize="11" fontWeight={600}>Today {reserve.pct}%</text>
+      <text x={thresholdX} y="11" textAnchor="middle" fill={v("ink")} fontSize="11" fontWeight={600}>Comfort {reserve.thresholdMm} mm</text>
+      {showToday && (
+        <text x={todayX} y="11" textAnchor="middle" fill={fill} fontSize="11" fontWeight={600}>Today {reserve.pct}%</text>
+      )}
       <text x="0" y="70" fill={v("ink2")} fontSize="11">0 · stress zone</text>
       <text x={thresholdX} y="70" textAnchor="middle" fill={v("act")} fontSize="11" fontWeight={600}>{reserve.thresholdLabel}</text>
       <text x="326" y="70" textAnchor="end" fill={v("ink2")} fontSize="11">Full {cap}</text>
