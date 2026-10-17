@@ -15,7 +15,6 @@ const env = parseEnv(
     VAPI_WEBHOOK_SECRET: z.string().min(16),
     VAPI_SERVER_URL: z.url(),
     VAPI_PHONE_NUMBER: z.string().min(1),
-    TIMEZONE: z.string().min(1).default("Europe/Paris"),
   }),
   Deno.env.toObject(),
 );
@@ -25,7 +24,7 @@ const ASSISTANT_NAME = "Jean";
 
 const SYSTEM_PROMPT =
   `You are Jean, a phone assistant that helps farmers decide when to irrigate and how much.
-Today is {{"now" | date: "%A %-d %B %Y", "${env.TIMEZONE}"}}. Every tool result also has "today" (YYYY-MM-DD); when they differ, trust the tool.
+Today is the "today" date (YYYY-MM-DD) in every tool result, even when it is in the past: the app can set a demo date. Never use another date as today. If you need today before any tool result (for "yesterday" or a weekday), call resolve_field or get_farm_advice first.
 
 How you speak
 - This is a phone call. Use short, simple sentences: one or two per turn, then let the farmer talk.
@@ -61,6 +60,12 @@ interface VapiAssistant {
 interface VapiPhoneNumber {
   id: string;
   number?: string;
+  assistantId?: string;
+}
+interface VapiSession {
+  id: string;
+  status?: string;
+  phoneNumberId?: string;
 }
 
 async function vapi<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -129,9 +134,22 @@ console.log(
 // 3. Phone number -> assistant, for calls and texts. smsEnabled makes VAPI point the Twilio
 // number's SMS webhook at itself. VAPI documents SMS for US numbers; French carriers rewrite
 // the sender of texts from foreign numbers, so French farmers need a French number.
-const phone = (await vapi<VapiPhoneNumber[]>("GET", "/phone-number?limit=1000"))
-  .find((p) => p.number === env.VAPI_PHONE_NUMBER);
+const phones = await vapi<VapiPhoneNumber[]>("GET", "/phone-number?limit=1000");
+const phone = phones.find((p) => p.number === env.VAPI_PHONE_NUMBER);
 if (!phone) throw new Error(`phone number ${env.VAPI_PHONE_NUMBER} is not in this VAPI account`);
 await vapi("PATCH", `/phone-number/${phone.id}`, { assistantId: assistant.id, smsEnabled: true });
 console.log(`phone ${phone.number}: calls and SMS go to "${ASSISTANT_NAME}"`);
+
+// 4. An open SMS conversation keeps a copy of the assistant from when it started (prompt and
+// tools), so it would ignore this update. Close the open ones on Jean's numbers: the next text
+// starts a new conversation. Calls always use the current assistant. Nothing is deleted.
+const jeanIds = new Set([assistant.id, existingAssistant?.id]);
+const jeanPhones = new Set(
+  phones.filter((p) => p.id === phone.id || jeanIds.has(p.assistantId)).map((p) => p.id),
+);
+const listed = await vapi<VapiSession[] | { results?: VapiSession[] }>("GET", "/session?limit=1000");
+const open = (Array.isArray(listed) ? listed : listed.results ?? [])
+  .filter((s) => s.status === "active" && s.phoneNumberId && jeanPhones.has(s.phoneNumberId));
+for (const s of open) await vapi("PATCH", `/session/${s.id}`, { status: "completed" });
+console.log(`SMS conversations closed: ${open.length}`);
 console.log(dryRun ? "dry run: nothing was changed" : `done. Tool calls go to ${server.url}`);

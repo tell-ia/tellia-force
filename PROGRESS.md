@@ -10,6 +10,9 @@
 - 2026-10-17 Task 2: web `DateProvider` (GET/PUT /settings/date), `DateButton` + `DateSheet`
   (date input, 3 presets, real date), screens remount on a new date, fixed dates removed (Today,
   Parcel, Admin, Log; Log's chart window now by date, not `dayLabel >= 9`). Web: 58 passed.
+- 2026-10-17 Task 3: Jean's prompt takes today from the tool results (never the real date);
+  `vapi:setup` closes open SMS conversations on Jean's numbers. Docs: api CLAUDE.md, chat and vapi
+  READMEs, .env.example. `vapi:setup` run by the agent (approved): Jean updated, 1 SMS conversation closed.
 
 ## In progress
 
