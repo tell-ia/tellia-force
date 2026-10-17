@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import type { IrrigationRecord, ParcelReport } from "@tellia/shared";
-import { getParcelReport, listIrrigations } from "../../lib/api";
+import { deleteIrrigation, getParcelReport, listIrrigations } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
@@ -40,17 +40,24 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
   const { farm } = useFarm();
   const balanceRef = useRef<HTMLDivElement>(null);
   const [highlighted, setHighlighted] = useState(false);
-  const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId]);
-  const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId]);
+  // Bumped after a watering is deleted: the log and the report (its advice counts past waterings)
+  // reload in place (no full-page loader, no new anchor scroll; a failed reload keeps the page).
+  const [version, setVersion] = useState(0);
+  const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId, version], { keepDataOnError: true });
+  const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId, version]);
+  const removeWatering = async (operationId: number) => {
+    await deleteIrrigation(operationId);
+    setVersion((n) => n + 1);
+  };
   const logRef = useRef<HTMLDivElement>(null);
 
-  // "See the log" (#/parcel/:id#log) lands on the irrigation log.
+  // "See the log" (#/parcel/:id#log) lands on the irrigation log (once per parcel, not on a reload).
   useEffect(() => {
     if (data && anchor === "log") {
       const scroll = setTimeout(() => logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
       return () => clearTimeout(scroll);
     }
-  }, [data, anchor]);
+  }, [data?.id, anchor]);
 
   useEffect(() => {
     if (data && anchor === "balance") {
@@ -64,7 +71,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
         clearTimeout(fade);
       };
     }
-  }, [data, anchor]);
+  }, [data?.id, anchor]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, padding: "12px 16px calc(28px + env(safe-area-inset-bottom))" }}>
@@ -75,10 +82,10 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
         <DateButton />
       </div>
 
-      {loading && <Loader />}
+      {loading && data?.id !== parcelId && <Loader />}
       {error && <div style={{ color: v("act") }}>Couldn't load this parcel: {error}</div>}
 
-      {data && (
+      {data && data.id === parcelId && (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 4px" }}>
             <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 46, lineHeight: 0.95, letterSpacing: "-0.01em" }}>{data.name}</div>
@@ -125,7 +132,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
 
           <SectionCard id="log" style={{ gap: 10 }}>
             <div ref={logRef} />
-            <IrrigationLog records={log.data} loading={log.loading} error={log.error} onLog={() => navigate(`log/${parcelId}`)} />
+            <IrrigationLog records={log.data} loading={log.loading} error={log.error} onLog={() => navigate(`log/${parcelId}`)} onDelete={removeWatering} />
           </SectionCard>
 
           {data.cropStage && (

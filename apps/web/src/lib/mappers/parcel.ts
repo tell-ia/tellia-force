@@ -23,6 +23,11 @@ export const cropLabel = (_code: string | null | undefined, name: string | null 
 export const cropLine = (cropName: string, stageLabel: string | null | undefined): string =>
   cropName === "—" || !cropName ? "No crop growing" : stageLabel ? `${cropName} · ${stageLabel}` : cropName;
 
+/** The Log screen's dose at the gun: the one set with the stepper, else the advised gross dose
+ *  (35 mm when nothing is advised). Untouched, it follows the advice when the report reloads. */
+export const formDose = (edited: number | null, advisedGross: number): number =>
+  edited ?? (advisedGross || 35);
+
 /** Gross dose at the gun from the net dose (reel gun ≈ 0.8 efficiency). */
 export const grossFromNet = (netMm: number, efficiency = 0.8): number =>
   Math.round(netMm / efficiency);

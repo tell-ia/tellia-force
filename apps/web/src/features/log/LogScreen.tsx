@@ -17,7 +17,7 @@ function useDebounced<T>(value: T, ms: number): T {
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
 import { addDays, formatDay, shortDay, weekday } from "../../lib/dates";
-import { cropLine } from "../../lib/mappers/parcel";
+import { cropLine, formDose } from "../../lib/mappers/parcel";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, SectionCard } from "../../components/ui/primitives";
@@ -38,16 +38,22 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const action = parcels.find((p) => p.status === "action") ?? parcels[0];
   const parcelId = picked ?? action?.id ?? null;
 
-  const { data, loading, error } = useAsync<ParcelReport | null>(
+  // Bumped after a watering is deleted from the log: the report and the simulation (they count
+  // past waterings) reload in place, keeping the user's edits (an untouched dose follows the advice).
+  const [waterVersion, setWaterVersion] = useState(0);
+  // A failed reload keeps the screen (the error shows above the form).
+  const { data, error } = useAsync<ParcelReport | null>(
     () => (parcelId ? getParcelReport(parcelId) : Promise.resolve(null)),
-    [parcelId],
+    [parcelId, waterVersion],
+    { keepDataOnError: true },
   );
 
   const eff = data?.recommendation.efficiency ?? 0.8;
   const advisedGross = Math.round(data?.recommendation.grossMm ?? 0);
   const advisedNet = Math.round(data?.recommendation.netMm ?? advisedGross * eff);
 
-  // `amount` = what was applied AT THE GUN (gross). Defaults to the advised dose.
+  // `amount` = what was applied AT THE GUN (gross), as set with the stepper. null = untouched: the
+  // form shows the advised dose, and follows it when the report reloads (after a delete).
   const [amount, setAmount] = useState<number | null>(null);
   // The saved irrigation (real row in the DB), or null. Undo deletes it.
   const [saved, setSaved] = useState<IrrigationRecord | null>(null);
@@ -59,20 +65,26 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   );
   const logRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  // A watering is being deleted from the log. One change at a time: while it runs, Confirm, Undo
+  // and the field chips wait; while a save or an undo runs, the log waits (`disabled`). So `saved`
+  // can't change under a delete, and two changes never reload in the wrong order.
+  const [removing, setRemoving] = useState(false);
+  const busy = saving || removing;
   const [saveError, setSaveError] = useState<string | null>(null);
   // The day of the watering: today by default, or a past day of this crop season.
   const [day, setDay] = useState<string | null>(null);
   const logged = saved !== null;
+  // A fresh form when a field's report first shows (not when it reloads after a delete).
   useEffect(() => {
     if (data) {
-      setAmount(advisedGross || 35);
+      setAmount(null);
       setSaved(null);
       setSaveError(null);
       setDay(null);
     }
-  }, [data, advisedGross]);
+  }, [data?.id]);
 
-  const gross = amount ?? advisedGross;
+  const gross = formDose(amount, advisedGross);
   const net = Math.round(gross * eff); // what actually reaches the soil
   const delta = gross - advisedGross; // vs the advised dose
   const asOf = data?.asOf ?? demoToday;
@@ -90,7 +102,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const debouncedGross = useDebounced(gross, 350);
   const { data: sim, loading: simLoading } = useAsync<DoseSim | null>(
     () => (parcelId && debouncedGross > 0 ? simulateDose(parcelId, asOf, logDay, debouncedGross) : Promise.resolve(null)),
-    [parcelId, asOf, logDay, debouncedGross],
+    [parcelId, asOf, logDay, debouncedGross, waterVersion],
   );
   const [shown, setShown] = useState<DoseSim | null>(null);
   useEffect(() => {
@@ -118,7 +130,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
 
   // LIVE: saves a confirmed irrigation (counts in the next report/advice). "Saved" only on success.
   const confirm = async () => {
-    if (!parcelId || saving) return;
+    if (!parcelId || busy) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -131,22 +143,40 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
     }
   };
   const undo = async () => {
-    if (!saved || saving) return;
+    if (!saved || busy) return;
     setSaving(true);
     setSaveError(null);
     try {
       await deleteIrrigation(saved.operationId);
       setSaved(null);
       setLogVersion((n) => n + 1);
+      setWaterVersion((n) => n + 1); // another watering may have been deleted from the log meanwhile
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   };
-  const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={saving} onPick={setPicked} />;
+  // A watering deleted from the log. The report and the simulation count past waterings, so they
+  // reload, except while another watering is saved on screen: its effect is a snapshot (a new
+  // simulation would count the saved one twice), and Undo reloads them.
+  const removeWatering = async (operationId: number) => {
+    if (busy) throw new Error("wait for the save to finish"); // the log is disabled meanwhile
+    setRemoving(true);
+    try {
+      await deleteIrrigation(operationId);
+    } finally {
+      setRemoving(false);
+    }
+    setLogVersion((n) => n + 1);
+    if (saved && saved.operationId !== operationId) return;
+    setSaved(null); // the watering just saved was deleted: the form is free again
+    setWaterVersion((n) => n + 1);
+  };
+  const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={busy} onPick={setPicked} />;
 
-  if (loading || !data || amount === null) {
+  // The loader while this field's report is not there yet (a reload after a delete keeps the screen).
+  if (!data || data.id !== parcelId) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "12px 16px 20px" }}>
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, padding: "4px 4px 0" }}>
@@ -178,6 +208,11 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
       {saveError && (
         <div role="alert" style={{ background: v("actSoft"), color: v("ink"), borderRadius: radius.card, padding: "12px 14px", fontSize: 14 }}>
           Not saved: {saveError}
+        </div>
+      )}
+      {error && (
+        <div role="alert" style={{ background: v("actSoft"), color: v("ink"), borderRadius: radius.card, padding: "12px 14px", fontSize: 14 }}>
+          Couldn't refresh this field: {error}
         </div>
       )}
 
@@ -255,18 +290,18 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
         {logged ? (
-          <button type="button" onClick={() => void undo()} disabled={saving} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: saving ? "default" : "pointer" }}>{saving ? "Deleting…" : "Undo"}</button>
+          <button type="button" onClick={() => void undo()} disabled={busy} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: busy ? "default" : "pointer" }}>{saving ? "Deleting…" : "Undo"}</button>
         ) : (
           <button type="button" onClick={() => navigate(`parcel/${parcelId}`)} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: "pointer" }}>Cancel</button>
         )}
-        <button type="button" onClick={() => void confirm()} disabled={logged || saving || pending || !shown} style={{ height: 54, borderRadius: radius.card, border: 0, fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: logged || saving || pending || !shown ? "default" : "pointer", opacity: !logged && (saving || pending || !shown) ? 0.55 : 1, background: logged ? v("okSoft") : v("brand"), color: logged ? v("brand") : v("bg") }}>
+        <button type="button" onClick={() => void confirm()} disabled={logged || busy || pending || !shown} style={{ height: 54, borderRadius: radius.card, border: 0, fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: logged || busy || pending || !shown ? "default" : "pointer", opacity: !logged && (busy || pending || !shown) ? 0.55 : 1, background: logged ? v("okSoft") : v("brand"), color: logged ? v("brand") : v("bg") }}>
           {logged ? "Saved" : saving ? "Saving…" : pending || !shown ? "Simulating…" : `Confirm ${gross} mm`}
         </button>
       </div>
 
       <SectionCard id="log" style={{ gap: 10 }}>
         <div ref={logRef} />
-        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} />
+        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} onDelete={removeWatering} disabled={saving} />
       </SectionCard>
     </div>
   );
