@@ -138,7 +138,10 @@ function voiceSummary(l: FarmLookup) {
   };
 }
 
-const date = IsoDateSchema.optional().describe("Day to evaluate, YYYY-MM-DD. Default: today.");
+// Optional, and said so loudly: the voice model has no calendar and guesses a date if invited to.
+const date = IsoDateSchema.optional().describe(
+  "Leave it out for today: the server knows today (it can be a demo date). Set it only for another day the farmer asked about, YYYY-MM-DD.",
+);
 const fieldId = z.number().int().describe("Field id, from resolve_field.");
 
 /** One what-if event, flat so the voice model fills it easily; checked by ScenarioEventSchema. */

@@ -78,7 +78,10 @@ apps/api/
   `confirmIrrigation` (the voice asks first, then calls `record_irrigation` or
   `correct_irrigation` directly; refused for unknown callers).
 - **`MODEL`** (env, default `openai/gpt-6.1-sol`) is the chat model, `MODEL_MINI` is for thread
-  titles. Both use `OPENAI_API_KEY`. `DEMO_DATE` pins "today".
+  titles. Both use `OPENAI_API_KEY`.
+- **"Today" is one clock** (`modules/settings/clock.ts`), read through `registry.today()`: the demo
+  date set from the app (`PUT /settings/date`, kept in `data/demo-date.json`), else `DEMO_DATE`,
+  else the real date. The app, the chat and VAPI all follow it. Never read the real date elsewhere.
 - Identity is the `x-member-id` header (no auth, team decision): don't expose the server
   publicly, `/api/*` exposes Mastra's built-in routes.
 - Tests and agents must never write to the shared Supabase DB. The 13 tool keys are a UI

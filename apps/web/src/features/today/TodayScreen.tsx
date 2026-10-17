@@ -6,7 +6,8 @@ import { useAsync } from "../../lib/useAsync";
 import { farmAccent, useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
-import { DateChip, Label, StatusPill } from "../../components/ui/primitives";
+import { Label, StatusPill } from "../../components/ui/primitives";
+import { DateButton } from "../../components/DateSheet";
 import { Loader } from "../../components/ui/Loader";
 import { PersonaSheet } from "./PersonaSheet";
 
@@ -44,7 +45,7 @@ export function TodayScreen() {
             </span>
           </span>
         </button>
-        <DateChip>Wed 13 Jul</DateChip>
+        <DateButton />
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>

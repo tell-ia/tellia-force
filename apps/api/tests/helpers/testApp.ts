@@ -80,13 +80,15 @@ export function makeTestRegistry(
     farms?: Record<number, FarmData>;
     /** Wrap a farm's service (spies, failures). */
     wrap?: (service: IrrigationService, farmId: number) => IrrigationService;
+    /** Default: always TEST_TODAY. */
+    today?: () => string;
   } = {},
 ): FarmRegistry {
   const farms = opts.farms ?? twoFarms();
   const farmIdOf = new Map(Object.entries(farms).map(([id, d]) => [d, Number(id)]));
   return createFarmRegistry({
     directory: directoryOf(farms),
-    today: () => TEST_TODAY,
+    today: opts.today ?? (() => TEST_TODAY),
     fetch: emptyOpenMeteoFetch,
     createService: (deps) => {
       const service = createIrrigationService(deps);

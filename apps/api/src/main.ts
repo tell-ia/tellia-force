@@ -9,8 +9,10 @@ import { members } from "./modules/members/members.controller";
 import { createSupabaseFarmDirectory } from "./modules/irrigation/data/supabaseFarmData";
 import { createFarmRegistry } from "./modules/irrigation/farmRegistry";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
-import { todayIn } from "./modules/irrigation/engine/util";
+import { createClock, fileDemoDateStore } from "./modules/settings/clock";
+import { createSettingsController } from "./modules/settings/settings.controller";
 import { createVapiController, memberByPhoneIn } from "./modules/vapi/vapi.controller";
+import { closeOpenSmsConversations } from "./modules/vapi/vapiSessions";
 import { db } from "./supabase";
 
 const app = new Hono();
@@ -35,11 +37,33 @@ app.route("/data", data);
 // Set a member's phone (VAPI persona hack — see members.controller.ts).
 app.route("/members", members);
 
+// The project's "today": the demo date picked in the app (kept in data/, git-ignored), else
+// DEMO_DATE, else the real date. Everything below reads it through registry.today().
+const clock = createClock({
+  timezone: config.TIMEZONE,
+  fallback: config.DEMO_DATE,
+  store: fileDemoDateStore("./data/demo-date.json"),
+});
+const vapiKey = config.VAPI_PRIVATE_KEY;
+app.route(
+  "/settings",
+  createSettingsController(clock, {
+    // An open SMS conversation remembers the old day: close it, so the next text asks the tools.
+    onDateChange: vapiKey
+      ? () =>
+        closeOpenSmsConversations({ privateKey: vapiKey }).then(
+          (n) => console.log(`VAPI: ${n} SMS conversation(s) closed for the new date`),
+          (e) => console.error("VAPI: could not close the SMS conversations:", e),
+        )
+      : undefined,
+  }),
+);
+
 // Irrigation advisor, fast path (no LLM): used by the web UI and VAPI tool webhooks.
 // Several farms share the DB: each request works on the caller's farm (x-member-id header).
 const registry = createFarmRegistry({
   directory: createSupabaseFarmDirectory(db),
-  today: () => config.DEMO_DATE ?? todayIn(config.TIMEZONE),
+  today: () => clock.today(),
 });
 app.route("/irrigation", createIrrigationController(registry));
 

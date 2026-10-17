@@ -49,7 +49,15 @@ I save it?" / "Shall I change it?", and calls the write tool only after a clear 
    `export FRP_TOKEN=...` (ask the team), then `pnpm tunnel` from the repo root.
 4. Push the config to VAPI: `cd apps/api && deno task vapi:setup` (`--dry-run` to preview: it should
    list 12 tools). Re-run it after changing a tool, the prompt, or the URL. It never deletes
-   anything. AI agents run only `--dry-run`; a human pushes.
+   anything. It also closes the open SMS conversations on Jean's numbers: VAPI keeps a copy of
+   the assistant per conversation, so an open one would ignore the update. AI agents run only
+   `--dry-run`; a human pushes.
+
+The date: every tool result carries `today` (the app's demo date, see `/settings/date`). Jean's
+prompt uses that date, never the real one, so calls and texts follow the app's date chip.
+An open SMS conversation remembers the day it already read, so when the date changes the API
+closes the open SMS conversations (`vapiSessions.ts`, needs `VAPI_PRIVATE_KEY`): the next text
+starts a new conversation and Jean asks the tools again.
 
 The VAPI wallet needs credits, or calls fail with `insufficient_credits`.
 

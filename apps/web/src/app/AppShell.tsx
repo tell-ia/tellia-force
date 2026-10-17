@@ -1,4 +1,6 @@
+import { Fragment } from "react";
 import { font, v } from "../theme/tokens";
+import { useDemoDate } from "./DateContext";
 import { isTabRoute, useRoute } from "./router";
 import { TabBar } from "../components/ui/TabBar";
 import { TodayScreen } from "../features/today/TodayScreen";
@@ -10,6 +12,7 @@ import { GalleryScreen } from "../features/gallery/GalleryScreen";
 
 export function AppShell() {
   const route = useRoute();
+  const { today } = useDemoDate();
 
   let content;
   switch (route.name) {
@@ -51,7 +54,8 @@ export function AppShell() {
           paddingTop: "env(safe-area-inset-top)",
         }}
       >
-        {content}
+        {/* A new demo date remounts the screen: every screen reloads for the new day. */}
+        <Fragment key={today}>{content}</Fragment>
         {isTabRoute(route.name) && <TabBar active={route.name} />}
       </div>
     </div>

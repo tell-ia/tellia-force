@@ -139,6 +139,14 @@ trusted as given. **Do not expose the server publicly.**
 `MODEL` (default `openai/gpt-6.1-sol`), `MODEL_MINI` (`openai/gpt-6-luna`, thread titles),
 `OPENAI_API_KEY`, `MASTRA_DB_URL` (LibSQL file), `DEMO_DATE`, `TIMEZONE`.
 
+## Demo date
+
+"Today" for the whole project (chat instructions, the daily thread, every tool, VAPI) is
+`registry.today()`: the date picked with the app's date chip (`GET/PUT /settings/date`, kept in
+`data/demo-date.json`), else `DEMO_DATE`, else the real date in `TIMEZONE`. One date for everyone.
+A new date starts a new chat thread (threads are per member per day), and closes the open VAPI
+SMS conversations for the same reason (they remember the old day).
+
 ## Testing
 
 `deno task test` is offline. `deno task test:live` calls the real model (about 12 chat turns, no
