@@ -21,6 +21,7 @@
   https://github.com/tell-ia/tellia-force/pull/1
 - 2026-10-17 Chat Markdown, step 1: advisor rule 8 (simple Markdown: bold decision + mm, bullets for several fields).
 - 2026-10-17 Chat Markdown, step 2: web `lib/markdown.ts` parser + `components/Markdown.tsx`; assistant bubbles only.
+- 2026-10-17 Chat Markdown, review fix: nested lists (item indented 2+ spaces) render as a sub-list, not "- " text.
 
 ## In progress
 - Follow-ups: resolve_field fallback ("corn"), setup guard against taking over another dev's URL.

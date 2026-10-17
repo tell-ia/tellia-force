@@ -31,4 +31,10 @@ describe("<Markdown>", () => {
     expect(out).toMatch(/<ol start="2"[^>]*><li[^>]*>C<\/li><\/ol>/);
     expect(out).toMatch(/<p[^>]*>Titre<\/p>/);
   });
+
+  it("renders a nested list inside its item", () => {
+    expect(html("1. A\n   - b\n   - c\n2. D")).toMatch(
+      /<ol[^>]*><li[^>]*>A<ul[^>]*><li[^>]*>b<\/li><li[^>]*>c<\/li><\/ul><\/li><li[^>]*>D<\/li><\/ol>/,
+    );
+  });
 });

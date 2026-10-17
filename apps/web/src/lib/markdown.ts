@@ -2,7 +2,8 @@
 // into a block tree that `components/Markdown.tsx` renders with React elements, so raw
 // HTML in the text always shows as text.
 //
-// Blocks: paragraph, bullet list (- * •), numbered list (1. or 1)), heading (# to ###).
+// Blocks: paragraph, bullet list (- * •), numbered list (1. or 1)), heading (# to ###). An
+// item indented by 2+ spaces under another item starts a nested list.
 // Inline: **bold** / __bold__, *italic* / _italic_ (underscore only at word boundaries),
 // `code`, [text](url) with http/https/mailto/tel only, \-escapes. A single newline is a
 // line break, a blank line splits paragraphs. Streaming safe: a marker that is not closed
@@ -16,10 +17,13 @@ export type MdInline =
   | { type: "link"; href: string; children: MdInline[] }
   | { type: "break" };
 
+export type MdListItem = { children: MdInline[]; sublists?: MdList[] };
+export type MdList = { type: "list"; ordered: boolean; start: number; items: MdListItem[] };
+
 export type MdBlock =
   | { type: "paragraph"; children: MdInline[] }
   | { type: "heading"; level: 1 | 2 | 3; children: MdInline[] }
-  | { type: "list"; ordered: boolean; start: number; items: MdInline[][] };
+  | MdList;
 
 const HEADING = /^(#{1,3})\s+(.*)$/;
 const BULLET = /^[-*•]\s+(.*)$/;
@@ -33,7 +37,8 @@ export function safeHref(url: string): string | null {
   return scheme && SAFE_SCHEMES.includes(scheme) ? href : null;
 }
 
-type ListDraft = { kind: "list"; ordered: boolean; start: number; items: string[][] };
+type ItemDraft = { lines: string[]; lists: ListDraft[] };
+type ListDraft = { kind: "list"; ordered: boolean; start: number; indent: number; items: ItemDraft[] };
 type Draft =
   | { kind: "paragraph"; lines: string[] }
   | { kind: "heading"; level: 1 | 2 | 3; text: string }
@@ -42,8 +47,10 @@ type Draft =
 export function parseMarkdown(text: string): MdBlock[] {
   const drafts: Draft[] = [];
   let para: string[] | null = null; // the open paragraph
-  let list: ListDraft | null = null; // the last list; a blank line does not end it
-  let inList = false; // the previous line was an item of `list`
+  // The open lists, outermost first: each one is nested in the last item of the one before.
+  // A blank line does not close them.
+  let lists: ListDraft[] = [];
+  let inList = false; // the previous line was part of the deepest list's last item
   for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
     const t = line.trim();
     if (!t) {
@@ -51,28 +58,52 @@ export function parseMarkdown(text: string): MdBlock[] {
       inList = false;
       continue;
     }
-    if (inList && list && indentOf(line) >= 2) {
-      list.items[list.items.length - 1]!.push(t); // continuation of the item
+    const bullet = BULLET.exec(t);
+    const numbered = bullet ? null : NUMBERED.exec(t);
+    if (bullet || numbered) {
+      const ordered = numbered != null;
+      const indent = indentOf(line);
+      const newList = (): ListDraft => ({
+        kind: "list",
+        ordered,
+        start: numbered ? Number(numbered[1]) : 1,
+        indent,
+        items: [],
+      });
+      // Close the nested lists this item is left of (the top-level list stays open).
+      while (lists.length > 1 && indent < lists.at(-1)!.indent) lists.pop();
+      let top = lists.at(-1);
+      if (top && indent >= top.indent + 2) {
+        // Indented under the last item: its nested list, a new one when the kind changes.
+        const owner = top.items.at(-1)!;
+        const sub = owner.lists.at(-1);
+        top = sub && sub.ordered === ordered ? sub : newList();
+        if (top !== sub) owner.lists.push(top);
+        lists.push(top);
+      } else if (!top || top.ordered !== ordered) {
+        // A new list at this level, after the item that owns it (or at the top level).
+        if (top) lists.pop();
+        top = newList();
+        const owner = lists.at(-1)?.items.at(-1);
+        if (owner) owner.lists.push(top);
+        else drafts.push(top);
+        lists.push(top);
+      }
+      top.items.push({ lines: [bullet ? bullet[1]! : numbered![2]!], lists: [] });
+      para = null;
+      inList = true;
+      continue;
+    }
+    if (inList && indentOf(line) >= 2) {
+      lists.at(-1)!.items.at(-1)!.lines.push(t); // continuation of the item
       continue;
     }
     const h = HEADING.exec(t);
     if (h) {
       drafts.push({ kind: "heading", level: h[1]!.length as 1 | 2 | 3, text: h[2]! });
-      para = list = null;
-      inList = false;
-      continue;
-    }
-    const bullet = BULLET.exec(t);
-    const numbered = bullet ? null : NUMBERED.exec(t);
-    if (bullet || numbered) {
-      const ordered = numbered != null;
-      if (!list || list.ordered !== ordered) {
-        list = { kind: "list", ordered, start: numbered ? Number(numbered[1]) : 1, items: [] };
-        drafts.push(list);
-      }
-      list.items.push([bullet ? bullet[1]! : numbered![2]!]);
       para = null;
-      inList = true;
+      lists = [];
+      inList = false;
       continue;
     }
     if (para) {
@@ -81,19 +112,26 @@ export function parseMarkdown(text: string): MdBlock[] {
     }
     para = [t];
     drafts.push({ kind: "paragraph", lines: para });
-    list = null;
+    lists = [];
     inList = false;
   }
   return drafts.map((d): MdBlock => {
     if (d.kind === "heading") return { type: "heading", level: d.level, children: parseInline(d.text) };
     if (d.kind === "paragraph") return { type: "paragraph", children: parseInline(d.lines.join("\n")) };
-    return {
-      type: "list",
-      ordered: d.ordered,
-      start: d.start,
-      items: d.items.map((lines) => parseInline(lines.join("\n"))),
-    };
+    return toList(d);
   });
+}
+
+function toList(d: ListDraft): MdList {
+  return {
+    type: "list",
+    ordered: d.ordered,
+    start: d.start,
+    items: d.items.map((item): MdListItem => {
+      const children = parseInline(item.lines.join("\n"));
+      return item.lists.length ? { children, sublists: item.lists.map(toList) } : { children };
+    }),
+  };
 }
 
 function indentOf(line: string): number {

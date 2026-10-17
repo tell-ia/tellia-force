@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parseInline, parseMarkdown, safeHref, type MdBlock, type MdInline } from "./markdown";
+import {
+  parseInline,
+  parseMarkdown,
+  safeHref,
+  type MdBlock,
+  type MdInline,
+  type MdList,
+  type MdListItem,
+} from "./markdown";
 
 const text = (t: string): MdInline => ({ type: "text", text: t });
+const strong = (t: string): MdInline => ({ type: "strong", children: [text(t)] });
 const para = (...children: MdInline[]): MdBlock => ({ type: "paragraph", children });
+const item = (...children: MdInline[]): MdListItem => ({ children });
+const list = (ordered: boolean, ...items: MdListItem[]): MdList => ({ type: "list", ordered, start: 1, items });
 
 /** Every visible character of the tree, in order (markers dropped, breaks as "\n"). */
 function plain(nodes: MdInline[]): string {
@@ -14,14 +25,15 @@ function plain(nodes: MdInline[]): string {
     })
     .join("");
 }
-function plainBlocks(blocks: MdBlock[]): string {
-  return blocks
-    .map((b) =>
-      b.type === "list"
-        ? b.items.map((item, k) => (b.ordered ? `${b.start + k}. ` : "- ") + plain(item)).join("\n")
-        : plain(b.children),
+function plainList(b: MdList): string {
+  return b.items
+    .map((it, k) =>
+      [(b.ordered ? `${b.start + k}. ` : "- ") + plain(it.children), ...(it.sublists ?? []).map(plainList)].join("\n"),
     )
-    .join("\n\n");
+    .join("\n");
+}
+function plainBlocks(blocks: MdBlock[]): string {
+  return blocks.map((b) => (b.type === "list" ? plainList(b) : plain(b.children))).join("\n\n");
 }
 
 describe("markdown: blocks", () => {
@@ -44,17 +56,17 @@ describe("markdown: blocks", () => {
   it("bullet lists with -, * and •", () => {
     for (const m of ["-", "*", "•"]) {
       expect(parseMarkdown(`${m} La Vallée\n${m} Le Puits`)).toEqual([
-        { type: "list", ordered: false, start: 1, items: [[text("La Vallée")], [text("Le Puits")]] },
+        { type: "list", ordered: false, start: 1, items: [item(text("La Vallée")), item(text("Le Puits"))] },
       ]);
     }
   });
 
   it("numbered lists with 1. and 1), keeping the first number", () => {
     expect(parseMarkdown("1. La Vallée\n2. Le Puits")).toEqual([
-      { type: "list", ordered: true, start: 1, items: [[text("La Vallée")], [text("Le Puits")]] },
+      { type: "list", ordered: true, start: 1, items: [item(text("La Vallée")), item(text("Le Puits"))] },
     ]);
     expect(parseMarkdown("3) Trois\n4) Quatre")).toEqual([
-      { type: "list", ordered: true, start: 3, items: [[text("Trois")], [text("Quatre")]] },
+      { type: "list", ordered: true, start: 3, items: [item(text("Trois")), item(text("Quatre"))] },
     ]);
   });
 
@@ -65,7 +77,7 @@ describe("markdown: blocks", () => {
         type: "list",
         ordered: false,
         start: 1,
-        items: [[{ type: "strong", children: [text("La Vallée")] }, text(" : 30 mm")], [text("Le Puits : rien")]],
+        items: [item(strong("La Vallée"), text(" : 30 mm")), item(text("Le Puits : rien"))],
       },
       para(text("Voilà.")),
     ]);
@@ -73,10 +85,51 @@ describe("markdown: blocks", () => {
 
   it("blank lines between items keep one list; an indented line continues the item", () => {
     expect(parseMarkdown("- A\n\n- B\n  suite de B")).toEqual([
-      { type: "list", ordered: false, start: 1, items: [[text("A")], [text("B"), { type: "break" }, text("suite de B")]] },
+      list(false, item(text("A")), item(text("B"), { type: "break" }, text("suite de B"))),
     ]);
     // A bullet list then a numbered list are two lists.
     expect(parseMarkdown("- A\n1. B").map((b) => b.type === "list" && b.ordered)).toEqual([false, true]);
+  });
+
+  it("an indented item starts a nested list under the item above", () => {
+    expect(
+      parseMarkdown("1. **La Vallée**\n   - Arroser **30 mm**\n   - Réserve à 40 %\n2. **Le Puits**\n   - Rien"),
+    ).toEqual([
+      list(
+        true,
+        {
+          children: [strong("La Vallée")],
+          sublists: [list(false, item(text("Arroser "), strong("30 mm")), item(text("Réserve à 40 %")))],
+        },
+        { children: [strong("Le Puits")], sublists: [list(false, item(text("Rien")))] },
+      ),
+    ]);
+    // Two levels deep, a continuation line for the deepest item, then back to the top level.
+    expect(parseMarkdown("- A\n  - B\n    - C\n    suite de C\n- D")).toEqual([
+      list(
+        false,
+        {
+          children: [text("A")],
+          sublists: [
+            list(false, {
+              children: [text("B")],
+              sublists: [list(false, item(text("C"), { type: "break" }, text("suite de C")))],
+            }),
+          ],
+        },
+        item(text("D")),
+      ),
+    ]);
+    // 4 spaces nest too; a sub-item of another kind starts a second nested list.
+    expect(parseMarkdown("- A\n    - b\n    1. c\n- D")).toEqual([
+      list(
+        false,
+        { children: [text("A")], sublists: [list(false, item(text("b"))), list(true, item(text("c")))] },
+        item(text("D")),
+      ),
+    ]);
+    // A list that starts indented is still a top-level list.
+    expect(parseMarkdown("  - A\n- B")).toEqual([list(false, item(text("A")), item(text("B")))]);
   });
 
   it("# to ### are headings; #### and #tag are text", () => {
@@ -202,7 +255,7 @@ describe("markdown: streaming", () => {
 
   it("every prefix of a reply parses and keeps its letters", () => {
     const reply =
-      "**Arrosez La Vallée aujourd'hui : 30 mm.**\n\nPourquoi :\n- *La Vallée* : réserve à 40 %\n- Le_Puits : pas de culture\n\n1. Voir [Météo](https://meteo.fr) 🌦️\n2) `field_10`";
+      "**Arrosez La Vallée aujourd'hui : 30 mm.**\n\nPourquoi :\n- *La Vallée* : réserve à 40 %\n  - sol **sec**\n- Le_Puits : pas de culture\n\n1. Voir [Météo](https://meteo.fr) 🌦️\n2) `field_10`";
     const letters = (s: string) => s.replace(/[^\p{L}\p{N}]/gu, "");
     for (let i = 0; i <= reply.length; i++) {
       const prefix = reply.slice(0, i);
