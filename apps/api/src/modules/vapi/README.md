@@ -48,7 +48,9 @@ I save it?" / "Shall I change it?", and calls the write tool only after a clear 
 3. Start the tunnel: copy `frpc.example.toml` to `frpc.toml`, set your name and the API port,
    `export FRP_TOKEN=...` (ask the team), then `pnpm tunnel` from the repo root.
 4. Push the config to VAPI: `cd apps/api && deno task vapi:setup` (`--dry-run` to preview: it should
-   list 12 tools). Re-run it after changing a tool, the prompt, or the URL. It never deletes
+   list 12 tools). Re-run it after changing a tool, the prompt, or the URL, and after adding or
+   renaming fields: it reads every farm's field names (read only, needs `SUPABASE_*`) and gives
+   them to the transcriber so it spells them right ("Le Puits", not "Le Puy"). It never deletes
    anything. It also closes the open SMS conversations on Jean's numbers: VAPI keeps a copy of
    the assistant per conversation, so an open one would ignore the update. AI agents run only
    `--dry-run`; a human pushes.
