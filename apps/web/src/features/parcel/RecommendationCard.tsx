@@ -28,7 +28,6 @@ export function RecommendationCard({ rec }: { rec: Recommendation }) {
           </span>
           <span style={{ fontSize: 14, color: hero.ink2, marginTop: 4 }}>at the reel gun · ≈ {rec.netMm} mm reaches the soil</span>
         </div>
-        <div style={{ fontSize: 15, lineHeight: 1.5, maxWidth: 320 }}>{rec.reason}</div>
         {rec.secondPass && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: hero.ink2, borderTop: `1px solid ${hero.line}`, paddingTop: 12 }}>
             <ArrowRight size={16} />
