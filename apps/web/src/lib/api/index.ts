@@ -3,4 +3,5 @@ export { API_MODE, mockDelay, setMemberId } from "./core";
 export { listFarms } from "./farms";
 export { getFarmToday, getParcelReport } from "./parcels";
 export { recordIrrigation, type RecordIrrigationInput } from "./irrigation";
+export { setMemberPhone } from "./members";
 export { list } from "./data";

@@ -5,6 +5,7 @@ import { config, corsOrigins } from "./config";
 import { onError } from "./core/middleware";
 import { createMastra, mountChat } from "./modules/chat/mastra";
 import { data, TABLES } from "./modules/data/data.controller";
+import { members } from "./modules/members/members.controller";
 import { createSupabaseFarmDirectory } from "./modules/irrigation/data/supabaseFarmData";
 import { createFarmRegistry } from "./modules/irrigation/farmRegistry";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
@@ -30,6 +31,9 @@ app.get("/health", (c) => c.json({ data: { status: "ok", ts: Date.now(), tables:
 
 // Generic read access to Supabase tables (front never hits Supabase directly).
 app.route("/data", data);
+
+// Set a member's phone (VAPI persona hack — see members.controller.ts).
+app.route("/members", members);
 
 // Irrigation advisor, fast path (no LLM): used by the web UI and VAPI tool webhooks.
 // Several farms share the DB: each request works on the caller's farm (x-member-id header).

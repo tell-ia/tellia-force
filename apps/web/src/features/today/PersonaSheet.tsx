@@ -1,10 +1,37 @@
 import { Check } from "lucide-react";
+import { useState } from "react";
 import type { FarmSummary } from "@tellia/shared";
 import { farmAccent, useFarm } from "../../app/FarmContext";
+import { setMemberPhone } from "../../lib/api";
+import { PHONE_PRESETS } from "../../lib/phones";
 import { font, v, type ColorToken } from "../../theme/tokens";
 
 export function PersonaSheet({ onClose }: { onClose: () => void }) {
   const { farms, farm, setFarm } = useFarm();
+  const [phone, setPhone] = useState<string>(() => {
+    try {
+      return localStorage.getItem("tf-phone") || PHONE_PRESETS[0]?.number || "";
+    } catch {
+      return PHONE_PRESETS[0]?.number ?? "";
+    }
+  });
+
+  const pickPhone = (n: string) => {
+    setPhone(n);
+    try {
+      localStorage.setItem("tf-phone", n);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Vincent's VAPI hack: picking a farm also saves the chosen number on its member.
+  const pickFarm = (f: FarmSummary) => {
+    setFarm(f);
+    if (phone) void setMemberPhone(f.memberId, phone).catch(() => {});
+    onClose();
+  };
+
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "flex-end", zIndex: 10 }}>
       <button
@@ -31,6 +58,24 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
           <div style={{ fontFamily: font.display, fontWeight: 600, fontSize: 28, lineHeight: 1 }}>Switch farm</div>
           <div style={{ fontSize: 13, color: v("ink2") }}>Parcels, chat and numbers follow the farm you pick.</div>
         </div>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: v("ink2") }}>
+            Your number — the advisor calls &amp; texts you here
+          </span>
+          <select
+            value={phone}
+            onChange={(e) => pickPhone(e.target.value)}
+            style={{ height: 48, borderRadius: 12, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontSize: 15, padding: "0 12px" }}
+          >
+            {PHONE_PRESETS.map((p) => (
+              <option key={p.number} value={p.number}>
+                {p.label} · {p.number}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {farms.map((f) => (
             <FarmOption
@@ -38,10 +83,7 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
               f={f}
               selected={f.id === farm?.id}
               accent={farmAccent(f, farms)}
-              onPick={() => {
-                setFarm(f);
-                onClose();
-              }}
+              onPick={() => pickFarm(f)}
             />
           ))}
         </div>

@@ -193,6 +193,21 @@ export type IrrigationLog = z.infer<typeof IrrigationLogSchema>;
 
 // --- Chat (v0 text-only) ---------------------------------------------------
 
+// --- Member phone (VAPI persona hack) --------------------------------------
+
+/** Set a member's phone when a persona is selected, so the single VAPI number
+ *  routes a call/SMS back to the right person + farm. */
+export const SetMemberPhoneBodySchema = z.object({
+  phone: z.string().trim().min(3).max(24),
+});
+export type SetMemberPhoneBody = z.infer<typeof SetMemberPhoneBodySchema>;
+
+export const MemberPhoneSchema = z.object({
+  id: z.number().int(),
+  phone: z.string().nullable(),
+});
+export type MemberPhone = z.infer<typeof MemberPhoneSchema>;
+
 /** Phase 3 renders real AI SDK v7 tool parts; this is the dev-playground shape. */
 export const ChatRoleSchema = z.enum(["assistant", "farmer"]);
 export const ChatMessageSchema = z.object({
