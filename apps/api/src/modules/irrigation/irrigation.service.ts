@@ -199,6 +199,8 @@ export const MAX_DAYS_AHEAD = 7;
 
 /** Below this aridity (annual rain ÷ annual ET0) a region is dry: the soil is not full at sowing. */
 const DRY_ARIDITY = 0.5;
+/** Crops worth irrigating (as seed/agronomy.py IRRIGATED_CROPS); the others are rain-fed. */
+const IRRIGATED_CROPS = new Set(["MAIZ", "SUNF"]);
 /** Share of the soil reserve already empty at sowing in a dry region. */
 const DRY_START_SHARE = 0.3;
 
@@ -414,7 +416,10 @@ export function createIrrigationService(
 
     const base = { field, season, ref, irrigations, asOf };
     // FAO-56 degree-day model when the crop has its values and phases; else the old model.
-    return params && phases ? faoContext(base, params, phases, memo) : oldModelContext(base, memo);
+    const ctx = await (params && phases
+      ? faoContext(base, params, phases, memo)
+      : oldModelContext(base, memo));
+    return { ...ctx, input: { ...ctx.input, rainFedCrop: !IRRIGATED_CROPS.has(code) } };
   }
 
   /** Old model: Kc from the season fraction, fixed roots and p (crops without FAO-56 data). */

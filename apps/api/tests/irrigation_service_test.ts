@@ -55,6 +55,21 @@ Deno.test("farm advice ranks 10, 11, 3 with the expected decisions", async () =>
   assertEquals(advice.reports.map((r) => r.fieldId), [10, 3, 11]);
 });
 
+Deno.test("only maize and sunflower get irrigation advice; other crops are rain-fed", async () => {
+  const fixture = makeFarmFixture();
+  // Les Longues Raies gets the reel gun: its rapeseed is still rain-fed.
+  fixture.fields = fixture.fields.map((f) => (f.id === 3 ? { ...f, irrigable: true } : f));
+  const data = createMemoryFarmData(fixture);
+  const weather = createWeatherService({ data, fetch: () => Promise.reject(new Error("offline")) });
+  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
+  const rape = await service.getFieldReport(3);
+  assertEquals(rape.irrigable, true);
+  assertEquals(rape.decision, "not_irrigable");
+  assert(rape.reason.includes("rain-fed"), rape.reason);
+  // Maize on La Vallée is still advised.
+  assert((await service.getFieldReport(10)).decision !== "not_irrigable");
+});
+
 Deno.test("stage label comes from crop stages when labelled", async () => {
   const fixture = makeFarmFixture();
   fixture.cropStages.MAIZ = fixture.cropStages.MAIZ.map((s) => ({ ...s, label: "Grain fill" }));

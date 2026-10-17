@@ -126,3 +126,13 @@ Deno.test("headline: one short sentence for voice and SMS, with the field and th
     assert(r.headline.length > 0 && r.headline.length <= 160, r.headline);
   }
 });
+
+Deno.test("decision: a rain-fed crop on an equipped field gets no irrigation advice", () => {
+  // Morning 64 ≥ RAW 55: a maize field would irrigate today.
+  const r = buildFieldReport(input(54, { system: SYSTEM, rainFedCrop: true, cropName: "Blé tendre d'hiver" }));
+  assertEquals(r.decision, "not_irrigable");
+  assertEquals(r.irrigable, true); // the field keeps its reel gun
+  assertEquals(r.irrigateGrossMm, 0);
+  assertStringIncludes(r.reason, "Blé tendre d'hiver is grown rain-fed");
+  assertStringIncludes(r.headline, "rain-fed");
+});

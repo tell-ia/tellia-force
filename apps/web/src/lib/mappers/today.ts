@@ -4,14 +4,17 @@ import { cropLabel, eveLabel, irrigateByLabel, refillPassesNote } from "./parcel
 // Engine FarmAdvice (ranked FieldReport[]) → the Today screen's FarmToday.
 // Pure; tested in today.test.ts.
 
+/** No equipment, or a crop grown rain-fed on an equipped field (wheat, barley, rapeseed). */
+const rainFed = (r: FieldReport): boolean => !r.irrigable || r.decision === "not_irrigable";
+
 function statusOf(r: FieldReport): ParcelStatus {
-  if (!r.irrigable) return "idle";
+  if (rainFed(r)) return "idle";
   if (r.decision === "irrigate_today" || r.decision === "plan_irrigation") return "action";
   return "ok";
 }
 
 function badgeOf(r: FieldReport): string {
-  if (!r.irrigable) return "Rain-fed";
+  if (rainFed(r)) return "Rain-fed";
   switch (r.decision) {
     case "irrigate_today":
       return "Irrigate now";

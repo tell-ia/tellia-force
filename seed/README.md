@@ -67,6 +67,9 @@ Row level security is on with no policies: the public key reads nothing; the API
 - **Inserts may leave `farm_id` empty** on `operation`, `operation_input`, `crop_season`, `soil_analysis`,
   `message`, `alert` and `document`: a trigger copies it from the field, operation or member.
 - **`operation.water_mm` is gross** (what the farmer pumped). Net water = gross × `irrigation_system.efficiency` (0.75).
+- **Only maize and sunflower get irrigation advice** (`IRRIGATED_CROPS`, here and in `irrigation.service.ts`).
+  Every field has the reel gun, but wheat, barley and rapeseed are grown rain-fed: the engine answers
+  `not_irrigable` ("rain-fed crop") for them.
 - **Only `status = 'confirmed'` operations count.** `draft` = recorded by the assistant, not confirmed yet.
 - **`origin`** says where a row comes from: `dataset`, `dataset_adjusted`, `generated` or `invented`.
 - **`crop_season.status` is computed on seed day.** For another date, use `sowing_date` and `harvest_date`.

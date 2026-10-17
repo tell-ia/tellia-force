@@ -895,7 +895,7 @@ const DECISIONS: Record<string, string> = {
   wait_for_rain: "Wait for rain",
   crop_maturing: "Maturing · stop",
   no_irrigation: "No water needed",
-  not_irrigable: "Not irrigable",
+  not_irrigable: "Rain-fed",
   outside_season: "Off season",
 };
 const decisionLabel = (d?: string): string => (d ? DECISIONS[d] ?? d : "");

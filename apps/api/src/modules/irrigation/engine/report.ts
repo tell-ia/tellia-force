@@ -39,6 +39,8 @@ export interface ReportInput {
   startDepletion?: number;
   /** Dry region: the whole profile starts this share empty (see runWaterBalance). */
   dryStart?: { share: number; tawMax: number } | null;
+  /** The crop is grown rain-fed (wheat, barley, rapeseed): no advice even on an equipped field. */
+  rainFedCrop?: boolean;
   /** Trigger and refill target of the stage. Unset = trigger at RAW, refill to field capacity. */
   target?: WaterTarget | null;
 }
@@ -117,7 +119,7 @@ export function buildFieldReport(input: ReportInput): FieldReport {
 
   if (!season || !today || today.kc === null) {
     decision = "outside_season";
-  } else if (!field.irrigable) {
+  } else if (!field.irrigable || input.rainFedCrop) {
     decision = "not_irrigable";
   } else if (input.phase === "late" || input.phase === "mature") {
     decision = "crop_maturing";
@@ -198,8 +200,14 @@ export function buildFieldReport(input: ReportInput): FieldReport {
       headline = `${field.name}: no crop growing, nothing to do.`;
       break;
     case "not_irrigable":
-      reason = `Field is not irrigable; root zone is ${pct}% depleted (${depStr} of ${tawStr} mm).`;
-      headline = `${field.name}: not irrigable, root zone ${pct}% depleted.`;
+      if (field.irrigable) {
+        reason = `${input.cropName ?? "This crop"} is grown rain-fed: no irrigation advice. ` +
+          `Root zone is ${pct}% depleted (${depStr} of ${tawStr} mm).`;
+        headline = `${field.name}: rain-fed crop, no irrigation.`;
+      } else {
+        reason = `Field is not irrigable; root zone is ${pct}% depleted (${depStr} of ${tawStr} mm).`;
+        headline = `${field.name}: not irrigable, root zone ${pct}% depleted.`;
+      }
       break;
     case "crop_maturing":
       reason =
