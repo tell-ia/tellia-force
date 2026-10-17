@@ -3,6 +3,7 @@ import type { FarmFixture } from "../../src/modules/irrigation/data/memoryFarmDa
 import type { IrrigationSystem, StoredWeatherDay } from "../../src/modules/irrigation/data/farmData";
 import type { CropParams, CropPhases } from "../../src/modules/irrigation/engine/cropModel";
 import type { SoilWaterClass } from "../../src/modules/irrigation/engine/soil";
+import type { CropKy } from "../../src/modules/irrigation/engine/waterTarget";
 
 /** fao56_crop_stages + fao56_kc + fao56_root_depletion, grain maize. */
 export const MAIZE_PARAMS: CropParams = {
@@ -15,6 +16,9 @@ export const MAIZE_PARAMS: CropParams = {
   zrMaxM: 1.2,
   pTable: 0.55,
 };
+
+/** fao33_ky, grain maize (FAO-33 via FAO-66). */
+export const MAIZE_KY: CropKy = { vegetative: 0.4, flowering: 1.5, yieldFormation: 0.5, ripening: 0.2 };
 
 /** Maize, earliness `early`: Arvalis anchors (flowering 850 °C·d base 6). */
 export const MAIZE_EARLY_PHASES: CropPhases = {
@@ -103,6 +107,7 @@ export function makeReference2022Fixture(opts: { withJuly9Watering?: boolean } =
     }],
     cropStages: {},
     cropParams: { MAIZ: MAIZE_PARAMS },
+    cropKy: { MAIZ: MAIZE_KY },
     cropPhases: [{ cropCode: "MAIZ", earlinessGroup: "early", phases: MAIZE_EARLY_PHASES }],
     soilClasses: SOIL_CLASSES,
     irrigationSystems: { 10: REEL_GUN },

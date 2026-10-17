@@ -8,7 +8,7 @@ import {
 import { createIrrigationService } from "../src/modules/irrigation/irrigation.service";
 import { createWeatherService } from "../src/modules/irrigation/weather/weatherService";
 import { addDays } from "../src/modules/irrigation/engine/util";
-import { makeReference2022Fixture } from "./fixtures/fao";
+import { MAIZE_KY, makeReference2022Fixture } from "./fixtures/fao";
 
 function service(edit: (f: FarmFixture) => void = () => {}, fetch?: typeof globalThis.fetch) {
   const fixture = makeReference2022Fixture();
@@ -111,4 +111,28 @@ Deno.test("fao service: the dry-start deficit follows the roots down (2022 seaso
   // The June rains refilled the deep soil instead of draining away.
   assertEquals(dry.season!.drainageMm, 0);
   assert(dry.assumptions!.some((a) => a.includes("down to the full root depth")));
+});
+
+Deno.test("fao service: FAO-33 Ky sets the trigger and the refill target of each stage", async () => {
+  const s = service((f) => (f.cropKy = { MAIZ: MAIZE_KY })); // as in the reference fixture
+  // Before flowering (Ky 0.4): trigger relaxed to Ks 0.8, refill to 70 %.
+  const veg = await s.getFieldReport(10, "2022-06-20");
+  assertEquals(veg.stage!.sensitive, false);
+  assertEquals(veg.targetFillPct, 70);
+  assertAlmostEquals(veg.triggerMm!, veg.rawMm + 0.2 * (veg.tawMm - veg.rawMm), 0.1);
+  assert(veg.assumptions!.some((a) => a.includes("before flowering")));
+  // Flowering window (Ky 1.5): trigger at RAW, refill to 80 %.
+  const flo = await s.getFieldReport(10, "2022-07-20");
+  assertEquals(flo.decision, "irrigate_today");
+  assertEquals(flo.targetFillPct, 80);
+  assertEquals(flo.triggerMm, flo.rawMm);
+  assertEquals(flo.toTargetMm, Math.round(flo.depletionMm - 0.2 * flo.tawMm));
+  // After flowering (yield formation, Ky 0.5): refill to 75 %.
+  const after = await s.getFieldReport(10, "2022-08-01");
+  assertEquals(after.targetFillPct, 75);
+  assertEquals(after.triggerMm, after.rawMm);
+  // No Ky for the crop: 75 % target, still relaxed before flowering.
+  const noKy = await service((f) => delete f.cropKy).getFieldReport(10, "2022-06-20");
+  assertEquals(noKy.targetFillPct, 75);
+  assert(noKy.triggerMm! > noKy.rawMm);
 });

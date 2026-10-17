@@ -62,6 +62,11 @@ export function refillPlan(deficitMm: number, netMm: number): { morePasses: numb
   };
 }
 
+/** "then ~1 more pass…" note, counted to the engine's refill target (old reports: to full). */
+export const refillPassesNote = (
+  r: Pick<FieldReport, "depletionMm" | "irrigateMm" | "toTargetMm">,
+): string | null => refillPlan(r.toTargetMm ?? r.depletionMm, r.irrigateMm)?.note ?? null;
+
 /**
  * Engine FieldReport → ReserveGauge props. This is what the fast advisor
  * endpoint gives; the full `get_parcel_report` carries the same reserve block.
@@ -69,7 +74,8 @@ export function refillPlan(deficitMm: number, netMm: number): { morePasses: numb
 export function fieldReportToReserve(r: FieldReport): Reserve {
   const capacityMm = Math.round(r.tawMm);
   const availableMm = Math.round(r.tawMm - r.depletionMm);
-  const thresholdMm = Math.round(r.tawMm - r.rawMm);
+  // The engine's trigger: RAW, or later before flowering. Older reports only have RAW.
+  const thresholdMm = Math.round(r.tawMm - (r.triggerMm ?? r.rawMm));
   return {
     availableMm,
     capacityMm,
@@ -177,7 +183,7 @@ export function fieldReportToParcelReport(
       grossMm: r.irrigateGrossMm,
       efficiency,
       reason: r.reason,
-      secondPass: refillPlan(r.depletionMm, r.irrigateMm)?.note ?? null,
+      secondPass: refillPassesNote(r),
     },
     reserve: fieldReportToReserve(r),
     method: "FAO-56 soil water balance (live). Weather from AgERA5; stages from degree-days.",

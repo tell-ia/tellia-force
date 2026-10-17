@@ -43,6 +43,8 @@ Deno.test("reference 2022: water left and threshold on 13 July", async () => {
   assertEquals(r.decision, "plan_irrigation");
   assertEquals(r.irrigateBy, "2022-07-15");
   assertEquals(r.daysUntilIrrigation, 2);
+  // Flowering, Ky 1.5: refill to 80 % of TAW, ≈ 37 mm net → 49 mm gross → one 40 mm pass.
+  assertEquals(r.targetFillPct, 80);
   assertEquals(r.irrigateGrossMm, 40); // one pass of the reel gun
   assertAlmostEquals(r.irrigateMm, 30, 0.5);
 });

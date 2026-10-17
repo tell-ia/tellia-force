@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { HTTPException } from "hono/http-exception";
 import type { CropParams } from "../engine/cropModel";
 import type { SoilWaterClass } from "../engine/soil";
+import type { CropKy } from "../engine/waterTarget";
 import type {
   CropPhaseRow,
   CropRef,
@@ -192,6 +193,18 @@ export function mapCropParams(
   if (values.some((v) => v == null || Number.isNaN(v))) return null;
   const [tBaseC, kcIni, kcMid, kcEnd, zrIniM, zrMaxM, pTable] = values as number[];
   return { tBaseC, tMaxCapC: num(stages.t_max_cap_c), kcIni, kcMid, kcEnd, zrIniM, zrMaxM, pTable };
+}
+
+/** One fao33_ky row. Null when the crop has no FAO value for any period (rapeseed, olive). */
+export function mapCropKy(r: Row | null): CropKy | null {
+  if (!r) return null;
+  const ky: CropKy = {
+    vegetative: num(r.ky_vegetative),
+    flowering: num(r.ky_flowering),
+    yieldFormation: num(r.ky_yield_formation),
+    ripening: num(r.ky_ripening),
+  };
+  return Object.values(ky).every((v) => v === null) ? null : ky;
 }
 
 /** One crop_phase_gdd row. The sensitive window needs all three of from, to and p. */
@@ -615,6 +628,14 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       ]);
       const ofCrop = (table: Row[]) => table.find((r) => r.crop_code === code) ?? null;
       return mapCropParams(ofCrop(stages), ofCrop(kc), ofCrop(roots));
+    },
+    async getCropKy(code) {
+      const all = await reference(
+        "fao33_ky",
+        "crop_code,ky_vegetative,ky_flowering,ky_yield_formation,ky_ripening",
+        (r) => r,
+      );
+      return mapCropKy(all.find((r) => r.crop_code === code) ?? null);
     },
     async getCropPhases(code, earlinessGroup) {
       const all = await reference("crop_phase_gdd", "*", (r) => r.map(mapCropPhaseRow));

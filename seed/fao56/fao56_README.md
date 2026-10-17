@@ -152,8 +152,8 @@ Dr(J) = Dr(J−1) − P_eff(J) − I(J) + ETc_adj(J) + DP(J)
 - **Root growth**: when Zr increases, TAW increases; the water in the newly explored soil is assumed at field capacity minus the average depletion (common approximation: keep `Dr` unchanged in mm, which assumes the new layer is in the same state as the old one).
 
 **Decision**
-- Irrigate when `Dr ≥ RAW` (or when it is forecast to be reached within the N days of equipment lead time).
-- Recommended net dose: `Dr` (refill to field capacity), capped by the equipment's maximum dose; gross dose = net / efficiency.
+- Irrigate when `Dr ≥ trigger` (or when it is forecast to be reached within the N days of equipment lead time). The trigger depends on the FAO-33 period: before flowering (vegetative Ky ≤ 0.4) it is relaxed to `Ks = 0.8`, i.e. `RAW + 0.2 × (TAW − RAW)` (FAO-56: "MAD > RAW where plant moisture stress is an intentional part of soil water management"); from flowering on it is `RAW` (p already capped in the sensitive window); late season stops irrigating.
+- Recommended net dose: back to a share of TAW, not to field capacity (FAO-56 only requires `I ≤ Dr`; the rest leaves room for rain): 80 % where the period's Ky ≥ 1, 75 % where Ky ≥ 0.5 or unknown, 70 % below. Net = `Dr − (1 − share) × TAW`; gross = net / efficiency, kept between the equipment's minimum and maximum dose. The 70/75/80 % bands are a team choice, not an FAO value (`engine/waterTarget.ts`).
 - **Where**: rank parcels by `(RAW − Dr) / ETc` = days of autonomy before stress, prioritising crops in a sensitive window.
 - **When**: first day when projected `Dr ≥ RAW`, extending `ETc` by the 5-day average and rain by 0 (or by a forecast if you train one).
 

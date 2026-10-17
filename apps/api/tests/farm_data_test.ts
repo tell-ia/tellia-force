@@ -25,7 +25,7 @@ import {
   toOperationUpdate,
 } from "../src/modules/irrigation/data/supabaseFarmData";
 import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
-import { MAIZE_EARLY_PHASES, MAIZE_PARAMS, REEL_GUN, SOIL_CLASSES } from "./fixtures/fao.ts";
+import { MAIZE_EARLY_PHASES, MAIZE_KY, MAIZE_PARAMS, REEL_GUN, SOIL_CLASSES } from "./fixtures/fao.ts";
 
 Deno.test("getSeasonAt picks the containing season, or null", async () => {
   const d = createMemoryFarmData(makeFarmFixture());
@@ -434,6 +434,10 @@ function faoTables(): Record<string, Row[]> {
       { crop_code: "MAIZ", zr_ini_m: 0.2, zr_max_default_m: 1.2, p_table: 0.55 },
     ],
     crop_phase_gdd: PHASE_ROWS,
+    fao33_ky: [
+      { crop_code: "MAIZ", ky_vegetative: "0.40", ky_flowering: 1.5, ky_yield_formation: 0.5, ky_ripening: 0.2 },
+      { crop_code: "RAPE", ky_vegetative: null, ky_flowering: null, ky_yield_formation: null, ky_ripening: null },
+    ],
     fao56_soil_water: SOIL_CLASSES.map((c) => ({
       texture_class_usda: c.textureClass,
       theta_fc_mid: c.thetaFcMid,
@@ -535,6 +539,7 @@ Deno.test("memory twin: FAO-56 fixture data, null / [] when the fixture has none
   const fx = makeFarmFixture();
   const empty = createMemoryFarmData(fx);
   assertEquals(await empty.getCropParams("MAIZ"), null);
+  assertEquals(await empty.getCropKy("MAIZ"), null);
   assertEquals(await empty.getCropPhases("MAIZ", "early"), null);
   assertEquals(await empty.getSoilWaterClasses(), []);
   assertEquals(await empty.getIrrigationSystem(10), null);
@@ -542,11 +547,14 @@ Deno.test("memory twin: FAO-56 fixture data, null / [] when the fixture has none
   const d = createMemoryFarmData({
     ...fx,
     cropParams: { MAIZ: MAIZE_PARAMS },
+    cropKy: { MAIZ: MAIZE_KY },
     cropPhases: [{ cropCode: "MAIZ", earlinessGroup: "early", phases: MAIZE_EARLY_PHASES }],
     soilClasses: SOIL_CLASSES,
     irrigationSystems: { 10: REEL_GUN },
   });
   assertEquals(await d.getCropParams("MAIZ"), MAIZE_PARAMS);
+  assertEquals(await d.getCropKy("MAIZ"), MAIZE_KY);
+  assertEquals(await d.getCropKy("COWT"), null);
   assertEquals(await d.getCropParams("COWT"), null);
   // The method defaults to null.
   assertEquals(await d.getCropPhases("MAIZ", "early"), {
@@ -633,6 +641,10 @@ Deno.test("supabase FAO-56 reads: values per crop, reference tables read once pe
   const d = createSupabaseFarmData(db, 1);
   assertEquals(await d.getCropParams("MAIZ"), MAIZE_PARAMS);
   assertEquals(await d.getCropParams("COWT"), null);
+  assertEquals(await d.getCropKy("MAIZ"), MAIZE_KY);
+  // A row with no FAO value at all (rapeseed) and no row are both null.
+  assertEquals(await d.getCropKy("RAPE"), null);
+  assertEquals(await d.getCropKy("COWT"), null);
   assertEquals(await d.getCropPhases("MAIZ", "early"), {
     phases: MAIZE_EARLY_PHASES,
     method: "Arvalis anchors",
@@ -648,6 +660,7 @@ Deno.test("supabase FAO-56 reads: values per crop, reference tables read once pe
       "fao56_root_depletion",
       "crop_phase_gdd",
       "fao56_soil_water",
+      "fao33_ky",
     ]
   ) {
     assertEquals(countOf(queries, table), 1, `${table} read more than once`);
