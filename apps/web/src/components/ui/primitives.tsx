@@ -20,7 +20,7 @@ export function InfoHint({ text, label = "How to read this" }: { text: string; l
       {open && (
         <>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30, border: 0, padding: 0, background: "transparent", cursor: "default" }} />
-          <span role="tooltip" style={{ position: "absolute", top: 30, right: 0, zIndex: 31, width: 240, background: v("ink"), color: v("bg"), fontSize: 12, lineHeight: 1.5, fontWeight: 500, textTransform: "none", letterSpacing: "normal", borderRadius: 10, padding: "10px 12px", boxShadow: "0 6px 20px rgba(15, 24, 19, 0.25)" }}>
+          <span role="tooltip" style={{ position: "absolute", top: 30, right: 0, zIndex: 31, width: 264, background: v("ink"), color: v("bg"), fontSize: 14, lineHeight: 1.55, fontWeight: 500, textTransform: "none", letterSpacing: "normal", borderRadius: 10, padding: "12px 14px", boxShadow: "0 6px 20px rgba(15, 24, 19, 0.25)" }}>
             {text}
           </span>
         </>
