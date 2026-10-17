@@ -171,7 +171,7 @@ export function BalanceLegend({ withPlan }: { withPlan?: boolean }) {
 export function CropStageTimeline({ cropStage }: { cropStage: CropTimeline }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
         <Label>Crop stage</Label>
         <span style={{ fontSize: 12, color: v("ink2") }}>day {cropStage.daysSinceSowing} since sowing</span>
       </div>
@@ -206,7 +206,7 @@ export function NextDaysTable({ days, hasPlan }: { days: NextDay[]; hasPlan?: bo
   const cols = "46px minmax(0, 1fr) 88px";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
         <Label>Next 5 days</Label>
         <span style={{ fontSize: 12, color: v("ink2") }}>% of usable reserve</span>
       </div>

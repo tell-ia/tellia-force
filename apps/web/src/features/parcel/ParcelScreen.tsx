@@ -6,7 +6,7 @@ import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
 import { font, v } from "../../theme/tokens";
-import { Label, SectionCard } from "../../components/ui/primitives";
+import { InfoHint, Label, SectionCard } from "../../components/ui/primitives";
 import { DateButton } from "../../components/DateSheet";
 import { dayRange } from "../../lib/dates";
 import { Loader } from "../../components/ui/Loader";
@@ -24,6 +24,15 @@ import {
 function fmtDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+}
+
+/** The "?" hint pinned to a card's top-right corner (the card must be position:relative). */
+function CornerHint({ text }: { text: string }) {
+  return (
+    <span style={{ position: "absolute", top: 12, right: 12, zIndex: 5 }}>
+      <InfoHint text={text} />
+    </span>
+  );
 }
 
 export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: string }) {
@@ -72,8 +81,9 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
 
           <RecommendationCard rec={data.recommendation} />
 
-          <SectionCard style={{ gap: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10 }}>
+          <SectionCard style={{ gap: 14, position: "relative" }}>
+            <CornerHint text="The bar is the water the soil holds right now. The hatched part is what the crop will drink before the stress line — past that line it closes up and loses yield." />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10, paddingRight: 28 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 <Label>Soil water reserve</Label>
                 <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -90,9 +100,10 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
           </SectionCard>
 
           {data.series && (
-            <SectionCard id="balance" style={{ gap: 12, boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
+            <SectionCard id="balance" style={{ gap: 12, position: "relative", boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
+              <CornerHint text="Bars show water added each day (rain in blue, irrigation, the plan). The line is the soil reserve over time — solid for the past, dashed for the forecast. The dotted red line is the stress threshold." />
               <div ref={balanceRef} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
                 <Label>Water balance · {data.series.length ? dayRange(data.series[0]!.date, data.series.at(-1)!.date) : ""}</Label>
                 <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
               </div>
@@ -102,13 +113,15 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
           )}
 
           {data.cropStage && (
-            <SectionCard style={{ gap: 14 }}>
+            <SectionCard style={{ gap: 14, position: "relative" }}>
+              <CornerHint text="The crop's growth stages across the season. Each segment's width is how long that stage lasts (in degree-days); the marker is where the crop is today." />
               <CropStageTimeline cropStage={data.cropStage} />
             </SectionCard>
           )}
 
           {data.nextDays && (
-            <SectionCard style={{ gap: 10 }}>
+            <SectionCard style={{ gap: 10, position: "relative" }}>
+              <CornerHint text="Each bar is the soil reserve that day, as % of usable water: the reserve from rain alone, then the recommended watering stacked on top. The tick is the comfort threshold." />
               <NextDaysTable days={data.nextDays} hasPlan={!!data.plan} />
               <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
                 Each bar: reserve from rain alone, then the recommended {data.plan ? "plan" : "watering"} on top — rain counts in both. Comfort threshold at the tick (55%).

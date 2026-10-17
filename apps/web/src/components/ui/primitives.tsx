@@ -1,7 +1,33 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { font, radius, v } from "../../theme/tokens";
 
 // Small shared building blocks. Every color/radius/space comes from tokens.
+
+/** A "?" button that reveals a short note — how to read a chart. Drop it in a header. */
+export function InfoHint({ text, label = "How to read this" }: { text: string; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex", flex: "none" }}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        style={{ width: 24, height: 24, borderRadius: 12, border: 0, background: v("sunk"), color: v("ink2"), fontSize: 13, fontWeight: 700, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        ?
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30, border: 0, padding: 0, background: "transparent", cursor: "default" }} />
+          <span role="tooltip" style={{ position: "absolute", top: 30, right: 0, zIndex: 31, width: 240, background: v("ink"), color: v("bg"), fontSize: 12, lineHeight: 1.5, fontWeight: 500, textTransform: "none", letterSpacing: "normal", borderRadius: 10, padding: "10px 12px", boxShadow: "0 6px 20px rgba(15, 24, 19, 0.25)" }}>
+            {text}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
 
 export function Label({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
