@@ -85,7 +85,7 @@ Deno.test("confirmed irrigation lowers depletion by exactly its mm", async () =>
     date: "2026-07-04",
     mm: 30,
     memberId: 1,
-    source: "app",
+    source: "web",
   });
   const after = await service.getFieldReport(10);
   assert(before.depletionMm > 30, `fixture depletion ${before.depletionMm}`);
@@ -130,7 +130,7 @@ Deno.test("drafts do not count; confirm is idempotent; cancel removes a draft", 
 
 Deno.test("validation errors", async () => {
   const { service } = setup();
-  const ok = { fieldId: 10, date: "2026-07-04", memberId: 1, source: "app" };
+  const ok = { fieldId: 10, date: "2026-07-04", memberId: 1, source: "web" as const };
   assertEquals((await status(service.recordIrrigation({ ...ok, mm: 0 }))).status, 400);
   assertEquals((await status(service.recordIrrigation({ ...ok, mm: 250 }))).status, 400);
   const future = await status(service.recordIrrigation({ ...ok, mm: 10, date: "2026-07-06" }));

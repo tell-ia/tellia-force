@@ -22,6 +22,7 @@ import {
   type Field,
   type IrrigationOperation,
   type IrrigationSystem,
+  type OperationSource,
   type OperationStatus,
 } from "./data/farmData";
 import { cropWaterParams, kcAtFraction, kcFromRef, seasonFraction } from "./engine/crop";
@@ -96,7 +97,7 @@ export interface IrrigationService {
   confirmIrrigation(operationId: number): Promise<IrrigationRecord>;
   cancelIrrigation(operationId: number): Promise<void>;
   recordIrrigation(
-    input: IrrigationDraftInput & { source: string },
+    input: IrrigationDraftInput & { source: OperationSource },
   ): Promise<IrrigationRecord>;
   listIrrigations(
     fieldId: number,
@@ -555,7 +556,7 @@ export function createIrrigationService(
   }
 
   async function create(
-    input: IrrigationDraftInput & { source: string },
+    input: IrrigationDraftInput & { source: OperationSource },
     status: OperationStatus,
   ): Promise<IrrigationRecord> {
     const { field, season } = await validateIrrigation(input);
@@ -693,7 +694,7 @@ export function createIrrigationService(
       };
     },
 
-    createDraftIrrigation: (input) => create({ ...input, source: "assistant" }, "draft"),
+    createDraftIrrigation: (input) => create({ ...input, source: "agent" }, "draft"),
 
     async confirmIrrigation(operationId) {
       const op = await findOperation(operationId);

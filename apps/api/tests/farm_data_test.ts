@@ -1,6 +1,10 @@
 import { HTTPException } from "hono/http-exception";
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { cropNameIn, pickCropPhases } from "../src/modules/irrigation/data/farmData";
+import {
+  cropNameIn,
+  OPERATION_SOURCES,
+  pickCropPhases,
+} from "../src/modules/irrigation/data/farmData";
 import {
   createMemoryFarmData,
   createMemoryFarmDirectory,
@@ -37,7 +41,7 @@ Deno.test("listIrrigations excludes drafts unless asked", async () => {
     date: "2026-07-01",
     mm: 20,
     status: "draft",
-    source: "assistant",
+    source: "agent",
     memberId: 1,
   });
   assertEquals((await d.listIrrigations(10, { includeDrafts: false })).length, 1);
@@ -52,7 +56,7 @@ Deno.test("create, confirm, delete lifecycle", async () => {
     date: "2026-07-01",
     mm: 20,
     status: "draft",
-    source: "assistant",
+    source: "agent",
     memberId: 1,
   });
   assertEquals(op.status, "draft");
@@ -135,7 +139,7 @@ Deno.test("toOperationInsert builds the snake_case row", () => {
       date: "2026-07-05",
       mm: 25,
       status: "draft",
-      source: "assistant",
+      source: "agent",
       memberId: 1,
     }, 12.5),
     {
@@ -145,7 +149,7 @@ Deno.test("toOperationInsert builds the snake_case row", () => {
       op_type: "irrigation",
       water_mm: 25,
       status: "draft",
-      source: "assistant",
+      source: "agent",
       origin: "assistant",
       member_id: 1,
       area_ha: 12.5,
@@ -162,8 +166,16 @@ Deno.test("toOperationInsert: origin is app for the REST source, assistant other
     status: "confirmed" as const,
     memberId: 1,
   };
-  assertEquals(toOperationInsert({ ...base, source: "app" }, null).origin, "app");
-  assertEquals(toOperationInsert({ ...base, source: "assistant" }, null).origin, "assistant");
+  assertEquals(toOperationInsert({ ...base, source: "web" }, null).origin, "app");
+  assertEquals(toOperationInsert({ ...base, source: "agent" }, null).origin, "assistant");
+});
+
+Deno.test("OPERATION_SOURCES matches the operation.source check in seed/schema.sql", async () => {
+  const sql = await Deno.readTextFile(new URL("../../../seed/schema.sql", import.meta.url));
+  const check = sql.match(/create table operation \([\s\S]*?check \(source in \(([^)]*)\)\)/);
+  assert(check, "operation.source check not found in seed/schema.sql");
+  const allowed = check[1].split(",").map((s) => s.trim().replace(/^'|'$/g, ""));
+  assertEquals([...OPERATION_SOURCES].sort(), allowed.sort());
 });
 
 Deno.test("averageByDay averages per MM-DD and folds Feb 29 into Feb 28", () => {

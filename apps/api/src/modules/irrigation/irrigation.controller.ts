@@ -88,7 +88,7 @@ export function createIrrigationController(registry: FarmRegistry) {
       date: body.date,
       mm: body.mm,
       memberId,
-      source: "app",
+      source: "web",
     });
     return c.json({ data: record }, 201);
   });

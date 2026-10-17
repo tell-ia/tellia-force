@@ -8,6 +8,10 @@ import type { SoilWaterClass } from "../engine/soil";
 export type IsoDate = string;
 export type OperationStatus = "draft" | "planned" | "confirmed";
 
+/** Who created an operation: exactly the values the DB check on `operation.source` allows. */
+export const OPERATION_SOURCES = ["import", "whatsapp", "phone_call", "web", "agent"] as const;
+export type OperationSource = (typeof OPERATION_SOURCES)[number];
+
 export interface Farm {
   id: number;
   name: string;
@@ -109,7 +113,7 @@ export interface IrrigationOperation {
   date: IsoDate;
   mm: number;
   status: OperationStatus;
-  source: string;
+  source: OperationSource;
   memberId: number | null;
 }
 
@@ -119,7 +123,7 @@ export interface NewIrrigation {
   date: IsoDate;
   mm: number;
   status: OperationStatus;
-  source: string;
+  source: OperationSource;
   memberId: number | null;
 }
 

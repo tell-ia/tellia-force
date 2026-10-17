@@ -14,6 +14,7 @@ import type {
   IrrigationOperation,
   IrrigationSystem,
   Member,
+  OperationSource,
   OperationStatus,
   SoilAnalysis,
   StoredWeatherDay,
@@ -208,7 +209,7 @@ export function mapOperation(r: Row): IrrigationOperation {
     date: r.op_date as string,
     mm: r.water_mm as number,
     status: r.status as OperationStatus,
-    source: r.source as string,
+    source: r.source as OperationSource,
     memberId: (r.member_id as number | null) ?? null,
   };
 }
@@ -241,7 +242,7 @@ export function toOperationInsert(
     date: string;
     mm: number;
     status: OperationStatus;
-    source: string;
+    source: OperationSource;
     memberId: number | null;
   },
   areaHa: number | null,
@@ -254,7 +255,7 @@ export function toOperationInsert(
     water_mm: input.mm,
     status: input.status,
     source: input.source,
-    origin: input.source === "app" ? "app" : "assistant",
+    origin: input.source === "web" ? "app" : "assistant",
     member_id: input.memberId,
     area_ha: areaHa,
   };
