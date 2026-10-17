@@ -137,7 +137,7 @@ function WidgetCard({ r }: { r: Rec }) {
   if (widget === "reserve") body = <ReserveGauge reserve={pr.reserve} />;
   else if (widget === "waterBalance" && pr.series) body = <><WaterBalanceChart series={pr.series} reserve={pr.reserve} plan={pr.plan} /><BalanceLegend withPlan={!!pr.plan} /></>;
   else if (widget === "cropStage" && pr.cropStage) body = <CropStageTimeline cropStage={pr.cropStage} />;
-  else if (widget === "nextDays" && pr.nextDays) body = <NextDaysTable days={pr.nextDays} hasPlan={!!pr.plan} comfortPct={pr.reserve.thresholdPct} />;
+  else if (widget === "nextDays" && pr.nextDays) body = <NextDaysTable days={pr.nextDays} comfortPct={pr.reserve.thresholdPct} />;
   else if (widget === "seasonBalance" && pr.seasonBalance) body = <SeasonBalanceCard season={pr.seasonBalance} />;
   else if (widget === "soil" && pr.soil) body = <SoilCard soil={pr.soil} />;
   return (
