@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useDemoDate } from "../app/DateContext";
 import { formatDay } from "../lib/dates";
 import { font, radius, v } from "../theme/tokens";
+import { DatePickerSheet } from "../features/date/DatePickerSheet";
 
 /** Demo days with a clear weather story (Loiret, farm 1; June–August rain from weather_daily). */
 export const DATE_PRESETS = [
@@ -41,7 +42,7 @@ export function DateButton({ year = true }: { year?: boolean }) {
         {formatDay(today, { year })}
         <ChevronDown size={13} />
       </button>
-      {open && <DateSheet onClose={() => setOpen(false)} />}
+      {open && <DatePickerSheet onClose={() => setOpen(false)} />}
     </>
   );
 }

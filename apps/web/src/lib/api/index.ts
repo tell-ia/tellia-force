@@ -2,6 +2,7 @@
 export { API_MODE, mockDelay, setMemberId } from "./core";
 export { listFarms } from "./farms";
 export { getFarmToday, getParcelReport } from "./parcels";
+export { getSeasonHeatmap, type SeasonHeatmap, type HeatDay } from "./heatmap";
 export { recordIrrigation, type RecordIrrigationInput } from "./irrigation";
 export { simulateDose, type DoseSim } from "./simulate";
 export { setMemberPhone } from "./members";

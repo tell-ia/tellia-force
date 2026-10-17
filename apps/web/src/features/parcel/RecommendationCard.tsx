@@ -1,6 +1,5 @@
 import { ArrowRight, Clock } from "lucide-react";
 import type { Recommendation } from "@tellia/shared";
-import { navigate } from "../../app/router";
 import { font, hero, radius } from "../../theme/tokens";
 
 const HERO_INK = "#234534"; // text on the cream buttons/pills over the hero
@@ -34,7 +33,7 @@ export function RecommendationCard({ rec }: { rec: Recommendation }) {
             <span>{rec.secondPass}</span>
           </div>
         )}
-        <button type="button" onClick={() => navigate("chat")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 12, border: `1.5px solid ${hero.line}`, background: "transparent", color: hero.ink, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+        <button type="button" onClick={() => document.getElementById("balance")?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 12, border: `1.5px solid ${hero.line}`, background: "transparent", color: hero.ink, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
           Why?
         </button>
       </div>
