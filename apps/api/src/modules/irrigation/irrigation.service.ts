@@ -461,10 +461,12 @@ export function createIrrigationService(
     let cumulative = 0;
     let morning = 0;
     let floweringDate: string | null = null;
+    const gddByDate: { date: string; cum: number }[] = [];
     const days: WeatherInput[] = series.map((d) => {
       cumulative += d.tmax !== null
         ? dailyGdd({ tmin: d.tmin, tmax: d.tmax }, params.tBaseC, params.tMaxCapC)
         : Math.max(0, d.tmean - params.tBaseC);
+      gddByDate.push({ date: d.date, cum: cumulative });
       if (d.date < asOf) {
         morning = cumulative;
         if (floweringDate === null && phases.flowering !== null && cumulative >= phases.flowering) {
@@ -486,6 +488,27 @@ export function createIrrigationService(
     // Phase, roots and window of the morning: they drive the decision and the stage.
     const morningDay = cropDay(params, phases, morning);
     const flowered = phases.flowering !== null && morning >= phases.flowering;
+
+    // Start date of each growth phase on the degree-day axis. Past/near dates come
+    // from the weather series; a phase past the horizon is projected from the mean
+    // daily degree-days so far (phenology is thermal, not water-driven).
+    const lastGdd = gddByDate.length > 0 ? gddByDate[gddByDate.length - 1] : undefined;
+    const avgDailyGdd = gddByDate.length > 0 && lastGdd ? lastGdd.cum / gddByDate.length : 0;
+    const dateForGdd = (target: number): { startDate: string | null; forecast: boolean } => {
+      if (target <= 0) return { startDate: season.sowingDate, forecast: false };
+      const hit = gddByDate.find((x) => x.cum >= target);
+      if (hit) return { startDate: hit.date, forecast: hit.date > asOf };
+      if (!lastGdd || avgDailyGdd <= 0) return { startDate: null, forecast: true };
+      const extra = Math.ceil((target - lastGdd.cum) / avgDailyGdd);
+      return { startDate: addDays(lastGdd.date, extra), forecast: true };
+    };
+    const phaseDates = ([
+      ["ini", 0],
+      ["dev", phases.iniEnd],
+      ["mid", phases.devEnd],
+      ["late", phases.midEnd],
+      ["mature", phases.lateEnd],
+    ] as const).map(([phase, g]) => ({ phase, ...dateForGdd(g) }));
 
     // Start: soil full at sowing, except in a dry region where the whole profile (down to the
     // full root depth) starts partly empty; growing roots bring that deficit with them.
@@ -530,6 +553,7 @@ export function createIrrigationService(
           gddSinceSowing: Math.round(morning),
           sensitive: morningDay.sensitive,
           floweringDate,
+          phases: phaseDates,
         },
         rootDepthM: round2(morningDay.rootDepthM),
         textureClass,

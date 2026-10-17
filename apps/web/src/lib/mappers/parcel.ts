@@ -209,7 +209,15 @@ export function fieldReportToParcelReport(
       useTomorrowMm: round1(tomorrowEtc ?? 0),
       note: stageNote(r.stage),
       progress: phaseProgress(r.stage.phase),
-      steps: phaseSteps(r.stage.phase),
+      steps: r.stage.phases?.length
+        ? r.stage.phases.map((ph) => ({
+            label: PHASE_LABEL[ph.phase],
+            weight: 1,
+            current: ph.phase === r.stage!.phase,
+            startDate: ph.startDate,
+            forecast: ph.forecast,
+          }))
+        : phaseSteps(r.stage.phase),
     };
   }
 

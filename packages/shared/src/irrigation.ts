@@ -92,6 +92,13 @@ export const FieldReportSchema = z.object({
     sensitive: z.boolean(),
     /** Day the flowering degree-days were reached, null if not yet. */
     floweringDate: IsoDateSchema.nullable(),
+    /** Start date of each growth phase (degree-day driven). `forecast` = still ahead,
+     * projected from the mean daily degree-days when past the weather horizon. */
+    phases: z.array(z.object({
+      phase: PhaseSchema,
+      startDate: IsoDateSchema.nullable(),
+      forecast: z.boolean(),
+    })).optional(),
   }).nullable().optional(),
   rootDepthM: z.number().nullable().optional(),
   soil: z.object({

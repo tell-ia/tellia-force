@@ -4,6 +4,12 @@ import type { BalancePoint, CropTimeline, NextDay, RefillPlanSeries, Reserve, Se
 import { font, radius, v } from "../../theme/tokens";
 import { Label, StatTile } from "../../components/ui/primitives";
 
+/** "7 Jul" — short day for stage labels. */
+function fmtShortDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+}
+
 // Charts are plain React + SVG driven by props. Geometry reproduces the hi-fi
 // prototype (viewBox, scales, colors), computed from the data so it stays true
 // to the numbers. Pure view mapping; no business logic.
@@ -184,9 +190,19 @@ export function CropStageTimeline({ cropStage }: { cropStage: CropTimeline }) {
         </div>
         <div style={{ display: "flex", gap: 3, fontSize: 11, color: v("ink2") }}>
           {cropStage.steps.map((s, i) => (
-            <div key={i} style={{ flex: s.weight, textAlign: "center", color: s.current ? v("act") : v("ink2"), fontWeight: s.current ? 600 : 400 }}>{s.label}</div>
+            <div key={i} style={{ flex: s.weight, textAlign: "center", display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ color: s.current ? v("act") : v("ink2"), fontWeight: s.current ? 600 : 400 }}>{s.label}</span>
+              {s.startDate && (
+                <span style={{ fontSize: 10, color: v("ink2"), fontStyle: s.forecast ? "italic" : "normal", opacity: s.forecast ? 0.8 : 1, fontVariantNumeric: "tabular-nums" }}>
+                  {s.forecast ? "~" : ""}{fmtShortDay(s.startDate)}
+                </span>
+              )}
+            </div>
           ))}
         </div>
+        {cropStage.steps.some((s) => s.forecast) && (
+          <div style={{ fontSize: 10, color: v("ink2") }}>Stage dates from degree-days · <span style={{ fontStyle: "italic" }}>~ projected</span></div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: v("actSoft"), borderRadius: radius.tile, padding: "10px 12px" }}>
         <AlertTriangle size={18} strokeWidth={2} style={{ flex: "none", marginTop: 2, color: v("act") }} />

@@ -117,6 +117,8 @@ export const CropStageStepSchema = z.object({
   label: z.string(), // "Flowering"
   weight: z.number(), // flex weight on the timeline
   current: z.boolean(),
+  startDate: IsoDateSchema.nullable().optional(), // when this stage starts (degree-day driven)
+  forecast: z.boolean().optional(), // true when that date is still ahead (projected)
 });
 
 export const CropTimelineSchema = z.object({
