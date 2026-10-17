@@ -3,7 +3,8 @@ import { renderToString as ssr } from "react-dom/server";
 import type { ReactElement } from "react";
 import type { IrrigationRecord, ParcelSummary } from "@tellia/shared";
 import { parseRoute } from "../../app/router";
-import { FieldChips } from "../log/LogScreen";
+import { FieldChips, LogDateRow } from "../log/LogScreen";
+import { MonthCalendar } from "../../components/ui/DateField";
 import { IrrigationLog } from "./IrrigationLog";
 
 /** Server render without React's text separators ("<!-- -->"). */
@@ -61,5 +62,29 @@ describe("routes", () => {
     expect(parseRoute("#/log/10")).toEqual({ name: "log", params: { id: "10" }, anchor: "" });
     expect(parseRoute("#/log")).toEqual({ name: "log", params: {}, anchor: "" });
     expect(parseRoute("#/parcel/10#log")).toEqual({ name: "parcel", params: { id: "10" }, anchor: "log" });
+  });
+});
+
+describe("Log screen day of the watering", () => {
+  it("the Date row is a date field showing the day (and says today)", () => {
+    const today = renderToString(<LogDateRow day="2026-07-15" today="2026-07-15" min="2026-04-16" disabled={false} onChange={() => {}} />);
+    expect(today).toContain("Wed 15 Jul 2026");
+    expect(today).toContain(">today<");
+    expect(today).toContain('aria-label="Day of the watering: Wed 15 Jul 2026"');
+    const past = renderToString(<LogDateRow day="2026-07-14" today="2026-07-15" min="2026-04-16" disabled={false} onChange={() => {}} />);
+    expect(past).toContain("Tue 14 Jul 2026");
+    expect(past).not.toContain(">today<");
+  });
+
+  it("the popup calendar: Monday first, the day pressed, nothing after today, a Today button", () => {
+    const html = renderToString(<MonthCalendar value="2026-07-14" min="2026-04-16" max="2026-07-15" today="2026-07-15" onPick={() => {}} />);
+    expect(html).toContain("July 2026");
+    // 1 July 2026 is a Wednesday: two empty cells before it.
+    expect(html.match(/<span><\/span>/g)?.length).toBe(2);
+    expect(html).toMatch(/aria-pressed="true" aria-label="Tue 14 Jul 2026"/);
+    expect(html).toMatch(/disabled="" aria-pressed="false" aria-label="Thu 16 Jul 2026"/);
+    expect(html).toContain(">Today<");
+    // Next month is after today: its arrow is off.
+    expect(html).toMatch(/aria-label="Next month" disabled=""/);
   });
 });

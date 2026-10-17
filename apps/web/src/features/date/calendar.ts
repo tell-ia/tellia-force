@@ -9,6 +9,9 @@ export const daysIn = (year: number, month: number): number => new Date(Date.UTC
 
 export const endOfMonth = (year: number, month: number): string => isoOf(year, month, daysIn(year, month));
 
+/** Empty cells before the 1st in a Monday-first week (0 = the 1st is a Monday). */
+export const mondayOffset = (year: number, month: number): number => (new Date(Date.UTC(year, month, 1)).getUTCDay() + 6) % 7;
+
 export const clampDate = (d: string, min: string, max: string): string => (d < min ? min : d > max ? max : d);
 
 /** The month `delta` months away, across years. */

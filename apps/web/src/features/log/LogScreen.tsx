@@ -15,11 +15,12 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
-import { addDays, formatDay } from "../../lib/dates";
+import { addDays, formatDay, shortDay, weekday } from "../../lib/dates";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
 import { Loader } from "../../components/ui/Loader";
+import { DateField } from "../../components/ui/DateField";
 
 export function LogScreen({ fieldId }: { fieldId?: number }) {
   const { farm } = useFarm();
@@ -49,12 +50,15 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const [saved, setSaved] = useState<IrrigationRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The day of the watering: today by default, or a past day of this crop season.
+  const [day, setDay] = useState<string | null>(null);
   const logged = saved !== null;
   useEffect(() => {
     if (data) {
       setAmount(advisedGross || 35);
       setSaved(null);
       setSaveError(null);
+      setDay(null);
     }
   }, [data, advisedGross]);
 
@@ -62,6 +66,9 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const net = Math.round(gross * eff); // what actually reaches the soil
   const delta = gross - advisedGross; // vs the advised dose
   const asOf = data?.asOf ?? demoToday;
+  const logDay = day ?? asOf;
+  // A watering can't be logged before sowing (no crop) or after today.
+  const firstDay = data?.sownOn && data.sownOn < asOf ? data.sownOn : addDays(asOf, -365);
 
   const cap = data?.reserve.capacityMm ?? 144;
   const threshold = data?.reserve.thresholdMm ?? 79;
@@ -72,8 +79,8 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   // resolved result; `pending` is true while a newer one is on the way.
   const debouncedGross = useDebounced(gross, 350);
   const { data: sim, loading: simLoading } = useAsync<DoseSim | null>(
-    () => (parcelId && debouncedGross > 0 ? simulateDose(parcelId, asOf, debouncedGross) : Promise.resolve(null)),
-    [parcelId, asOf, debouncedGross],
+    () => (parcelId && debouncedGross > 0 ? simulateDose(parcelId, asOf, logDay, debouncedGross) : Promise.resolve(null)),
+    [parcelId, asOf, logDay, debouncedGross],
   );
   const [shown, setShown] = useState<DoseSim | null>(null);
   useEffect(() => {
@@ -105,7 +112,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
     setSaving(true);
     setSaveError(null);
     try {
-      setSaved(await recordIrrigation({ parcelId, date: asOf, grossMm: gross }));
+      setSaved(await recordIrrigation({ parcelId, date: logDay, grossMm: gross }));
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -165,7 +172,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
       {/* Parsed details */}
       <section aria-label="Details" style={{ background: v("surface"), border: `1px solid ${v("line")}`, borderRadius: radius.section, padding: "6px 16px", display: "flex", flexDirection: "column" }}>
         <Row label="Parcel" value={data.name} />
-        <Row label="Date" value={`${formatDay(asOf)} · today`} />
+        <LogDateRow day={logDay} today={asOf} min={firstDay} disabled={logged || saving} onChange={setDay} />
         {/* What TelliaForce advised — the target. */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 52, borderBottom: `1px solid ${v("line")}` }}>
           <span style={{ fontSize: 13, color: v("ink2") }}>TelliaForce advised</span>
@@ -218,7 +225,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
         ) : (
           <>
             <DoseSplit net={shownNet} drained={drained} />
-            <EffectTiles base={winBase} withW={winWith} cap={cap} threshold={threshold} />
+            <EffectTiles base={winBase} withW={winWith} cap={cap} threshold={threshold} asOf={asOf} />
             <LogEffectChart base={winBase} withW={winWith} cap={cap} threshold={threshold} drained={drained} />
             <div style={{ fontSize: 11, color: v("ink2"), lineHeight: 1.5 }}>
               Real FAO-56 balance for this dose{drained > 0 ? " — surplus above field capacity drains away, not stored" : ""}. Below the line the crop closes its stomata and loses yield.
@@ -262,6 +269,19 @@ function StepBtn({ label, onClick, disabled = false, children }: { label: string
   );
 }
 
+/** The watering's day in the details: a date field with a small calendar (sowing to today). */
+export function LogDateRow({ day, today, min, disabled, onChange }: { day: string; today: string; min: string; disabled: boolean; onChange: (day: string) => void }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 60, borderBottom: `1px solid ${v("line")}` }}>
+      <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <span style={{ fontSize: 13, color: v("ink2") }}>Date</span>
+        {day === today && <span style={{ fontSize: 11, color: v("ink2") }}>today</span>}
+      </span>
+      <DateField value={day} min={min} max={today} today={today} disabled={disabled} ariaLabel="Day of the watering" onChange={onChange} />
+    </div>
+  );
+}
+
 /** One chip per field of the farm, most urgent first (the advice order). */
 export function FieldChips({ parcels, selected, disabled, onPick }: { parcels: ParcelSummary[]; selected: number | null; disabled: boolean; onPick: (id: number) => void }) {
   if (parcels.length === 0) return null;
@@ -302,23 +322,21 @@ function DoseSplit({ net, drained }: { net: number; drained: number }) {
   );
 }
 
-interface WinPoint { dayLabel: string; reserveMm: number; forecast: boolean }
+interface WinPoint { date: string; dayLabel: string; reserveMm: number; forecast: boolean }
 
 function pctOf(mm: number, cap: number): number {
   return Math.round((mm / cap) * 100);
 }
 
-function EffectTiles({ base, withW, cap, threshold }: { base: WinPoint[]; withW: WinPoint[]; cap: number; threshold: number }) {
-  const atB = (day: string) => base.find((p) => p.dayLabel === day);
-  const atW = (day: string) => withW.find((p) => p.dayLabel === day);
-  let stressDay = "Not this week";
-  const eve = ["Wed eve", "Thu eve", "Fri eve", "Sat eve", "Sun eve"];
-  for (const p of withW) {
-    if (p.forecast && p.reserveMm < threshold) {
-      stressDay = eve[Number(p.dayLabel) - 14] ?? "this week";
-      break;
-    }
-  }
+// Tiles: the reserve in 2 and 5 days, and the first evening (next 5 days) below the threshold.
+// Days come from the dates (they were fixed to the 15th and 18th of the 13 July 2022 prototype).
+function EffectTiles({ base, withW, cap, threshold, asOf }: { base: WinPoint[]; withW: WinPoint[]; cap: number; threshold: number; asOf: string }) {
+  const atB = (day: string) => base.find((p) => p.date === day);
+  const atW = (day: string) => withW.find((p) => p.date === day);
+  const hit = withW.find((p) => p.date > asOf && p.date <= addDays(asOf, 5) && p.reserveMm < threshold);
+  const stressDay = hit ? `${weekday(hit.date)} eve` : "Not this week";
+  const in2 = addDays(asOf, 2);
+  const in5 = addDays(asOf, 5);
   const tile = (caption: string, day: string) => {
     const w = atW(day);
     const b = atB(day);
@@ -335,8 +353,8 @@ function EffectTiles({ base, withW, cap, threshold }: { base: WinPoint[]; withW:
   };
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-      {tile("Fri 15", "15")}
-      {tile("Mon 18", "18")}
+      {tile(shortDay(in2), in2)}
+      {tile(shortDay(in5), in5)}
       <div style={{ display: "flex", flexDirection: "column", gap: 2, background: stressDay === "Not this week" ? v("okSoft") : v("actSoft"), borderRadius: radius.tile, padding: 10 }}>
         <span style={{ fontSize: 11, color: v("ink2") }}>Hits threshold</span>
         <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, lineHeight: 1.1 }}>{stressDay}</span>

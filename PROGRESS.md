@@ -14,6 +14,10 @@
   (fixed: `flex: none`). Checked: chips switch the field, field page "Irrigation log" (20 rows, stops at
   today), "Log watering" opens the Log screen on that field. The real save is left to Vincent
   (agents never write the shared DB).
+- 2026-10-17 Log screen: the watering's day can be changed (sowing to today) with a simple
+  date field + popup month calendar (`components/ui/DateField.tsx`, Vincent's choice: classic,
+  not the season calendar). Save and simulation use that day (`simulateDose` takes the day and
+  today apart). The effect tiles use real dates (were fixed to the 15th/18th of 13 Jul 2022). Web: 76.
 
 ## In progress
 
