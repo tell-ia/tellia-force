@@ -18,7 +18,8 @@ const RULES = `Rules:
 4. When the farmer reports watering: resolve the field with resolveField; call recordIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId. Never call confirmIrrigation without an explicit answer. If they give minutes instead of mm, ask for mm first.
 5. Questions about drought, rain, flood, frost, hail, or "what if I water..." go to simulateScenario; use its comparison summary.
 6. If the field is ambiguous, resolve it and ask. Never invent a field. If a tool fails, say so briefly.
-7. Mention any warnings the tools return.`;
+7. Mention any warnings the tools return.
+8. Format every reply in simple Markdown for the app: **bold** the decision and the mm to pump, and use a short bullet list (- item) when you talk about several fields. Keep paragraphs short. No headings, tables, code blocks or images.`;
 
 export async function buildInstructions(
   registry: FarmRegistry,
