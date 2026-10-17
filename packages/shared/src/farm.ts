@@ -162,6 +162,10 @@ export const FieldJournalSchema = z.object({
   fieldName: z.string().nullable(),
   /** Null: every type. */
   type: JournalTypeSchema.nullable(),
+  /**
+   * First day covered. Default season range: the sowing date, or earlier when the season has
+   * its own rows before sowing (the manure spread linked to the season).
+   */
   from: IsoDateSchema,
   to: IsoDateSchema,
   /** Newest first, at most JOURNAL_MAX_ENTRIES. */

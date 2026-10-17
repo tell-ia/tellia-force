@@ -218,6 +218,11 @@ export interface OperationFilter {
   to: IsoDate;
   fieldId?: number;
   type?: OperationType;
+  /**
+   * Also keep the rows of this crop season dated before `from` (still up to `to`): a season's
+   * own work can start before sowing (the manure spread is linked to the season it feeds).
+   */
+  seasonId?: number;
 }
 
 export interface NewIrrigation {
@@ -374,8 +379,9 @@ export interface FarmData {
     opts: { includeDrafts: boolean },
   ): Promise<IrrigationOperation[]>;
   /**
-   * Journal rows in [from, to] of this farm, confirmed and planned only (drafts and cancelled
-   * rows are left out), with their products. Order is not guaranteed.
+   * Journal rows in [from, to] of this farm (plus rows of `seasonId` before `from`), confirmed
+   * and planned only (drafts and cancelled rows are left out), with their products. Order is
+   * not guaranteed.
    */
   listOperations(filter: OperationFilter): Promise<FarmOperation[]>;
   /** The whole E-Phy product catalogue (shared by every farm). Fails loudly, never [] on error. */

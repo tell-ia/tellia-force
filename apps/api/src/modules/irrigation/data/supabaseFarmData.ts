@@ -671,12 +671,14 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       if (!opts.includeDrafts) q = q.neq("status", "draft");
       return (await rows(q.order("op_date").order("id"))).map(mapOperation);
     },
-    async listOperations({ from, to, fieldId, type }) {
+    async listOperations({ from, to, fieldId, type, seasonId }) {
       const r = await paged((a, b) => {
         // Embedded products are filtered on the farm too (every farm table is).
         let q = db.from("operation").select(JOURNAL_SELECT).eq("farm_id", farmId)
-          .eq("operation_input.farm_id", farmId).in("status", ["confirmed", "planned"])
-          .gte("op_date", from).lte("op_date", to);
+          .eq("operation_input.farm_id", farmId).in("status", ["confirmed", "planned"]);
+        q = seasonId === undefined
+          ? q.gte("op_date", from).lte("op_date", to)
+          : q.lte("op_date", to).or(`op_date.gte.${from},crop_season_id.eq.${seasonId}`);
         if (fieldId !== undefined) q = q.eq("field_id", fieldId);
         if (type !== undefined) q = q.eq("op_type", type);
         return q.order("op_date").order("id").range(a, b);

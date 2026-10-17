@@ -193,6 +193,20 @@ Deno.test("product check: applicationsLeft counts this season's confirmed uses o
   assertEquals(later.usage?.applications.map((a) => a.date), ["2026-07-03", "2026-06-01"]);
 });
 
+Deno.test("product check: the season's own spray before sowing counts, others do not", async () => {
+  const { farm1 } = await services((f) =>
+    f.operations!.push(
+      // Before the 16 April sowing, linked to La Vallée's maize season.
+      spray(4010, "2026-04-10"),
+      // Before sowing too, but not linked to this season.
+      spray(4011, "2026-04-08", { seasonId: null }),
+      spray(4012, "2026-04-05", { seasonId: 99 }),
+    )
+  );
+  const c = await farm1.checkProductUse({ product: "Decis Protech", fieldId: 10 });
+  assertEquals([c.usage?.timesUsed, c.usage?.lastDate, c.applicationsLeft], [1, "2026-04-10", 2]);
+});
+
 Deno.test("product check: maximum reached or passed is a warning, never below 0", async () => {
   const { farm1 } = await services();
   const c = await farm1.checkProductUse({ product: "CALLISTO", fieldId: 10 });

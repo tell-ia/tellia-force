@@ -131,10 +131,11 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
       ops.filter((o) => o.fieldId === fieldId && (opts.includeDrafts || o.status !== "draft"))
         .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.operationId - b.operationId)
         .map((o) => ({ ...o })),
-    listOperations: async ({ from, to, fieldId, type }) =>
+    listOperations: async ({ from, to, fieldId, type, seasonId }) =>
       [...journal, ...ops.map(irrigationRow)]
         .filter((o) =>
-          (o.status === "confirmed" || o.status === "planned") && o.date >= from &&
+          (o.status === "confirmed" || o.status === "planned") &&
+          (o.date >= from || (seasonId !== undefined && o.seasonId === seasonId)) &&
           o.date <= to && (fieldId === undefined || o.fieldId === fieldId) &&
           (type === undefined || o.type === type)
         )

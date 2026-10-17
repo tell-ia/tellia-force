@@ -171,6 +171,52 @@ Deno.test("journal: default range is the field's season; newest first; totals; p
   assert(!("nKgHa" in water), "values that do not apply are left out");
 });
 
+Deno.test("journal: the season's own manure before sowing is in the default range", async () => {
+  const fert = (
+    operationId: number,
+    date: string,
+    seasonId: number | null,
+    nKgHa: number,
+  ): FarmOperation => ({
+    operationId,
+    fieldId: 10,
+    seasonId,
+    date,
+    type: "fertilisation",
+    status: "confirmed",
+    fertiliserType: "organic",
+    nKgHa,
+    products: [],
+  });
+  const { farm1 } = await services((f) =>
+    f.operations!.push(
+      // Like the seed: the season's manure spread, 19 days before the 16 April sowing.
+      fert(4001, "2026-03-28", 109, 40.9),
+      // Before sowing too, but from the previous crop's season or from no season.
+      fert(4002, "2026-03-20", 108, 30),
+      fert(4003, "2026-04-01", null, 20),
+    )
+  );
+  const j = FieldJournalSchema.parse(await farm1.getFieldJournal({ fieldId: 10 }));
+  // `from` is the first day covered; the tillage (no season) still stays out.
+  assertEquals([j.from, j.to], ["2026-03-28", "2026-10-17"]);
+  assertEquals(ids(j), [1008, 1007, 1006, 1, 1004, 1005, 1003, 1002, 4001]);
+  assertEquals([j.totals.nKgHa, j.totals.count, j.totals.byType.fertilisation], [150.9, 8, 3]);
+  // The same with a type filter, or with only `to`.
+  const ferts = await farm1.getFieldJournal({ fieldId: 10, type: "fertilisation" });
+  assertEquals([ferts.from, ids(ferts), ferts.totals.nKgHa], [
+    "2026-03-28",
+    [1004, 1003, 4001],
+    150.9,
+  ]);
+  const toJune = await farm1.getFieldJournal({ fieldId: 10, to: "2026-06-01" });
+  assertEquals([toJune.from, ids(toJune)], ["2026-03-28", [1005, 1003, 1002, 4001]]);
+  // An explicit `from` is a plain date range.
+  const fromSowing = await farm1.getFieldJournal({ fieldId: 10, from: "2026-04-16" });
+  assertEquals([fromSowing.from, fromSowing.totals.nKgHa], ["2026-04-16", 110]);
+  // Without a season row before sowing, `from` stays the sowing date (first test above).
+});
+
 Deno.test("journal: drafts and cancelled rows never show, a confirmed irrigation does", async () => {
   const { farm1 } = await services();
   const draft = await farm1.createDraftIrrigation({
@@ -406,6 +452,7 @@ Deno.test("supabase listOperations: farm, products, status, field, type and date
     in: (...a: unknown[]) => (calls.push(["in", ...a]), qb),
     gte: (...a: unknown[]) => (calls.push(["gte", ...a]), qb),
     lte: (...a: unknown[]) => (calls.push(["lte", ...a]), qb),
+    or: (...a: unknown[]) => (calls.push(["or", ...a]), qb),
     order: () => qb,
     range: () => qb,
     then: (res: (v: unknown) => unknown) =>
@@ -451,4 +498,48 @@ Deno.test("supabase listOperations: farm, products, status, field, type and date
     "op_date",
     "op_date",
   ]);
+  // A season: its own rows before `from` are kept, still up to `to`.
+  calls.length = 0;
+  await d.listOperations({ from: "2026-04-16", to: "2026-10-17", fieldId: 15, seasonId: 109 });
+  assertEquals(calls, [
+    ["eq", "farm_id", 2],
+    ["eq", "operation_input.farm_id", 2],
+    ["in", "status", ["confirmed", "planned"]],
+    ["lte", "op_date", "2026-10-17"],
+    ["or", "op_date.gte.2026-04-16,crop_season_id.eq.109"],
+    ["eq", "field_id", 15],
+  ]);
+});
+
+Deno.test("memory twin listOperations: a season keeps its own rows before from", async () => {
+  const fx = makeFarmFixture();
+  fx.operations!.push({
+    operationId: 4001,
+    fieldId: 10,
+    seasonId: 109,
+    date: "2026-03-28",
+    type: "fertilisation",
+    status: "confirmed",
+    nKgHa: 40,
+    products: [],
+  });
+  const d = createMemoryFarmData(fx);
+  const plain = await d.listOperations({ from: "2026-04-01", to: "2026-04-30", fieldId: 10 });
+  assertEquals(plain.map((o) => o.operationId).sort(), [1001, 1002]);
+  const season = await d.listOperations({
+    from: "2026-04-16",
+    to: "2026-04-30",
+    fieldId: 10,
+    seasonId: 109,
+  });
+  // 1001 (tillage, no season, 2 April) stays out; 4001 is the season's own row.
+  assertEquals(season.map((o) => o.operationId).sort(), [1002, 4001]);
+  // `to` still bounds the season's rows.
+  const early = await d.listOperations({
+    from: "2026-04-16",
+    to: "2026-03-01",
+    fieldId: 10,
+    seasonId: 109,
+  });
+  assertEquals(early, []);
 });

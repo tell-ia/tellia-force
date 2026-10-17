@@ -29,8 +29,9 @@ export interface FarmInfoService {
   getFieldDetails(fieldId: number): Promise<FieldDetails>;
   /**
    * Journal entries, newest first (at most JOURNAL_MAX_ENTRIES), with totals over the whole
-   * range. Default range: the field's crop season today (sowing to harvest); with no field, or
-   * no crop today, the last JOURNAL_DAYS_BACK days up to today + JOURNAL_DAYS_AHEAD.
+   * range. Default range: the field's crop season today (sowing to harvest, plus the season's
+   * own rows before sowing, such as its manure spread); with no field, or no crop today, the
+   * last JOURNAL_DAYS_BACK days up to today + JOURNAL_DAYS_AHEAD.
    */
   getFieldJournal(query?: JournalQuery): Promise<FieldJournal>;
 }
@@ -216,9 +217,15 @@ export function createFarmInfoService(
         from: addDays(today, -JOURNAL_DAYS_BACK),
         to: addDays(today, JOURNAL_DAYS_AHEAD),
       };
+      // Default season range: the season's own rows before sowing count too (the manure spread
+      // before sowing is linked to the season it feeds, and is part of its nitrogen).
+      let seasonId: number | undefined;
       if (field) {
         const season = await data.getSeasonAt(field.id, today);
-        if (season) range = { from: season.sowingDate, to: season.harvestDate };
+        if (season) {
+          range = { from: season.sowingDate, to: season.harvestDate };
+          if (query.from === undefined) seasonId = season.id;
+        }
       }
       const from = query.from ?? range.from;
       const to = query.to ?? range.to;
@@ -228,18 +235,20 @@ export function createFarmInfoService(
 
       const [fields, rows] = await Promise.all([
         data.listFields(),
-        data.listOperations({ from, to, fieldId: field?.id, type: query.type }),
+        data.listOperations({ from, to, fieldId: field?.id, type: query.type, seasonId }),
       ]);
       const names = new Map(fields.map((f) => [f.id, f.name]));
       const journal = rows
         .filter((o) => o.status === "confirmed" || o.status === "planned")
         .sort((a, b) => b.date.localeCompare(a.date) || b.operationId - a.operationId);
+      // `from` is the first day the journal covers: earlier when the season has rows before sowing.
+      const first = journal.at(-1)?.date;
 
       return {
         fieldId: field?.id ?? null,
         fieldName: field?.name ?? null,
         type: query.type ?? null,
-        from,
+        from: first !== undefined && first < from ? first : from,
         to,
         entries: journal.slice(0, JOURNAL_MAX_ENTRIES).map((o) =>
           toEntry(o, names.get(o.fieldId) ?? `field ${o.fieldId}`, today)

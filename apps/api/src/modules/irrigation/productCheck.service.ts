@@ -134,13 +134,21 @@ export function createProductCheckService(
     return [...catalogue, ...synthetic];
   }
 
-  /** Confirmed uses of the product on the field during the season, up to the date. */
+  /**
+   * Confirmed uses of the product on the field during the season, up to the date. The season's
+   * own rows before sowing count too (a pre-sowing herbicide linked to the season).
+   */
   async function usageOf(product: ProductMatch, field: Field, season: CropSeason, date: string) {
     const isProduct = (p: OperationProduct) =>
       product.productId != null
         ? p.productId === product.productId
         : p.productId == null && normalize(p.productName) === normalize(product.name);
-    const ops = await data.listOperations({ from: season.sowingDate, to: date, fieldId: field.id });
+    const ops = await data.listOperations({
+      from: season.sowingDate,
+      to: date,
+      fieldId: field.id,
+      seasonId: season.id,
+    });
     const used = ops
       .filter((o) =>
         o.fieldId === field.id && o.status === "confirmed" && o.date <= date &&
