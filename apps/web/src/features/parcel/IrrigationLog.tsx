@@ -12,7 +12,7 @@ const FIRST = 5;
  * The field's saved irrigations, newest first (the API sorts them and stops at today): logged in
  * the app, told to the chat or the phone, or imported with the farm. `mm` is what was pumped.
  */
-export function IrrigationLog({ records, loading, error, onLog, highlightId, onDelete }: {
+export function IrrigationLog({ records, loading, error, onLog, highlightId, onDelete, disabled = false }: {
   records: IrrigationRecord[] | null;
   loading: boolean;
   error: string | null;
@@ -22,13 +22,15 @@ export function IrrigationLog({ records, loading, error, onLog, highlightId, onD
   highlightId?: number;
   /** Delete a watering: a trash per row, with an inline confirm. The parent reloads after it. */
   onDelete?: (operationId: number) => Promise<void>;
+  /** The parent runs another change (a save, an undo): no delete can start meanwhile. */
+  disabled?: boolean;
 }) {
   const [all, setAll] = useState(false);
   const [del, dispatch] = useReducer(rowDelete, rowDeleteIdle);
   const list = withoutDeleted(records ?? [], del);
   const shown = all ? list : list.slice(0, FIRST);
   const remove = async (operationId: number) => {
-    if (!onDelete) return;
+    if (!onDelete || disabled) return;
     dispatch({ type: "confirm" });
     try {
       await onDelete(operationId);
@@ -55,7 +57,7 @@ export function IrrigationLog({ records, loading, error, onLog, highlightId, onD
               key={r.operationId}
               record={r}
               highlighted={r.operationId === highlightId}
-              view={rowDeleteView(del, r.operationId)}
+              view={rowDeleteView(del, r.operationId, disabled)}
               canDelete={!!onDelete}
               onAsk={() => dispatch({ type: "ask", id: r.operationId })}
               onCancel={() => dispatch({ type: "cancel" })}
@@ -90,7 +92,7 @@ export function LogRow({ record, highlighted, view, canDelete, onAsk, onCancel, 
 }) {
   const day = formatDay(record.date);
   const busy = view.mode === "deleting";
-  const confirmBtn = { height: 44, flex: "none", padding: `0 ${space.md}px`, borderRadius: radius.pill, fontWeight: 600, fontSize: 14, cursor: busy ? "default" : "pointer", opacity: busy ? 0.55 : 1 } as const;
+  const confirmBtn = (off: boolean) => ({ height: 44, flex: "none", padding: `0 ${space.md}px`, borderRadius: radius.pill, fontWeight: 600, fontSize: 14, cursor: off ? "default" : "pointer", opacity: off ? 0.55 : 1 }) as const;
   return (
     <li aria-current={highlighted || undefined} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: space.xs, minHeight: 44, borderBottom: `1px solid ${v("line")}`, ...(highlighted ? { background: v("okSoft"), margin: "0 -8px", padding: "0 8px", borderRadius: radius.tile } : {}) }}>
       <Droplet size={16} color={v("water")} aria-hidden="true" />
@@ -104,8 +106,8 @@ export function LogRow({ record, highlighted, view, canDelete, onAsk, onCancel, 
       {canDelete && view.mode !== "idle" && (
         <span style={{ marginLeft: "auto", marginBottom: space.xs, display: "flex", alignItems: "center", gap: space.sm }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{busy ? "Deleting…" : "Delete?"}</span>
-          <button type="button" disabled={busy} onClick={onConfirm} style={{ ...confirmBtn, border: 0, background: v("act"), color: v("bg") }}>Delete</button>
-          <button type="button" disabled={busy} onClick={onCancel} autoFocus style={{ ...confirmBtn, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink") }}>Cancel</button>
+          <button type="button" disabled={busy || view.locked} onClick={onConfirm} style={{ ...confirmBtn(busy || view.locked), border: 0, background: v("act"), color: v("bg") }}>Delete</button>
+          <button type="button" disabled={busy} onClick={onCancel} autoFocus style={{ ...confirmBtn(busy), border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink") }}>Cancel</button>
         </span>
       )}
       {view.error && (

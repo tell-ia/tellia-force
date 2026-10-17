@@ -53,6 +53,13 @@ describe("row delete (irrigation log)", () => {
     expect(rowDeleteView(rowDelete(retry, { type: "confirm" }), 7).mode).toBe("deleting");
   });
 
+  it("paused (the screen saves or undoes): no delete can start, on any row", () => {
+    expect(rowDeleteView(rowDeleteIdle, 7, true)).toEqual({ mode: "idle", error: null, locked: true });
+    const confirming = run({ type: "ask", id: 7 });
+    expect(rowDeleteView(confirming, 7, true)).toEqual({ mode: "confirming", error: null, locked: true });
+    expect(rowDeleteView(confirming, 7, false).locked).toBe(false);
+  });
+
   it("Delete, done and failed do nothing unless a row is in the right step", () => {
     expect(rowDelete(rowDeleteIdle, { type: "confirm" })).toBe(rowDeleteIdle);
     expect(rowDelete(rowDeleteIdle, { type: "done" })).toBe(rowDeleteIdle);

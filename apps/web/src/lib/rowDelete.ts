@@ -39,17 +39,19 @@ export interface RowDeleteView {
   mode: "idle" | "confirming" | "deleting";
   /** Why the last delete of this row failed (shown under it), or null. */
   error: string | null;
-  /** Another row is deleting: this row's trash waits. */
+  /** No delete can start on this row now (another row is deleting, or the screen is busy): its
+   *  trash and its Delete button wait. */
   locked: boolean;
 }
 
-/** What one row shows. */
-export function rowDeleteView(state: RowDeleteState, id: number): RowDeleteView {
+/** What one row shows. `paused`: the screen runs another change (a save, an undo), so no delete
+ *  can start until it ends (two changes at once would race). */
+export function rowDeleteView(state: RowDeleteState, id: number, paused = false): RowDeleteView {
   const mine = state.step !== "idle" && state.id === id;
   return {
     mode: mine && (state.step === "confirming" || state.step === "deleting") ? state.step : "idle",
     error: mine && state.step === "error" ? state.message : null,
-    locked: state.step === "deleting" && !mine,
+    locked: paused || (state.step === "deleting" && !mine),
   };
 }
 

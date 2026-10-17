@@ -62,6 +62,11 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   );
   const logRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  // A watering is being deleted from the log. One change at a time: while it runs, Confirm, Undo
+  // and the field chips wait; while a save or an undo runs, the log waits (`disabled`). So `saved`
+  // can't change under a delete, and two changes never reload in the wrong order.
+  const [removing, setRemoving] = useState(false);
+  const busy = saving || removing;
   const [saveError, setSaveError] = useState<string | null>(null);
   // The day of the watering: today by default, or a past day of this crop season.
   const [day, setDay] = useState<string | null>(null);
@@ -122,7 +127,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
 
   // LIVE: saves a confirmed irrigation (counts in the next report/advice). "Saved" only on success.
   const confirm = async () => {
-    if (!parcelId || saving) return;
+    if (!parcelId || busy) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -135,7 +140,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
     }
   };
   const undo = async () => {
-    if (!saved || saving) return;
+    if (!saved || busy) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -153,13 +158,19 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   // reload, except while another watering is saved on screen: its effect is a snapshot (a new
   // simulation would count the saved one twice), and Undo reloads them.
   const removeWatering = async (operationId: number) => {
-    await deleteIrrigation(operationId);
+    if (busy) throw new Error("wait for the save to finish"); // the log is disabled meanwhile
+    setRemoving(true);
+    try {
+      await deleteIrrigation(operationId);
+    } finally {
+      setRemoving(false);
+    }
     setLogVersion((n) => n + 1);
     if (saved && saved.operationId !== operationId) return;
     setSaved(null); // the watering just saved was deleted: the form is free again
     setWaterVersion((n) => n + 1);
   };
-  const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={saving} onPick={setPicked} />;
+  const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={busy} onPick={setPicked} />;
 
   // The loader while this field's report is not there yet (a reload after a delete keeps the screen).
   if (!data || data.id !== parcelId || amount === null) {
@@ -271,18 +282,18 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
         {logged ? (
-          <button type="button" onClick={() => void undo()} disabled={saving} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: saving ? "default" : "pointer" }}>{saving ? "Deleting…" : "Undo"}</button>
+          <button type="button" onClick={() => void undo()} disabled={busy} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: busy ? "default" : "pointer" }}>{saving ? "Deleting…" : "Undo"}</button>
         ) : (
           <button type="button" onClick={() => navigate(`parcel/${parcelId}`)} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: "pointer" }}>Cancel</button>
         )}
-        <button type="button" onClick={() => void confirm()} disabled={logged || saving || pending || !shown} style={{ height: 54, borderRadius: radius.card, border: 0, fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: logged || saving || pending || !shown ? "default" : "pointer", opacity: !logged && (saving || pending || !shown) ? 0.55 : 1, background: logged ? v("okSoft") : v("brand"), color: logged ? v("brand") : v("bg") }}>
+        <button type="button" onClick={() => void confirm()} disabled={logged || busy || pending || !shown} style={{ height: 54, borderRadius: radius.card, border: 0, fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: logged || busy || pending || !shown ? "default" : "pointer", opacity: !logged && (busy || pending || !shown) ? 0.55 : 1, background: logged ? v("okSoft") : v("brand"), color: logged ? v("brand") : v("bg") }}>
           {logged ? "Saved" : saving ? "Saving…" : pending || !shown ? "Simulating…" : `Confirm ${gross} mm`}
         </button>
       </div>
 
       <SectionCard id="log" style={{ gap: 10 }}>
         <div ref={logRef} />
-        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} onDelete={removeWatering} />
+        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} onDelete={removeWatering} disabled={saving} />
       </SectionCard>
     </div>
   );

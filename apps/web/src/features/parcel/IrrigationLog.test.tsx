@@ -96,6 +96,19 @@ describe("IrrigationLog row delete states", () => {
     const html = render({ mode: "idle", error: null, locked: true });
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Delete the watering of Tue 14 Jul 2026"|aria-label="Delete the watering of Tue 14 Jul 2026"[^>]*disabled=""/);
   });
+
+  it("confirming while the screen is busy: Delete waits, Cancel still works", () => {
+    const html = render({ mode: "confirming", error: null, locked: true });
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Delete<\/button>/);
+    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*>Cancel<\/button>/);
+  });
+
+  it("the whole log is disabled while the screen saves or undoes: every trash waits", () => {
+    const html = renderToString(
+      <IrrigationLog records={[rec(2, "2026-07-14", 30), rec(1, "2026-06-21", 25)]} loading={false} error={null} onDelete={async () => {}} disabled />,
+    );
+    expect(html.match(/<button type="button" aria-label="Delete the watering of [^"]*" disabled=""/g)?.length).toBe(2);
+  });
 });
 
 describe("Log screen field chips", () => {
