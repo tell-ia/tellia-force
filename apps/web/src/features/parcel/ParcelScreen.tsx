@@ -41,9 +41,9 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
   const balanceRef = useRef<HTMLDivElement>(null);
   const [highlighted, setHighlighted] = useState(false);
   // Bumped after a watering is deleted: the log and the report (its advice counts past waterings)
-  // reload in place (no full-page loader, no new anchor scroll).
+  // reload in place (no full-page loader, no new anchor scroll; a failed reload keeps the page).
   const [version, setVersion] = useState(0);
-  const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId, version]);
+  const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId, version], { keepDataOnError: true });
   const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId, version]);
   const removeWatering = async (operationId: number) => {
     await deleteIrrigation(operationId);
@@ -85,7 +85,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
       {loading && data?.id !== parcelId && <Loader />}
       {error && <div style={{ color: v("act") }}>Couldn't load this parcel: {error}</div>}
 
-      {data && (
+      {data && data.id === parcelId && (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 4px" }}>
             <div style={{ fontFamily: font.display, fontWeight: 700, fontSize: 46, lineHeight: 0.95, letterSpacing: "-0.01em" }}>{data.name}</div>

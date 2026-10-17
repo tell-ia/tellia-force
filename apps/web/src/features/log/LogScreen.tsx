@@ -41,9 +41,11 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   // Bumped after a watering is deleted from the log: the report and the simulation (they count
   // past waterings) reload in place, keeping the form as it is.
   const [waterVersion, setWaterVersion] = useState(0);
+  // A failed reload keeps the screen (the error shows above the form).
   const { data, error } = useAsync<ParcelReport | null>(
     () => (parcelId ? getParcelReport(parcelId) : Promise.resolve(null)),
     [parcelId, waterVersion],
+    { keepDataOnError: true },
   );
 
   const eff = data?.recommendation.efficiency ?? 0.8;
@@ -206,6 +208,11 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
       {saveError && (
         <div role="alert" style={{ background: v("actSoft"), color: v("ink"), borderRadius: radius.card, padding: "12px 14px", fontSize: 14 }}>
           Not saved: {saveError}
+        </div>
+      )}
+      {error && (
+        <div role="alert" style={{ background: v("actSoft"), color: v("ink"), borderRadius: radius.card, padding: "12px 14px", fontSize: 14 }}>
+          Couldn't refresh this field: {error}
         </div>
       )}
 
