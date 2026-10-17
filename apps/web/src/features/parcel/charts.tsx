@@ -227,9 +227,9 @@ export function NextDaysTable({ days, hasPlan }: { days: NextDay[]; hasPlan?: bo
             <span style={{ fontWeight: 600 }}>{d.day}</span>
             <span style={{ position: "relative", height: 10, borderRadius: 5, background: v("sunk") }}>
               {/* reserve from rain alone (blue, like the chart's rain) */}
-              <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 5, width: `${d.pctNoWater}%`, background: v("rain") }} />
-              {/* what the recommended irrigation adds (green, like the plan) */}
-              <span style={{ position: "absolute", left: `${d.pctNoWater}%`, top: 0, bottom: 0, width: `${added}%`, background: v("brand") }} />
+              <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: added > 0 ? "5px 0 0 5px" : 5, width: `${d.pctNoWater}%`, background: v("rain") }} />
+              {/* what the recommended irrigation adds (green, like the plan), capping the fill */}
+              <span style={{ position: "absolute", left: `${d.pctNoWater}%`, top: 0, bottom: 0, borderRadius: d.pctNoWater > 0 ? "0 5px 5px 0" : 5, width: `${added}%`, background: v("brand") }} />
               {/* comfort threshold */}
               <span style={{ position: "absolute", left: "55%", top: -3, bottom: -3, width: 2, background: v("ink"), opacity: 0.6 }} />
             </span>
