@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import type { IrrigationRecord, ParcelReport } from "@tellia/shared";
-import { deleteIrrigation, getParcelReport, listIrrigations } from "../../lib/api";
+import { deleteIrrigation, listIrrigations, parcelReportQuery } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
+import { useQuery } from "../../lib/useQuery";
 import { useFarm } from "../../app/FarmContext";
+import { useDemoDate } from "../../app/DateContext";
 import { useFieldOutcome } from "../../app/FarmPlanContext";
 import { navigate } from "../../app/router";
 import { font, v } from "../../theme/tokens";
@@ -41,10 +43,12 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
   const { farm } = useFarm();
   const balanceRef = useRef<HTMLDivElement>(null);
   const [highlighted, setHighlighted] = useState(false);
-  // Bumped after a watering is deleted: the log and the report (its advice counts past waterings)
-  // reload in place (no full-page loader, no new anchor scroll; a failed reload keeps the page).
+  // After a watering is deleted the report (its advice counts past waterings) reloads in place
+  // (deleteIrrigation drops it from the cache; no full-page loader, no new anchor scroll; a
+  // failed reload keeps the page), and `version` reloads the log.
   const [version, setVersion] = useState(0);
-  const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId, version], { keepDataOnError: true });
+  const { today } = useDemoDate();
+  const { data, loading, error } = useQuery<ParcelReport>(parcelReportQuery(parcelId, today));
   const outcome = useFieldOutcome(parcelId); // the field's forecast under the farm rotation plan
   const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId, version]);
   const removeWatering = async (operationId: number) => {

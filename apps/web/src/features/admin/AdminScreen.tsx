@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Check, Send } from "lucide-react";
 import type { FarmToday } from "@tellia/shared";
-import { getFarmToday } from "../../lib/api";
-import { useAsync } from "../../lib/useAsync";
+import { farmTodayQuery } from "../../lib/api";
+import { useQuery } from "../../lib/useQuery";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
@@ -15,10 +15,7 @@ export function AdminScreen() {
   const { farm, farms, setFarm } = useFarm();
   const { today } = useDemoDate();
   const [fired, setFired] = useState(false);
-  const { data } = useAsync<FarmToday | null>(
-    () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
-    [farm?.id],
-  );
+  const { data } = useQuery<FarmToday>(farm ? farmTodayQuery(farm, today) : null);
 
   if (!farm) return null;
   const action = data?.parcels.find((p) => p.status === "action");

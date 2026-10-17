@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { ParcelReport } from "@tellia/shared";
-import { getParcelReport } from "../../lib/api";
-import { useAsync } from "../../lib/useAsync";
+import { parcelReportQuery } from "../../lib/api";
+import { useQuery } from "../../lib/useQuery";
+import { useDemoDate } from "../../app/DateContext";
 import { useTheme } from "../../theme/ThemeProvider";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, SectionCard } from "../../components/ui/primitives";
@@ -26,7 +27,8 @@ const FIXTURES: { id: number; label: string }[] = [
 export function GalleryScreen() {
   const { theme, toggle } = useTheme();
   const [pid, setPid] = useState(101);
-  const { data } = useAsync<ParcelReport>(() => getParcelReport(pid), [pid]);
+  const { today } = useDemoDate();
+  const { data } = useQuery<ParcelReport>(parcelReportQuery(pid, today));
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, padding: "16px 16px 28px" }}>

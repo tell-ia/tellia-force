@@ -11,7 +11,23 @@ import { clientEnv } from "../../env";
 // never hits Supabase directly. Every response is parsed with the SHARED schema,
 // so the front fails loud if the backend/DB drifts from the contract.
 
-async function getJSON(path: string): Promise<unknown> {
+// Table reads are seeded data that the app never writes: share each one for a minute, so the
+// farm list, the day and every parcel report do not fetch /data/field again and again.
+const TABLE_TTL_MS = 60_000;
+const tables = new Map<string, { at: number; value: Promise<unknown> }>();
+
+function getJSON(path: string): Promise<unknown> {
+  const hit = tables.get(path);
+  if (hit && Date.now() - hit.at < TABLE_TTL_MS) return hit.value;
+  const value = fetchJSON(path);
+  tables.set(path, { at: Date.now(), value });
+  value.catch(() => {
+    if (tables.get(path)?.value === value) tables.delete(path);
+  });
+  return value;
+}
+
+async function fetchJSON(path: string): Promise<unknown> {
   const res = await fetch(`${clientEnv.VITE_API_URL}${path}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);

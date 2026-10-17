@@ -21,6 +21,14 @@ export const setMemberId = (id: number | null): void => {
 };
 export const getMemberId = (): number | null => memberId;
 
+// The demo date the screens show (DateProvider sets it before they render). The plain loaders
+// key the shared cache on it; the API answers for its own clock, which this mirrors.
+let apiToday = "";
+export const setApiToday = (date: string): void => {
+  apiToday = date;
+};
+export const getApiToday = (): string => apiToday;
+
 /** `x-member-id` header for the selected farm member (chat + irrigation scope). */
 export function memberHeaders(): Record<string, string> {
   return memberId != null ? { "x-member-id": String(memberId) } : {};
