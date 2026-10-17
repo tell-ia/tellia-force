@@ -1,0 +1,10 @@
+**/node_modules
+**/.env
+**/.env.*
+.git
+.turbo
+apps/api/data
+apps/web
+seed
+research
+other
