@@ -27,14 +27,14 @@ import type {
   SubsidyRow,
   SubsidySummary,
 } from "@tellia/shared";
-import { FieldReportSchema } from "@tellia/shared";
+import type { ParcelReport } from "@tellia/shared";
+import type { ReactNode } from "react";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
-import { useEffect, useState, type ReactNode } from "react";
-import type { FieldReport, RefillPlanSeries } from "@tellia/shared";
-import { fieldReportToParcelReport } from "../../lib/mappers/parcel";
-import { buildRefillPlan } from "../../lib/api/plan";
-import { BalanceLegend, CropStageTimeline, NextDaysTable, ReserveGauge, SeasonBalanceCard, WaterBalanceChart } from "../parcel/charts";
+import { getParcelReport } from "../../lib/api";
+import { useAsync } from "../../lib/useAsync";
+import { Loader } from "../../components/ui/Loader";
+import { BalanceLegend, CropStageTimeline, NextDaysTable, ReserveGauge, SeasonBalanceCard, SoilCard, WaterBalanceChart } from "../parcel/charts";
 
 // Renders one AI SDK tool part as a card. The 13 tool keys are the UI contract
 // (apps/api chat/README.md). Unknown keys / invalid output fall back gracefully
@@ -118,29 +118,27 @@ function FieldReportCard({ r }: { r: Rec }) {
   );
 }
 
-// Render one report chart on demand (show_widget), reusing the parcel components.
+// Render one report chart on demand (show_widget). The chat and the parcel screen
+// share ONE data model: both read the field's ParcelReport from getParcelReport, so
+// every widget is identical in both places — no per-widget re-derivation.
 function WidgetCard({ r }: { r: Rec }) {
-  const parsed = FieldReportSchema.safeParse(r);
-  const report: FieldReport | null = parsed.success ? parsed.data : null;
+  const fieldId = num(r.fieldId);
   const widget = str(r.widget) ?? "waterBalance";
-  // The water-balance chart also shows the recommended multi-pass plan (future
-  // irrigation), like the parcel screen — fetch it from the engine.
-  const [plan, setPlan] = useState<RefillPlanSeries | null>(null);
-  useEffect(() => {
-    if (!report || widget !== "waterBalance") return;
-    let alive = true;
-    buildRefillPlan(report.fieldId, report).then((p) => alive && setPlan(p)).catch(() => {});
-    return () => { alive = false; };
-  }, [report?.fieldId, widget]);
-  if (!report) return <FallbackCard toolKey="showWidget" fieldId={num(r.fieldId)} />;
-  const pr = fieldReportToParcelReport(report, { farmId: 0, plan });
+  const { data: pr, loading } = useAsync<ParcelReport | null>(
+    () => (fieldId != null ? getParcelReport(fieldId) : Promise.resolve(null)),
+    [fieldId],
+  );
   const title = WIDGET_TITLE[widget] ?? "Field report";
+  if (loading || !pr) {
+    return <Card><div style={{ minHeight: 120 }}><Loader /></div></Card>;
+  }
   let body: ReactNode = null;
   if (widget === "reserve") body = <ReserveGauge reserve={pr.reserve} />;
   else if (widget === "waterBalance" && pr.series) body = <><WaterBalanceChart series={pr.series} reserve={pr.reserve} plan={pr.plan} /><BalanceLegend withPlan={!!pr.plan} /></>;
   else if (widget === "cropStage" && pr.cropStage) body = <CropStageTimeline cropStage={pr.cropStage} />;
-  else if (widget === "nextDays" && pr.nextDays) body = <NextDaysTable days={pr.nextDays} hasPlan={!!pr.plan} />;
+  else if (widget === "nextDays" && pr.nextDays) body = <NextDaysTable days={pr.nextDays} hasPlan={!!pr.plan} comfortPct={pr.reserve.thresholdPct} />;
   else if (widget === "seasonBalance" && pr.seasonBalance) body = <SeasonBalanceCard season={pr.seasonBalance} />;
+  else if (widget === "soil" && pr.soil) body = <SoilCard soil={pr.soil} />;
   return (
     <Card>
       <Head title={`${pr.name} · ${title}`} />
@@ -156,6 +154,7 @@ const WIDGET_TITLE: Record<string, string> = {
   cropStage: "Crop stage",
   nextDays: "Next 5 days",
   seasonBalance: "Season balance",
+  soil: "Soil",
 };
 
 function AdviceCard({ reports }: { reports: unknown[] }) {

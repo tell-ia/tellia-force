@@ -118,26 +118,26 @@ export function createAdvisorTools(registry: FarmRegistry) {
     execute: async ({ fieldId, date }, ctx) => (await serviceOf(ctx)).getFieldReport(fieldId, date),
   });
 
+  const widgetName = z.enum([
+    "waterBalance",
+    "reserve",
+    "cropStage",
+    "nextDays",
+    "seasonBalance",
+    "soil",
+  ]);
   const showWidget = createTool({
     id: "show_widget",
     description:
       "Show one chart from a field's report in the chat when the farmer asks to SEE it: " +
-      "`waterBalance` (the soil-water curve with rain/irrigation), `reserve` (the soil-water " +
-      "reserve gauge), `cropStage` (the growth-stage timeline), `nextDays` (the 5-day forecast), " +
-      "`seasonBalance` (season totals). Pick the one they asked for. The app draws it from the " +
-      "field report; never invent numbers.",
-    inputSchema: z.object({
-      fieldId,
-      widget: z.enum(["waterBalance", "reserve", "cropStage", "nextDays", "seasonBalance"]),
-      date,
-    }),
-    outputSchema: FieldReportSchema.extend({
-      widget: z.enum(["waterBalance", "reserve", "cropStage", "nextDays", "seasonBalance"]),
-    }),
-    execute: async ({ fieldId, widget, date }, ctx) => ({
-      ...(await (await serviceOf(ctx)).getFieldReport(fieldId, date)),
-      widget,
-    }),
+      "`waterBalance` (the soil-water curve with rain/irrigation and the plan), `reserve` (the " +
+      "soil-water reserve gauge), `cropStage` (the growth-stage timeline), `nextDays` (the 5-day " +
+      "forecast), `seasonBalance` (season totals), `soil` (texture and usable water). Pick the one " +
+      "they asked for; the app draws it, as of the current date, from the same field report the " +
+      "parcel screen uses.",
+    inputSchema: z.object({ fieldId, widget: widgetName }),
+    outputSchema: z.object({ fieldId: z.number().int(), widget: widgetName }),
+    execute: ({ fieldId, widget }) => Promise.resolve({ fieldId, widget }),
   });
 
   const getWeather = createTool({
