@@ -16,6 +16,9 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
     }
   });
 
+  // Choosing a number saves it at once on the current farm's member (the server removes it from
+  // every other member), so calls and texts from that number reach this farm.
+  const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null);
   const pickPhone = (n: string) => {
     setPhone(n);
     try {
@@ -23,6 +26,12 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
     } catch {
       /* ignore */
     }
+    if (!farm || !n) return;
+    setSaved({ ok: true, text: "Saving…" });
+    setMemberPhone(farm.memberId, n).then(
+      () => setSaved({ ok: true, text: `Saved: calls and texts from ${n} go to ${farm.farmerName || "the farm"}, ${farm.name}.` }),
+      (e: unknown) => setSaved({ ok: false, text: `Not saved: ${e instanceof Error ? e.message : String(e)}` }),
+    );
   };
 
   // Vincent's VAPI hack: picking a farm also saves the chosen number on its member.
@@ -59,22 +68,23 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
           <div style={{ fontSize: 13, color: v("ink2") }}>Parcels, chat and numbers follow the farm you pick.</div>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div role="group" aria-label="Your number" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: v("ink2") }}>
             Your number — the advisor calls &amp; texts you here
           </span>
-          <select
-            value={phone}
-            onChange={(e) => pickPhone(e.target.value)}
-            style={{ height: 48, borderRadius: 12, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontSize: 15, padding: "0 12px" }}
-          >
-            {PHONE_PRESETS.map((p) => (
-              <option key={p.number} value={p.number}>
-                {p.label} · {p.number}
-              </option>
-            ))}
-          </select>
-        </label>
+          {/* Chips, not a dropdown: tapping the number already shown saves it too. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {PHONE_PRESETS.map((p) => {
+              const on = p.number === phone;
+              return (
+                <button key={p.number} type="button" aria-pressed={on} aria-label={`${p.label} ${p.number}`} onClick={() => pickPhone(p.number)} style={{ height: 44, padding: "0 14px", borderRadius: 22, fontSize: 14, fontWeight: 600, cursor: "pointer", border: on ? `2px solid ${v("brand")}` : `1px solid ${v("line")}`, background: on ? v("okSoft") : v("surface"), color: v("ink") }}>
+                  {p.label} <span style={{ fontWeight: 400, color: v("ink2") }}>…{p.number.slice(-4)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {saved && <span role="status" style={{ fontSize: 12, color: saved.ok ? v("ink2") : v("act") }}>{saved.text}</span>}
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {farms.map((f) => (

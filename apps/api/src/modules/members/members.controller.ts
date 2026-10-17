@@ -19,7 +19,12 @@ members.post(
   validate("json", SetMemberPhoneBodySchema),
   async (c) => {
     const { id } = c.req.valid("param");
-    const { phone } = c.req.valid("json");
+    // E.164 without spaces, like the VAPI caller lookup (memberByPhoneIn).
+    const phone = c.req.valid("json").phone.replace(/[\s\-().]/g, "");
+    // One number = one member, so a call or a text reaches one farm: clear it from every other
+    // member first (member.phone is unique), then set it on this one.
+    const cleared = await db.from("member").update({ phone: null }).eq("phone", phone).neq("id", id);
+    if (cleared.error) throw new HTTPException(500, { message: cleared.error.message });
     const { data, error } = await db
       .from("member")
       .update({ phone })
