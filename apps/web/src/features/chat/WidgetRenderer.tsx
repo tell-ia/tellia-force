@@ -30,8 +30,10 @@ import type {
 import { FieldReportSchema } from "@tellia/shared";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { FieldReport, RefillPlanSeries } from "@tellia/shared";
 import { fieldReportToParcelReport } from "../../lib/mappers/parcel";
+import { buildRefillPlan } from "../../lib/api/plan";
 import { BalanceLegend, CropStageTimeline, NextDaysTable, ReserveGauge, SeasonBalanceCard, WaterBalanceChart } from "../parcel/charts";
 
 // Renders one AI SDK tool part as a card. The 13 tool keys are the UI contract
@@ -119,10 +121,19 @@ function FieldReportCard({ r }: { r: Rec }) {
 // Render one report chart on demand (show_widget), reusing the parcel components.
 function WidgetCard({ r }: { r: Rec }) {
   const parsed = FieldReportSchema.safeParse(r);
-  if (!parsed.success) return <FallbackCard toolKey="showWidget" fieldId={num(r.fieldId)} />;
-  const report = parsed.data;
-  const pr = fieldReportToParcelReport(report, { farmId: 0 });
+  const report: FieldReport | null = parsed.success ? parsed.data : null;
   const widget = str(r.widget) ?? "waterBalance";
+  // The water-balance chart also shows the recommended multi-pass plan (future
+  // irrigation), like the parcel screen — fetch it from the engine.
+  const [plan, setPlan] = useState<RefillPlanSeries | null>(null);
+  useEffect(() => {
+    if (!report || widget !== "waterBalance") return;
+    let alive = true;
+    buildRefillPlan(report.fieldId, report).then((p) => alive && setPlan(p)).catch(() => {});
+    return () => { alive = false; };
+  }, [report?.fieldId, widget]);
+  if (!report) return <FallbackCard toolKey="showWidget" fieldId={num(r.fieldId)} />;
+  const pr = fieldReportToParcelReport(report, { farmId: 0, plan });
   const title = WIDGET_TITLE[widget] ?? "Field report";
   let body: ReactNode = null;
   if (widget === "reserve") body = <ReserveGauge reserve={pr.reserve} />;
