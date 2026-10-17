@@ -6,6 +6,7 @@ import { useFarm } from "../../app/FarmContext";
 import { createChatTransport, getChatHistory } from "../../lib/api/chat";
 import { font, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
+import { Markdown } from "../../components/Markdown";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
 const MIC_PHRASE = "Should I water my fields today?"; // voice capture is mocked → sends this text
 
@@ -65,7 +66,7 @@ function MessageBlock({ message, onReply }: { message: UIMessage; onReply: (t: s
   return (
     <Block role={role}>
       {message.parts.map((part, i) => {
-        if (part.type === "text") return <TextBubble key={i} role={role}>{part.text}</TextBubble>;
+        if (part.type === "text") return <TextBubble key={i} role={role} text={part.text} />;
         if (part.type.startsWith("tool-")) {
           const tp = part as unknown as { type: string; state: ToolState; output?: unknown };
           return (
@@ -86,14 +87,15 @@ function Block({ role, children }: { role: "assistant" | "farmer"; children: Rea
   );
 }
 
-function TextBubble({ role, children }: { role: "assistant" | "farmer"; children: React.ReactNode }) {
+/** The advisor's replies render as Markdown; the farmer's own text stays plain. */
+function TextBubble({ role, text }: { role: "assistant" | "farmer"; text: string }) {
   const farmer = role === "farmer";
   return (
     <div
       style={{
         alignSelf: farmer ? "flex-end" : "flex-start",
         maxWidth: 300,
-        whiteSpace: "pre-wrap",
+        whiteSpace: farmer ? "pre-wrap" : "normal",
         background: farmer ? v("okSoft") : v("surface"),
         border: farmer ? "none" : `1px solid ${v("line")}`,
         color: v("ink"),
@@ -103,7 +105,7 @@ function TextBubble({ role, children }: { role: "assistant" | "farmer"; children
         lineHeight: 1.45,
       }}
     >
-      {children}
+      {farmer ? text : <Markdown text={text} />}
     </div>
   );
 }
