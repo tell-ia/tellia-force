@@ -21,6 +21,8 @@
 - 2026-10-17 Log screen: the field's "Irrigation log" card under the form (same component as
   the field page, no Log watering button there), reloaded after save / undo, the saved row
   highlighted; "See the log" scrolls to it. Web: 77.
+- 2026-10-17 Log screen: a "Crop" row (crop growing today and its stage, "No crop growing"
+  otherwise), via tested `cropLine` mapper. Web: 78.
 
 ## In progress
 

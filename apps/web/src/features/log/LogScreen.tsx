@@ -16,6 +16,7 @@ function useDebounced<T>(value: T, ms: number): T {
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
 import { addDays, formatDay, shortDay, weekday } from "../../lib/dates";
+import { cropLine } from "../../lib/mappers/parcel";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, SectionCard } from "../../components/ui/primitives";
@@ -182,6 +183,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
       {/* Parsed details */}
       <section aria-label="Details" style={{ background: v("surface"), border: `1px solid ${v("line")}`, borderRadius: radius.section, padding: "6px 16px", display: "flex", flexDirection: "column" }}>
         <Row label="Parcel" value={data.name} />
+        <Row label="Crop" value={cropLine(data.cropName, data.cropStage?.label)} />
         <LogDateRow day={logDay} today={asOf} min={firstDay} disabled={logged || saving} onChange={setDay} />
         {/* What TelliaForce advised — the target. */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 52, borderBottom: `1px solid ${v("line")}` }}>
