@@ -53,7 +53,9 @@ What the 5 farm tools answer (every number and total is computed by the server):
   harvest dates, previous crop), the irrigation system and the latest soil analysis (USDA texture
   class, pH, organic matter, N, P, K and more). Each part is `null` when there is none.
 - `getFieldJournal` `{ fieldId?, type?, from?, to? }`: the farm journal (`operation` and its
-  products). Default range: the field's crop season; with no field, the last 365 days. Drafts and
+  products). Default range: the field's crop season (sowing to harvest, plus the season's own rows
+  before sowing, like its manure spread; `from` is then the first day covered); with no field, the
+  last 365 days. Drafts and
   cancelled rows never show; rows after today are `planned: true`. At most 20 entries, newest first.
   `totals` cover the whole range (count per type, N / P2O5 / K2O kg/ha, irrigation mm, sprays);
   kg/ha and mm sums are `null` when the rows cover several fields.

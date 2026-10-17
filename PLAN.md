@@ -150,5 +150,5 @@ year?, cropCode?, limit? }` (limit ≤ 50, default 20).
       `vapi/README.md`. Live tests: one turn per new tool (the right tool is called; numbers in the
       reply come from the tool), plus a correction flow (correct → "Oui" → confirmIrrigation →
       updated). Run them. `deno task vapi:setup --dry-run` must list 12 phone tools.
-- [ ] 7. Review of the whole branch (read only).
-- [ ] 8. Fix the confirmed review findings, run every check, write the morning summary in `PROGRESS.md`.
+- [x] 7. Review of the whole branch (read only).
+- [x] 8. Fix the confirmed review findings, run every check, write the morning summary in `PROGRESS.md`.
