@@ -203,38 +203,50 @@ export function CropStageTimeline({ cropStage }: { cropStage: CropTimeline }) {
 // ---- Next 5 days ----------------------------------------------------------
 
 export function NextDaysTable({ days, hasPlan }: { days: NextDay[]; hasPlan?: boolean }) {
-  const cols = "46px minmax(0, 1fr) 88px";
+  const cols = "54px minmax(0, 1fr) 88px";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
         <Label>Next 5 days</Label>
         <span style={{ fontSize: 12, color: v("ink2") }}>% of usable reserve</span>
       </div>
-      {/* legend — same colours as the water-balance chart */}
+      {/* legend — rain & plan use the water-balance chart's colours */}
       <div style={{ display: "flex", gap: 14, fontSize: 11, color: v("ink2") }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 2, background: v("rain") }} />rain only
-        </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 2, background: v("brand") }} />+ {hasPlan ? "the plan" : "watering"}
-        </span>
+        {([["soil", "soil reserve"], ["rain", "+ rain"], ["brand", hasPlan ? "+ the plan" : "+ watering"]] as const).map(([c, label]) => (
+          <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: v(c) }} />{label}
+          </span>
+        ))}
       </div>
       {days.map((d) => {
         const low = d.pctWatered < 55;
-        const added = Math.max(0, d.pctWatered - d.pctNoWater);
+        const rain = d.pctRain ?? 0;
+        // soil (already held) + that day's rain = the no-water reserve; the plan tops it up.
+        const segs = [
+          { c: "soil", w: d.pctNoWater - rain },
+          { c: "rain", w: rain },
+          { c: "brand", w: Math.max(0, d.pctWatered - d.pctNoWater) },
+        ] as const;
+        const shown = segs.filter((s) => s.w > 0);
+        let left = 0;
         return (
           <div key={d.day} style={{ display: "grid", gridTemplateColumns: cols, gap: "0 10px", alignItems: "center", minHeight: 34, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
-            <span style={{ fontWeight: 600 }}>{d.day}</span>
+            <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{d.day}</span>
             <span style={{ position: "relative", height: 10, borderRadius: 5, background: v("sunk") }}>
-              {/* reserve from rain alone (blue, like the chart's rain) */}
-              <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: added > 0 ? "5px 0 0 5px" : 5, width: `${d.pctNoWater}%`, background: v("rain") }} />
-              {/* what the recommended irrigation adds (green, like the plan), capping the fill */}
-              <span style={{ position: "absolute", left: `${d.pctNoWater}%`, top: 0, bottom: 0, borderRadius: d.pctNoWater > 0 ? "0 5px 5px 0" : 5, width: `${added}%`, background: v("brand") }} />
+              {shown.map((s, i) => {
+                const x = left;
+                left += s.w;
+                const first = i === 0;
+                const last = i === shown.length - 1;
+                return (
+                  <span key={s.c} style={{ position: "absolute", left: `${x}%`, top: 0, bottom: 0, width: `${s.w}%`, boxSizing: "border-box", borderLeft: first ? 0 : `2px solid ${v("surface")}`, borderRadius: `${first ? 5 : 0}px ${last ? 5 : 0}px ${last ? 5 : 0}px ${first ? 5 : 0}px`, background: v(s.c) }} />
+                );
+              })}
               {/* comfort threshold */}
               <span style={{ position: "absolute", left: "55%", top: -3, bottom: -3, width: 2, background: v("ink"), opacity: 0.6 }} />
             </span>
             <span style={{ textAlign: "right", fontWeight: 600 }}>
-              <span style={{ color: v("rain") }}>{d.pctNoWater}</span>
+              <span style={{ color: v("ink2") }}>{d.pctNoWater}</span>
               <span style={{ color: v("ink2") }}>→</span>
               <span style={{ color: low ? v("act") : v("brand") }}>{d.pctWatered}%</span>
             </span>

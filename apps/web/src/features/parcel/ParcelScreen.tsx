@@ -124,7 +124,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
               <CornerHint text="Each bar is the soil reserve that day, as % of usable water: the reserve from rain alone, then the recommended watering stacked on top. The tick is the comfort threshold." />
               <NextDaysTable days={data.nextDays} hasPlan={!!data.plan} />
               <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
-                Each bar: reserve from rain alone, then the recommended {data.plan ? "plan" : "watering"} on top — rain counts in both. Comfort threshold at the tick (55%).
+                Each bar: water already in the soil, plus that day's rain, plus the recommended {data.plan ? "plan" : "watering"}. Tomorrow, today's rain counts as soil. Comfort threshold at the tick (55%).
               </div>
             </SectionCard>
           )}

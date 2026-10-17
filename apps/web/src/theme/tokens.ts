@@ -19,6 +19,7 @@ export const colors = {
     water: "#2E7D72",
     waterSoft: "#D5E8E3",
     rain: "#6E97B8", // rainfall bars (distinct from irrigation teal)
+    soil: "#A88F68", // water already held in the soil (next-days bars)
     cons: "#C9BE9E", // crop-use bars
     act: "#9C5A14", // the single "action needed" accent
     actSoft: "#F4E4CC",
@@ -36,6 +37,7 @@ export const colors = {
     water: "#5FBFAF",
     waterSoft: "#1D3A35",
     rain: "#6E97B8",
+    soil: "#8C7A5C",
     cons: "#A39B7B",
     act: "#E5A35C",
     actSoft: "#3B2914",

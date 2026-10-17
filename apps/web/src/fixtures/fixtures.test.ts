@@ -45,6 +45,9 @@ describe("the hero parcel is internally consistent", () => {
   });
 
   it("watering lifts every next-day reserve above the no-water case", () => {
-    for (const d of r.nextDays ?? []) expect(d.pctWatered).toBeGreaterThan(d.pctNoWater);
+    for (const d of r.nextDays ?? []) {
+      expect(d.pctWatered).toBeGreaterThan(d.pctNoWater);
+      expect(d.pctRain ?? 0).toBeLessThanOrEqual(d.pctNoWater);
+    }
   });
 });

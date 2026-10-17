@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FieldReport } from "@tellia/shared";
-import { eveLabel, fieldReportToReserve, grossFromNet, reservePct, wateredPct } from "./parcel";
+import { eveLabel, fieldReportToReserve, grossFromNet, rainPct, reservePct, wateredPct } from "./parcel";
 
 describe("parcel mappers (demo numbers)", () => {
   it("gross from 35 mm net at the reel gun ≈ 44 mm", () => {
@@ -19,6 +19,12 @@ describe("parcel mappers (demo numbers)", () => {
 
   it("Thursday's 61% becomes 85% with 35 mm net", () => {
     expect(wateredPct(61, 35, 144)).toBe(85);
+  });
+
+  it("splits the reserve into soil + the day's rain", () => {
+    expect(rainPct(8, 120, 60)).toBe(7); // 53% soil + 7% rain
+    expect(rainPct(0, 144, 61)).toBe(0);
+    expect(rainPct(50, 100, 30)).toBe(30); // rain that drained can't exceed the reserve
   });
 
   it("maps a FieldReport to the reserve gauge props", () => {

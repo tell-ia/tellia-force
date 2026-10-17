@@ -156,6 +156,7 @@ export const NextDaySchema = z.object({
   day: z.string(), // "Thu 14"
   tempMax: z.number().int().optional(), // omitted when the series carries no temperature
   pctNoWater: z.number().int(),
+  pctRain: z.number().int().optional(), // part of pctNoWater that fell as rain that day (rest = soil)
   pctWatered: z.number().int(),
 });
 

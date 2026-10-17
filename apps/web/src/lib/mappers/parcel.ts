@@ -44,6 +44,10 @@ export function eveLabel(asOf: string, daysUntil: number | null): string {
 export const wateredPct = (noWaterPct: number, netMm: number, capacityMm: number): number =>
   Math.min(100, Math.round(noWaterPct + (netMm / capacityMm) * 100));
 
+/** Part of the day's reserve % that is that day's rain; the rest was already in the soil. */
+export const rainPct = (rainMm: number, tawMm: number, noWaterPct: number): number =>
+  Math.max(0, Math.min(noWaterPct, Math.round((rainMm / tawMm) * 100)));
+
 /**
  * When the deficit is larger than one pass, the field is refilled over several
  * passes (the reel gun caps each pass). Returns the plan, or null for a single pass.
@@ -237,7 +241,8 @@ export function fieldReportToParcelReport(
       const planMm = planRes?.get(d.date);
       const pctWatered =
         planMm != null ? Math.round((planMm / d.taw) * 100) : wateredPct(pctNoWater, r.irrigateMm, cap);
-      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctWatered };
+      const pctRain = rainPct(d.rain, d.taw, pctNoWater);
+      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctRain, pctWatered };
     });
   }
 
