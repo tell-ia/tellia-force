@@ -45,6 +45,7 @@ Deno.test("instructions: member 1 sees the farm, fields and the rules", opts, as
       "Today is 2026-07-05",
       "Never compute or guess numbers",
       "confirmIrrigation",
+      "simple Markdown",
     ]
   ) assertStringIncludes(t, s);
 });
