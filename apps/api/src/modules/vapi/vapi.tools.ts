@@ -5,6 +5,7 @@
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { type FieldReport, IsoDateSchema, ScenarioEventSchema } from "@tellia/shared/irrigation";
+import { type JournalEntry, JournalTypeSchema } from "@tellia/shared/farm";
 import type { FarmScope } from "../irrigation/farmRegistry";
 
 export interface VapiCaller {
@@ -47,6 +48,24 @@ function brief(r: FieldReport) {
     rainNext3DaysMm: r.rainNext3DaysMm,
     reason: r.reason,
     warnings: r.warnings,
+  };
+}
+
+/** The voice reads every entry: fewer than the chat's 20. */
+export const VOICE_JOURNAL_ENTRIES = 10;
+
+/** One journal entry, flat: products as short strings ("ADENGO 0.33 L/ha"). */
+function voiceEntry(e: JournalEntry) {
+  const { operationId: _id, fieldId: _f, status: _s, bbch: _b, products, ...rest } = e;
+  return {
+    ...rest,
+    ...(products.length
+      ? {
+        products: products.map((p) =>
+          [p.productName, p.dose, p.doseUnit].filter((x) => x != null).join(" ")
+        ),
+      }
+      : {}),
   };
 }
 
@@ -133,6 +152,68 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
         comparison: result.comparison,
         before: brief(result.baseline),
         after: brief(result.scenario),
+      };
+    },
+  }),
+
+  get_field_details: defineTool({
+    description:
+      "Facts about one field: size, the crop growing today (variety, sowing and harvest dates, previous crop), its irrigation system and its latest soil analysis (texture, pH, organic matter, nitrogen, phosphorus, potassium).",
+    parameters: z.object({ fieldId }),
+    run: async ({ fieldId }, { scope }) => {
+      const { field, crop, irrigationSystem: system, soil } = await scope.service.getFieldDetails(
+        fieldId,
+      );
+      return {
+        fieldId: field.id,
+        fieldName: field.name,
+        areaHa: field.areaHa,
+        tenure: field.tenure,
+        irrigable: field.irrigable,
+        cropName: crop?.name ?? null,
+        variety: crop?.variety ?? null,
+        sowingDate: crop?.sowingDate ?? null,
+        harvestDate: crop?.harvestDate ?? null,
+        cropStatus: crop?.status ?? null,
+        previousCrop: crop?.previousCropName ?? null,
+        irrigationSystem: system?.name ?? null,
+        irrigationSystemType: system?.type ?? null,
+        soilSampledOn: soil?.sampledOn ?? null,
+        soilTexture: soil?.textureClass ?? null,
+        ph: soil?.ph ?? null,
+        organicMatterPct: soil?.organicMatterPct ?? null,
+        sandPct: soil?.sandPct ?? null,
+        siltPct: soil?.siltPct ?? null,
+        clayPct: soil?.clayPct ?? null,
+        nitrogenGKg: soil?.nitrogenGKg ?? null,
+        phosphorusMgKg: soil?.phosphorusMgKg ?? null,
+        potassiumMgKg: soil?.potassiumMgKg ?? null,
+        limeRequirementTHa: soil?.limeRequirementTHa ?? null,
+      };
+    },
+  }),
+
+  get_field_journal: defineTool({
+    description:
+      "What was done on a field, or on every field: sowing, fertiliser, sprays and their products, irrigation, harvest. Newest first, with totals for the whole period (nitrogen, phosphorus and potassium in kg per hectare, irrigation mm, number of sprays). Entries with planned true are not done yet. Default period: the field's crop season, or the last year for the whole farm.",
+    parameters: z.object({
+      fieldId: z.number().int().optional().describe(
+        "Field id, from resolve_field. Leave it out for the whole farm.",
+      ),
+      type: JournalTypeSchema.optional().describe("Only this kind of work."),
+      from: IsoDateSchema.optional().describe("First day, YYYY-MM-DD."),
+      to: IsoDateSchema.optional().describe("Last day, YYYY-MM-DD."),
+    }),
+    run: async ({ fieldId, type, from, to }, { scope }) => {
+      const j = await scope.service.getFieldJournal({ fieldId, type, from, to });
+      const entries = j.entries.slice(0, VOICE_JOURNAL_ENTRIES).map(voiceEntry);
+      return {
+        fieldName: j.fieldName,
+        from: j.from,
+        to: j.to,
+        entries,
+        totals: j.totals,
+        truncated: j.truncated || j.entries.length > entries.length,
       };
     },
   }),

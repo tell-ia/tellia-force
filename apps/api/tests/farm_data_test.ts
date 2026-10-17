@@ -544,7 +544,15 @@ Deno.test("row mappers: soil class, irrigation system, earliness, Tmax, aridity"
   assertEquals(mapIrrigationSystem(faoTables().irrigation_system[0]), REEL_GUN);
   assertEquals(
     mapIrrigationSystem({ id: 3, name: "Drip", efficiency: "0.9" }),
-    { id: 3, name: "Drip", efficiency: 0.9, doseMinMm: null, doseMaxMm: null, roundDays: null },
+    {
+      id: 3,
+      name: "Drip",
+      type: null,
+      efficiency: 0.9,
+      doseMinMm: null,
+      doseMaxMm: null,
+      roundDays: null,
+    },
   );
   const season = {
     id: 1,

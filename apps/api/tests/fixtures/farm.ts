@@ -54,6 +54,7 @@ export function makeFarmFixture(): FarmFixture {
         areaHa: 12.5,
         irrigable: true,
         centroid: { lat: 48.046, lon: 1.794 },
+        tenure: "owned",
       },
       {
         id: 11,
@@ -61,8 +62,16 @@ export function makeFarmFixture(): FarmFixture {
         areaHa: 8.2,
         irrigable: true,
         centroid: { lat: 48.05, lon: 1.79 },
+        tenure: "rented",
       },
-      { id: 3, name: "Les Longues Raies", areaHa: 15, irrigable: false, centroid: null },
+      {
+        id: 3,
+        name: "Les Longues Raies",
+        areaHa: 15,
+        irrigable: false,
+        centroid: null,
+        tenure: "owned",
+      },
     ],
     seasons: {
       10: [{
@@ -71,6 +80,8 @@ export function makeFarmFixture(): FarmFixture {
         sowingDate: "2026-04-16",
         harvestDate: "2026-10-17",
         status: "growing",
+        variety: "MAIZ-V03",
+        previousCropCode: "COWT",
       }],
       11: [{
         id: 121,
@@ -88,7 +99,26 @@ export function makeFarmFixture(): FarmFixture {
       }],
     },
     soils: {
-      10: { sandPct: 63.5, clayPct: 6.7, organicMatterPct: 5.11 },
+      // Full analysis: the engine reads sand, clay and organic matter only.
+      10: {
+        sandPct: 63.5,
+        clayPct: 6.7,
+        organicMatterPct: 5.11,
+        sampledOn: "2024-09-10",
+        siltPct: 29.8,
+        ph: 6.4,
+        nitrogenGKg: 1.6,
+        phosphorusMgKg: 42.1,
+        potassiumMgKg: 180.5,
+        sulfurMgKg: 12.3,
+        calciumMgKg: 1450,
+        magnesiumMgKg: 120.4,
+        zincMgKg: 2.1,
+        boronMgKg: 0.6,
+        cecCmolKg: 9.8,
+        bulkDensityKgDm3: 1.42,
+        limeRequirementTHa: 0,
+      },
       11: { sandPct: 30.6, clayPct: 28.3, organicMatterPct: 0.95 },
     },
     cropRefs: [
@@ -138,7 +168,162 @@ export function makeFarmFixture(): FarmFixture {
       source: "import",
       memberId: null,
     }],
+    operations: farm1Journal(),
   };
+}
+
+/**
+ * Farm 1's journal besides irrigations. La Vallée's maize season (16 Apr – 17 Oct 2026) has
+ * 6 done rows here plus the 30 mm irrigation: N 110, P2O5 40, K2O 60 kg/ha, 2 sprays. The
+ * tillage is before sowing, the harvest is planned after TEST_TODAY (2026-07-05), and the
+ * draft and the cancelled spray must never show.
+ */
+function farm1Journal(): NonNullable<FarmFixture["operations"]> {
+  const base = { status: "confirmed" as const, products: [] };
+  return [
+    {
+      ...base,
+      operationId: 1001,
+      fieldId: 10,
+      seasonId: null,
+      date: "2026-04-02",
+      type: "tillage",
+      method: "ploughing",
+    },
+    {
+      ...base,
+      operationId: 1002,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-04-16",
+      type: "sowing",
+      bbch: 0,
+      variety: "MAIZ-V03",
+      seedRateKgHa: 25,
+    },
+    {
+      ...base,
+      operationId: 1003,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-05-20",
+      type: "fertilisation",
+      bbch: 14,
+      fertiliserType: "mineral",
+      nKgHa: 60,
+      p2o5KgHa: 40,
+      k2oKgHa: 60,
+      method: "broadcast",
+    },
+    {
+      ...base,
+      operationId: 1005,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-05-28",
+      type: "spraying",
+      bbch: 15,
+      notes: "weeds after rain",
+      products: [
+        { productId: 501, productName: "ADENGO", dose: 0.33, doseUnit: "L/ha", target: "Weeds" },
+        { productId: 502, productName: "CALLISTO", dose: 0.75, doseUnit: "L/ha", target: "Weeds" },
+      ],
+    },
+    {
+      ...base,
+      operationId: 1004,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-06-10",
+      type: "fertilisation",
+      bbch: 32,
+      fertiliserType: "mineral",
+      nKgHa: 50,
+      method: "broadcast",
+    },
+    {
+      ...base,
+      operationId: 1006,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-06-25",
+      type: "spraying",
+      bbch: 51,
+      products: [{
+        productId: 503,
+        productName: "KARATE AVEC TECHNOLOGIE ZEON",
+        dose: 0.15,
+        doseUnit: "L/ha",
+        target: "Corn borer",
+      }],
+    },
+    {
+      ...base,
+      operationId: 1007,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-06-30",
+      type: "observation",
+      notes: "Corn borer eggs on the leaves",
+    },
+    {
+      ...base,
+      operationId: 1010,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-07-01",
+      type: "spraying",
+      status: "draft",
+    },
+    {
+      ...base,
+      operationId: 1011,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-07-02",
+      type: "spraying",
+      status: "cancelled",
+    },
+    {
+      ...base,
+      operationId: 1008,
+      fieldId: 10,
+      seasonId: 109,
+      date: "2026-10-10",
+      type: "harvest",
+      status: "planned",
+    },
+    // Les Longues Raies (rapeseed, 24 Aug 2025 – 22 Jul 2026).
+    {
+      ...base,
+      operationId: 1020,
+      fieldId: 3,
+      seasonId: 30,
+      date: "2025-08-24",
+      type: "sowing",
+      variety: "RAPE-V02",
+      seedRateKgHa: 3,
+    },
+    {
+      ...base,
+      operationId: 1021,
+      fieldId: 3,
+      seasonId: 30,
+      date: "2026-02-20",
+      type: "fertilisation",
+      fertiliserType: "organic",
+      nKgHa: 80,
+    },
+    {
+      ...base,
+      operationId: 1022,
+      fieldId: 3,
+      seasonId: 30,
+      date: "2026-07-20",
+      type: "harvest",
+      status: "planned",
+    },
+  ];
 }
 
 /**
@@ -187,5 +372,44 @@ export function makeSecondFarmFixture(): FarmFixture {
       source: "import",
       memberId: null,
     }],
+    // Its own journal: N 90 kg/ha and one spray with a synthetic product.
+    operations: [
+      {
+        operationId: 9001,
+        fieldId: 15,
+        seasonId: 150,
+        date: "2026-04-16",
+        type: "sowing",
+        status: "confirmed",
+        variety: "MAIZ-V07",
+        products: [],
+      },
+      {
+        operationId: 9002,
+        fieldId: 15,
+        seasonId: 150,
+        date: "2026-05-15",
+        type: "fertilisation",
+        status: "confirmed",
+        nKgHa: 90,
+        p2o5KgHa: 30,
+        products: [],
+      },
+      {
+        operationId: 9003,
+        fieldId: 15,
+        seasonId: 150,
+        date: "2026-06-01",
+        type: "spraying",
+        status: "confirmed",
+        products: [{
+          productId: null,
+          productName: "Herbicida A",
+          dose: 1,
+          doseUnit: "L/ha",
+          target: "Malas hierbas",
+        }],
+      },
+    ],
   };
 }

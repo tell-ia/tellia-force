@@ -2,7 +2,7 @@ import { assert, assertEquals, assertMatch } from "@std/assert";
 import { Hono } from "hono";
 import { onError } from "../src/core/middleware";
 import { createVapiController, VAPI_SECRET_HEADER } from "../src/modules/vapi/vapi.controller";
-import { VAPI_TOOLS, vapiFunctions } from "../src/modules/vapi/vapi.tools";
+import { VAPI_TOOLS, vapiFunctions, VOICE_JOURNAL_ENTRIES } from "../src/modules/vapi/vapi.tools";
 import { makeTestRegistry, TEST_TODAY } from "./helpers/testApp";
 
 const SECRET = "test-secret-0123456789";
@@ -182,4 +182,55 @@ Deno.test("vapi: function definitions are plain JSON Schema objects", () => {
     properties: { events: { items: { required: string[] } } };
   };
   assertEquals(sim.properties.events.items.required, ["type", "date"]);
+});
+
+Deno.test("vapi: get_field_details gives a short flat answer", async () => {
+  const { app } = makeVapiApp();
+  const [r] = await call(app, [{ name: "get_field_details", arguments: { fieldId: 10 } }]);
+  assertEquals(r.data.fieldName, "La Vallée");
+  assertEquals(r.data.cropName, "Maïs");
+  assertEquals(r.data.previousCrop, "Blé tendre d'hiver");
+  assertEquals(r.data.soilTexture, "Sandy loam");
+  assertEquals(r.data.ph, 6.4);
+  assertEquals(r.data.irrigationSystem, null);
+  for (const [k, v] of Object.entries(r.data)) {
+    assert(v === null || typeof v !== "object", `${k} is nested`);
+  }
+});
+
+Deno.test("vapi: get_field_journal: totals from the server, products as short strings", async () => {
+  const { app } = makeVapiApp();
+  const [field, sprays, farm, bad] = await call(app, [
+    { name: "get_field_journal", arguments: { fieldId: 10 } },
+    { name: "get_field_journal", arguments: { fieldId: 10, type: "spraying" } },
+    { name: "get_field_journal", arguments: {} },
+    { name: "get_field_journal", arguments: { type: "weeding" } },
+  ]);
+  assertEquals(field.data.fieldName, "La Vallée");
+  assertEquals(field.data.entries.length, 8);
+  assertEquals(field.data.truncated, false);
+  assertEquals(field.data.totals.nKgHa, 110);
+  assertEquals(field.data.totals.irrigationMm, 30);
+  assertEquals(field.data.entries[0].planned, true);
+  assert(!("operationId" in field.data.entries[0]), "no ids for the voice");
+  assertEquals(sprays.data.entries[1].products, ["ADENGO 0.33 L/ha", "CALLISTO 0.75 L/ha"]);
+  assert(!("products" in field.data.entries[1]), "no empty product list");
+  // 11 entries on the farm: the voice gets 10 and knows there are more.
+  assertEquals(farm.data.entries.length, VOICE_JOURNAL_ENTRIES);
+  assertEquals(farm.data.truncated, true);
+  assertEquals(farm.data.totals.count, 10);
+  assertMatch(bad.error, /type/);
+});
+
+Deno.test("vapi: field details and journal stay on the caller's farm", async () => {
+  const { app } = makeVapiApp();
+  const [details, journal, own] = await call(app, [
+    { name: "get_field_details", arguments: { fieldId: 10 } },
+    { name: "get_field_journal", arguments: { fieldId: 10 } },
+    { name: "get_field_journal", arguments: {} },
+  ], ELENA_PHONE);
+  assertMatch(details.error, /field 10 not found/);
+  assertMatch(journal.error, /field 10 not found/);
+  assert(own.data.entries.every((e: { fieldName: string }) => e.fieldName === "El Pozo"));
+  assertEquals(own.data.totals.nKgHa, 90);
 });

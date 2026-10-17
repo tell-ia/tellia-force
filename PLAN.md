@@ -133,7 +133,7 @@ year?, cropCode?, limit? }` (limit ≤ 50, default 20).
 
 ## Tasks
 
-- [ ] 1. Tools A + B (`getFieldDetails`, `getFieldJournal`): create `@tellia/shared/farm`, data
+- [x] 1. Tools A + B (`getFieldDetails`, `getFieldJournal`): create `@tellia/shared/farm`, data
       layer + twin + fixtures, service, chat tools, phone tools, routing lines, offline tests.
 - [ ] 2. Tool C (`checkProductUse`), same layers and tests. Fixtures: a few products and uses for
       farm 1's crops, synthetic ones for farm 2.

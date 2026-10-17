@@ -1,7 +1,7 @@
 import { cors } from "hono/cors";
 import { createMastra, mountChat } from "../../src/modules/chat/mastra";
 import { Mastra } from "@mastra/core";
-import { LibSQLStore } from "@mastra/libsql";
+import { InMemoryStore } from "@mastra/core/storage";
 import { Hono } from "hono";
 import { ADVISOR_ID, createAdvisorAgent } from "../../src/modules/chat/advisor.agent";
 import { createAdvisorWorkflows } from "../../src/modules/chat/workflows/index";
@@ -108,7 +108,11 @@ export async function makeTestApp(opts: Parameters<typeof makeTestRegistry>[0] =
   return { app, registry, data, service };
 }
 
-/** A Mastra instance with the advisor workflows (and agent, given a model) on temp LibSQL. */
+/**
+ * A Mastra instance with the advisor workflows (and agent, given a model) on in-memory storage.
+ * Not LibSQL: its native addon can segfault when the garbage collector finalizes its objects,
+ * which crashed whole test files at random. makeTestChatApp keeps LibSQL (the real setup).
+ */
 export async function makeTestMastra(
   opts: {
     registry: FarmRegistry;
@@ -117,10 +121,7 @@ export async function makeTestMastra(
   },
 ) {
   const workflows = createAdvisorWorkflows(opts.registry);
-  const storage = new LibSQLStore({
-    id: "test-store",
-    url: `file:${await tempDbDir()}/t.db`,
-  });
+  const storage = new InMemoryStore({ id: "test-store" });
   return new Mastra({
     storage,
     workflows: {

@@ -10,6 +10,7 @@ import type {
   Farm,
   FarmData,
   FarmDirectory,
+  FarmOperation,
   Field,
   IrrigationOperation,
   IrrigationSystem,
@@ -43,13 +44,33 @@ export interface FarmFixture {
   soilClasses?: SoilWaterClass[];
   /** Irrigation equipment keyed by field id. */
   irrigationSystems?: Record<number, IrrigationSystem>;
+  /**
+   * Journal rows other than irrigations (any status). Irrigations live in `irrigations` and
+   * join the journal from there. Ids must not overlap with `irrigations`.
+   */
+  operations?: FarmOperation[];
+}
+
+/** An irrigation as a journal row. */
+function irrigationRow(o: IrrigationOperation): FarmOperation {
+  return {
+    operationId: o.operationId,
+    fieldId: o.fieldId,
+    seasonId: o.seasonId,
+    date: o.date,
+    type: "irrigation",
+    status: o.status,
+    waterMm: o.mm,
+    products: [],
+  };
 }
 
 /** In-memory FarmData for tests. Copies the fixture so tests can't leak state. */
 export function createMemoryFarmData(fixture: FarmFixture): FarmData {
   const f = structuredClone(fixture);
   const ops = f.irrigations;
-  let nextId = Math.max(0, ...ops.map((o) => o.operationId)) + 1;
+  const journal = f.operations ?? [];
+  let nextId = Math.max(0, ...[...ops, ...journal].map((o) => o.operationId)) + 1;
 
   const find = (id: number) => {
     const op = ops.find((o) => o.operationId === id);
@@ -88,6 +109,14 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
       ops.filter((o) => o.fieldId === fieldId && (opts.includeDrafts || o.status !== "draft"))
         .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.operationId - b.operationId)
         .map((o) => ({ ...o })),
+    listOperations: async ({ from, to, fieldId, type }) =>
+      [...journal, ...ops.map(irrigationRow)]
+        .filter((o) =>
+          (o.status === "confirmed" || o.status === "planned") && o.date >= from &&
+          o.date <= to && (fieldId === undefined || o.fieldId === fieldId) &&
+          (type === undefined || o.type === type)
+        )
+        .map((o) => structuredClone(o)),
     getIrrigation: async (id) => {
       const op = ops.find((o) => o.operationId === id);
       return op ? { ...op } : null;

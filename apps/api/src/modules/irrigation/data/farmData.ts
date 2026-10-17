@@ -34,6 +34,8 @@ export interface Field {
   areaHa: number;
   irrigable: boolean;
   centroid: { lat: number; lon: number } | null;
+  /** owned, rented... */
+  tenure?: string | null;
 }
 
 export interface CropSeason {
@@ -44,12 +46,29 @@ export interface CropSeason {
   status: string;
   /** Variety group ("early", "late"...): picks the crop phase row. Null = default row. */
   earlinessGroup?: string | null;
+  variety?: string | null;
+  previousCropCode?: string | null;
 }
 
+/** A soil analysis. The engine reads sand, clay and organic matter; the rest is for people. */
 export interface SoilAnalysis {
   sandPct: number;
   clayPct: number;
   organicMatterPct: number;
+  sampledOn?: IsoDate | null;
+  siltPct?: number | null;
+  ph?: number | null;
+  nitrogenGKg?: number | null;
+  phosphorusMgKg?: number | null;
+  potassiumMgKg?: number | null;
+  sulfurMgKg?: number | null;
+  calciumMgKg?: number | null;
+  magnesiumMgKg?: number | null;
+  zincMgKg?: number | null;
+  boronMgKg?: number | null;
+  cecCmolKg?: number | null;
+  bulkDensityKgDm3?: number | null;
+  limeRequirementTHa?: number | null;
 }
 
 export interface CropRef {
@@ -89,6 +108,8 @@ export interface StoredWeatherDay {
 export interface IrrigationSystem {
   id: number;
   name: string;
+  /** reel_gun, pivot, sprinkler or drip. */
+  type?: string | null;
   /** Share of pumped water that reaches the roots: net mm = gross mm x efficiency. */
   efficiency: number;
   doseMinMm: number | null;
@@ -115,6 +136,58 @@ export interface IrrigationOperation {
   status: OperationStatus;
   source: OperationSource;
   memberId: number | null;
+}
+
+/** Journal operation types (`operation.op_type`). */
+export type OperationType =
+  | "sowing"
+  | "fertilisation"
+  | "spraying"
+  | "irrigation"
+  | "harvest"
+  | "tillage"
+  | "observation"
+  | "other";
+
+/** A product used in an operation (`operation_input`). Dose is per hectare. */
+export interface OperationProduct {
+  productId: number | null;
+  productName: string;
+  dose: number | null;
+  doseUnit: string | null;
+  target: string | null;
+}
+
+/** One journal row (`operation`) with its products. Values that do not apply may be absent. */
+export interface FarmOperation {
+  operationId: number;
+  fieldId: number;
+  seasonId: number | null;
+  date: IsoDate;
+  type: OperationType;
+  status: OperationStatus | "cancelled";
+  bbch?: number | null;
+  fertiliserType?: string | null;
+  nKgHa?: number | null;
+  p2o5KgHa?: number | null;
+  k2oKgHa?: number | null;
+  waterMm?: number | null;
+  variety?: string | null;
+  seedRateKgHa?: number | null;
+  yieldTHa?: number | null;
+  moisturePct?: number | null;
+  proteinPct?: number | null;
+  method?: string | null;
+  notes?: string | null;
+  products: OperationProduct[];
+}
+
+/** Which journal rows to read. Dates are inclusive. */
+export interface OperationFilter {
+  from: IsoDate;
+  to: IsoDate;
+  fieldId?: number;
+  type?: OperationType;
 }
 
 export interface NewIrrigation {
@@ -192,6 +265,11 @@ export interface FarmData {
     fieldId: number,
     opts: { includeDrafts: boolean },
   ): Promise<IrrigationOperation[]>;
+  /**
+   * Journal rows in [from, to] of this farm, confirmed and planned only (drafts and cancelled
+   * rows are left out), with their products. Order is not guaranteed.
+   */
+  listOperations(filter: OperationFilter): Promise<FarmOperation[]>;
   /** One irrigation operation by id, or null when missing / not an irrigation. */
   getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;

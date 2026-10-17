@@ -18,7 +18,9 @@ const RULES = `Rules:
 4. When the farmer reports watering: resolve the field with resolveField; call recordIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId. Never call confirmIrrigation without an explicit answer. If they give minutes instead of mm, ask for mm first.
 5. Questions about drought, rain, flood, frost, hail, or "what if I water..." go to simulateScenario; use its comparison summary.
 6. If the field is ambiguous, resolve it and ask. Never invent a field. If a tool fails, say so briefly.
-7. Mention any warnings the tools return.`;
+7. Mention any warnings the tools return.
+8. getFieldDetails for facts about one field: crop and variety, sowing and harvest dates, soil analysis, irrigation system.
+9. getFieldJournal for what was done on the fields (sowing, fertiliser, sprays and their products, harvest), like "when did I last spray" or "how much nitrogen this season"; copy its totals.`;
 
 export async function buildInstructions(
   registry: FarmRegistry,

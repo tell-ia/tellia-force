@@ -1,5 +1,5 @@
-// The eight chat tools. The member and their farm come only from the request context, never
-// from input, so a tool can only see and write the caller's own farm.
+// The chat tools. The member and their farm come only from the request context, never from
+// input, so a tool can only see and write the caller's own farm.
 
 import { createTool } from "@mastra/core/tools";
 import type { RequestContext } from "@mastra/core/request-context";
@@ -13,6 +13,7 @@ import {
   ScenarioResultSchema,
   WeatherDaySchema,
 } from "@tellia/shared/irrigation";
+import { FieldDetailsSchema, FieldJournalSchema, JournalTypeSchema } from "@tellia/shared/farm";
 import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "./requestContext";
 
@@ -240,6 +241,32 @@ export function createAdvisorTools(registry: FarmRegistry) {
     },
   });
 
+  const getFieldDetails = createTool({
+    id: "get_field_details",
+    description:
+      "Facts about one field: area, tenure, the crop growing today (variety, sowing and expected harvest dates, previous crop), the irrigation system and the latest soil analysis (texture class, pH, organic matter, N, P, K and more). Use it for 'tell me about this field' or soil questions.",
+    inputSchema: z.object({ fieldId }),
+    outputSchema: FieldDetailsSchema,
+    execute: async ({ fieldId }, ctx) => (await serviceOf(ctx)).getFieldDetails(fieldId),
+  });
+
+  const getFieldJournal = createTool({
+    id: "get_field_journal",
+    description:
+      "The farm journal: what was done on a field, or on every field (sowing, fertilisation, spraying with its products, irrigation, harvest, tillage, observations). Newest first, at most 20 entries; entries with planned true are not done yet. totals cover the whole range, not only the entries shown: count per type, N, P2O5 and K2O in kg/ha, irrigation mm, number of sprays. Default range: the field's crop season; with no field, the last 365 days. Use it for 'what did I do on...', 'when did I last spray...', 'how much nitrogen this season'. Copy the totals; never add entries up yourself.",
+    inputSchema: z.object({
+      fieldId: z.number().int().optional().describe(
+        "Field id, from resolveField. Leave it out for the whole farm.",
+      ),
+      type: JournalTypeSchema.optional().describe("Only this kind of operation."),
+      from: IsoDateSchema.optional().describe("First day, YYYY-MM-DD."),
+      to: IsoDateSchema.optional().describe("Last day, YYYY-MM-DD."),
+    }),
+    outputSchema: FieldJournalSchema,
+    execute: async ({ fieldId, type, from, to }, ctx) =>
+      (await serviceOf(ctx)).getFieldJournal({ fieldId, type, from, to }),
+  });
+
   return {
     resolveField,
     getFieldReport,
@@ -249,5 +276,7 @@ export function createAdvisorTools(registry: FarmRegistry) {
     simulateScenario,
     recordIrrigation,
     confirmIrrigation,
+    getFieldDetails,
+    getFieldJournal,
   };
 }

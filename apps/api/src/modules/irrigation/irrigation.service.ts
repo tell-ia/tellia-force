@@ -35,6 +35,7 @@ import {
   type Phase,
 } from "./engine/cropModel";
 import { buildFieldReport, rankReports, reportBalance, type ReportInput } from "./engine/report";
+import { createFarmInfoService, type FarmInfoService } from "./farmInfo.service";
 import { applyScenario, compareReports } from "./engine/scenario";
 import {
   DEFAULT_LOAM,
@@ -69,7 +70,8 @@ export interface IrrigationPreview {
   summary: string;
 }
 
-export interface IrrigationService {
+/** Irrigation use cases, plus field details and the journal (farmInfo.service.ts). */
+export interface IrrigationService extends FarmInfoService {
   today(): string;
   /** Main contact's member id, or null when the farm has none. */
   defaultMemberId(): Promise<number | null>;
@@ -577,6 +579,8 @@ export function createIrrigationService(
   }
 
   return {
+    ...createFarmInfoService({ data, today: deps.today, language }),
+
     today: () => deps.today(),
 
     async defaultMemberId() {

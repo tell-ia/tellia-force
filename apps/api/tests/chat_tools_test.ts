@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
+import { FieldDetailsSchema, FieldJournalSchema } from "@tellia/shared/farm";
 import { createAdvisorTools } from "../src/modules/chat/tools.ts";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
 import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
@@ -40,6 +41,8 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
     [
       "confirmIrrigation",
       "getFarmAdvice",
+      "getFieldDetails",
+      "getFieldJournal",
       "getFieldReport",
       "getIrrigationHistory",
       "getWeather",
@@ -50,6 +53,8 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
   );
   assertEquals(tools.recordIrrigation.id, "record_irrigation");
   assertEquals(tools.getIrrigationHistory.id, "get_irrigation_history");
+  assertEquals(tools.getFieldDetails.id, "get_field_details");
+  assertEquals(tools.getFieldJournal.id, "get_field_journal");
 });
 
 Deno.test("tool texts name other tools by key (what the model sees), never by id", opts, async () => {
@@ -230,3 +235,53 @@ Deno.test("tools: confirm refuses a run from another farm", opts, async () => {
   );
   assertEquals(draft.map((o) => o.status), ["draft"]);
 });
+
+Deno.test("getFieldDetails: crop, soil and system of the caller's field", opts, async () => {
+  const { tools, run } = await setup();
+  const d = FieldDetailsSchema.parse(await run(tools.getFieldDetails, { fieldId: 10 }, 1));
+  assertEquals(d.field.name, "La Vallée");
+  assertEquals(d.crop?.name, "Maïs");
+  assertEquals(d.crop?.previousCropName, "Blé tendre d'hiver");
+  assertEquals(d.soil?.textureClass, "Sandy loam");
+  assertEquals(d.soil?.ph, 6.4);
+  assertEquals(d.irrigationSystem, null);
+  await assertRejects(() => run(tools.getFieldDetails, { fieldId: 999 }, 1));
+  await assertRejects(() => run(tools.getFieldDetails, { fieldId: 10 }), Error, "member");
+});
+
+Deno.test("getFieldJournal: season entries and totals from the server; filters", opts, async () => {
+  const { tools, run } = await setup();
+  const j = FieldJournalSchema.parse(await run(tools.getFieldJournal, { fieldId: 10 }, 1));
+  assertEquals([j.from, j.to], ["2026-04-16", "2026-10-17"]);
+  assertEquals(j.entries.length, 8);
+  assertEquals(j.entries[0].planned, true);
+  assertEquals(
+    [j.totals.nKgHa, j.totals.p2o5KgHa, j.totals.k2oKgHa, j.totals.irrigationMm, j.totals.sprays],
+    [110, 40, 60, 30, 2],
+  );
+  const sprays = await run(tools.getFieldJournal, { fieldId: 10, type: "spraying" }, 1);
+  assertEquals(sprays.entries.map((e: { operationId: number }) => e.operationId), [1006, 1005]);
+  assertEquals(sprays.entries[1].products.length, 2);
+  const farm = await run(tools.getFieldJournal, {}, 1);
+  assertEquals(farm.fieldId, null);
+  assertEquals(farm.totals.nKgHa, null);
+  const bad = await run(tools.getFieldJournal, { fieldId: 10, type: "weeding" }, 1);
+  assertEquals(bad.error, true);
+  await assertRejects(() => run(tools.getFieldJournal, {}), Error, "member");
+});
+
+Deno.test(
+  "getFieldDetails / getFieldJournal: a farm 2 member never reads farm 1",
+  opts,
+  async () => {
+    const { tools, run } = await setup();
+    await assertRejects(() => run(tools.getFieldDetails, { fieldId: 10 }, 5), Error, "not found");
+    await assertRejects(() => run(tools.getFieldJournal, { fieldId: 10 }, 5), Error, "not found");
+    const j = await run(tools.getFieldJournal, {}, 5);
+    assertEquals(
+      [...new Set(j.entries.map((e: { fieldId: number }) => e.fieldId))],
+      [15],
+    );
+    assertEquals(j.totals.nKgHa, 90);
+  },
+);

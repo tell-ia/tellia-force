@@ -38,6 +38,7 @@ export const SOIL_CLASSES: SoilWaterClass[] = [
 export const REEL_GUN: IrrigationSystem = {
   id: 1,
   name: "Reel gun 1",
+  type: "reel_gun",
   efficiency: 0.75,
   doseMinMm: 20,
   doseMaxMm: 40,

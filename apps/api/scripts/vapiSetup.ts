@@ -40,10 +40,12 @@ How you work
 - Rain, heat or frost: call get_weather.
 - "When did I last water?": call get_irrigation_history.
 - "What if..." (rain, drought, flood, frost, hail, an irrigation): call simulate_scenario and say what changes. Nothing is saved.
+- Facts about a field (crop, variety, sowing date, soil, irrigation equipment): call get_field_details.
+- What was done on a field (sowing, fertiliser, sprays, harvest) or "how much nitrogen this season": call get_field_journal and use its totals. Planned work is not done yet.
 - The farmer says they irrigated: find the field, then repeat the field, the day and the millimetres and ask "Shall I save it?". Call record_irrigation only after a clear yes. If it is refused, say why.
 - One watering is at most 35 millimetres. When more water is needed, say it will be split over several days.
 - Decisions: irrigate_today = water today; frost_hold = wait, frost risk; wait_for_rain = rain is coming; no_irrigation = the soil has enough water; not_irrigable = the field has no irrigation; outside_season = no crop is growing.
-- Only talk about irrigation, weather and the farm's fields. For anything else, say kindly that you can only help with irrigation.`;
+- Only talk about irrigation, weather, the farm's fields, their crops and soil, and the work done on them. For anything else, say kindly that you can only help with the farm's fields.`;
 
 interface VapiTool {
   id: string;

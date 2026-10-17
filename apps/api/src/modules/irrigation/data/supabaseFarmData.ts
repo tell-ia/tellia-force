@@ -10,12 +10,15 @@ import type {
   Farm,
   FarmData,
   FarmDirectory,
+  FarmOperation,
   Field,
   IrrigationOperation,
   IrrigationSystem,
   Member,
+  OperationProduct,
   OperationSource,
   OperationStatus,
+  OperationType,
   SoilAnalysis,
   StoredWeatherDay,
 } from "./farmData";
@@ -30,6 +33,8 @@ type Row = Record<string, unknown>;
 
 /** A numeric column as a number; null stays null. */
 const num = (v: unknown) => (v == null ? null : Number(v));
+/** A text column as a string; null stays null. */
+const str = (v: unknown) => (v == null ? null : String(v));
 
 // ---- pure row mappers (snake_case -> camelCase), unit-tested ----
 
@@ -69,6 +74,7 @@ export function mapField(r: Row): Field {
     areaHa: r.area_ha as number,
     irrigable: r.irrigable as boolean,
     centroid: lat != null && lon != null ? { lat, lon } : null,
+    tenure: str(r.tenure),
   };
 }
 
@@ -82,6 +88,8 @@ export function mapCropSeason(r: Row): CropSeason {
   };
   // Only when the row has the column (a DB without it keeps the old shape).
   if ("earliness_group" in r) season.earlinessGroup = (r.earliness_group as string | null) ?? null;
+  if ("variety" in r) season.variety = str(r.variety);
+  if ("previous_crop_code" in r) season.previousCropCode = str(r.previous_crop_code);
   return season;
 }
 
@@ -90,6 +98,20 @@ export function mapSoil(r: Row): SoilAnalysis {
     sandPct: r.sand_pct as number,
     clayPct: r.clay_pct as number,
     organicMatterPct: r.organic_matter_pct as number,
+    sampledOn: str(r.sampled_on),
+    siltPct: num(r.silt_pct),
+    ph: num(r.ph_h2o),
+    nitrogenGKg: num(r.nitrogen_g_kg),
+    phosphorusMgKg: num(r.phosphorus_mg_kg),
+    potassiumMgKg: num(r.potassium_mg_kg),
+    sulfurMgKg: num(r.sulfur_mg_kg),
+    calciumMgKg: num(r.calcium_mg_kg),
+    magnesiumMgKg: num(r.magnesium_mg_kg),
+    zincMgKg: num(r.zinc_mg_kg),
+    boronMgKg: num(r.boron_mg_kg),
+    cecCmolKg: num(r.cec_cmol_kg),
+    bulkDensityKgDm3: num(r.bulk_density_kg_dm3),
+    limeRequirementTHa: num(r.lime_requirement_t_ha),
   };
 }
 
@@ -194,6 +216,7 @@ export function mapIrrigationSystem(r: Row): IrrigationSystem {
   return {
     id: r.id as number,
     name: r.name as string,
+    type: str(r.system_type),
     efficiency: Number(r.efficiency),
     doseMinMm: num(r.dose_min_mm),
     doseMaxMm: num(r.dose_max_mm),
@@ -211,6 +234,48 @@ export function mapOperation(r: Row): IrrigationOperation {
     status: r.status as OperationStatus,
     source: r.source as OperationSource,
     memberId: (r.member_id as number | null) ?? null,
+  };
+}
+
+/** Columns read for the journal: the operation and its products (PostgREST embed). */
+export const JOURNAL_SELECT =
+  "id,field_id,crop_season_id,op_date,op_type,status,bbch,fertiliser_type,n_kg_ha,p2o5_kg_ha," +
+  "k2o_kg_ha,method,water_mm,variety,seed_rate_kg_ha,yield_t_ha,moisture_pct,protein_pct,notes," +
+  "operation_input(product_id,product_name,dose,dose_unit,target)";
+
+export function mapOperationProduct(r: Row): OperationProduct {
+  return {
+    productId: num(r.product_id),
+    productName: r.product_name as string,
+    dose: num(r.dose),
+    doseUnit: str(r.dose_unit),
+    target: str(r.target),
+  };
+}
+
+/** One journal row with its embedded `operation_input` rows. */
+export function mapFarmOperation(r: Row): FarmOperation {
+  return {
+    operationId: Number(r.id),
+    fieldId: r.field_id as number,
+    seasonId: num(r.crop_season_id),
+    date: r.op_date as string,
+    type: r.op_type as OperationType,
+    status: r.status as FarmOperation["status"],
+    bbch: num(r.bbch),
+    fertiliserType: str(r.fertiliser_type),
+    nKgHa: num(r.n_kg_ha),
+    p2o5KgHa: num(r.p2o5_kg_ha),
+    k2oKgHa: num(r.k2o_kg_ha),
+    waterMm: num(r.water_mm),
+    variety: str(r.variety),
+    seedRateKgHa: num(r.seed_rate_kg_ha),
+    yieldTHa: num(r.yield_t_ha),
+    moisturePct: num(r.moisture_pct),
+    proteinPct: num(r.protein_pct),
+    method: str(r.method),
+    notes: str(r.notes),
+    products: ((r.operation_input as Row[] | null | undefined) ?? []).map(mapOperationProduct),
   };
 }
 
@@ -463,6 +528,18 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       let q = irrigationOps().eq("field_id", fieldId);
       if (!opts.includeDrafts) q = q.neq("status", "draft");
       return (await rows(q.order("op_date").order("id"))).map(mapOperation);
+    },
+    async listOperations({ from, to, fieldId, type }) {
+      const r = await paged((a, b) => {
+        // Embedded products are filtered on the farm too (every farm table is).
+        let q = db.from("operation").select(JOURNAL_SELECT).eq("farm_id", farmId)
+          .eq("operation_input.farm_id", farmId).in("status", ["confirmed", "planned"])
+          .gte("op_date", from).lte("op_date", to);
+        if (fieldId !== undefined) q = q.eq("field_id", fieldId);
+        if (type !== undefined) q = q.eq("op_type", type);
+        return q.order("op_date").order("id").range(a, b);
+      });
+      return r.map(mapFarmOperation);
     },
     async getIrrigation(operationId) {
       const r = await one(irrigationOps().eq("id", operationId).limit(1));
