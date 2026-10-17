@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { HTTPException } from "hono/http-exception";
+import type { FarmData, IrrigationChange } from "../src/modules/irrigation/data/farmData";
 import { createMemoryFarmData } from "../src/modules/irrigation/data/memoryFarmData";
 import { createIrrigationService } from "../src/modules/irrigation/irrigation.service";
 import { createWeatherService } from "../src/modules/irrigation/weather/weatherService";
@@ -313,6 +314,26 @@ Deno.test("correction update: the water balance moves by the mm difference", asy
   assertEquals([moved.date, moved.mm], ["2026-07-03", 20]);
   assertEquals((await data.getIrrigation(operationId))?.seasonId, 109);
   assertEquals((await service.listIrrigations(10)).length, 2);
+});
+
+Deno.test("correction update: the data layer is told when the date moves", async () => {
+  const memory = createMemoryFarmData(makeFarmFixture());
+  const changes: IrrigationChange[] = [];
+  const data: FarmData = {
+    ...memory,
+    updateIrrigation: (id, change) => (changes.push(change), memory.updateIrrigation(id, change)),
+  };
+  const weather = createWeatherService({ data, fetch: () => Promise.reject(new Error("offline")) });
+  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
+  await service.updateIrrigation(1, { mm: 25 });
+  await service.updateIrrigation(1, { date: "2026-06-22" });
+  // Same date given again with a new mm: the date does not move.
+  await service.updateIrrigation(1, { date: "2026-06-22", mm: 20 });
+  assertEquals(changes.map((c) => [c.date, c.mm, c.dateChanged]), [
+    ["2026-06-21", 25, false],
+    ["2026-06-22", 25, true],
+    ["2026-06-22", 20, false],
+  ]);
 });
 
 Deno.test("correction update: a new date in another crop season moves the record there", async () => {

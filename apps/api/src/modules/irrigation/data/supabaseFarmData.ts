@@ -452,12 +452,16 @@ export function toOperationInsert(
   };
 }
 
-/** Columns a correction changes on an irrigation row, with its `updated_at`. */
+/**
+ * Columns a correction changes on an irrigation row, with its `updated_at`. A new date clears
+ * `bbch`: the stage the import stored was the crop stage of the old date.
+ */
 export function toOperationUpdate(change: IrrigationChange, now: Date): Row {
   return {
     op_date: change.date,
     water_mm: change.mm,
     crop_season_id: change.seasonId,
+    ...(change.dateChanged ? { bbch: null } : {}),
     updated_at: now.toISOString(),
   };
 }

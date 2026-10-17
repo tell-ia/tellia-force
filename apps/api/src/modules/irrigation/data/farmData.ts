@@ -311,6 +311,8 @@ export interface IrrigationChange {
   date: IsoDate;
   mm: number;
   seasonId: number;
+  /** The date moves: the crop stage (BBCH) stored for the old date no longer applies. */
+  dateChanged: boolean;
 }
 
 /** The crop name in a language ("fr", "es", "it-IT"...), falling back to English. */
@@ -411,7 +413,10 @@ export interface FarmData {
   getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;
   setIrrigationStatus(operationId: number, status: OperationStatus): Promise<IrrigationOperation>;
-  /** New date, mm and crop season of an irrigation of this farm; 404 when there is none. */
+  /**
+   * New date, mm and crop season of an irrigation of this farm (a new date clears the stored
+   * crop stage); 404 when there is none.
+   */
   updateIrrigation(operationId: number, change: IrrigationChange): Promise<IrrigationOperation>;
   deleteIrrigation(operationId: number): Promise<void>;
 }

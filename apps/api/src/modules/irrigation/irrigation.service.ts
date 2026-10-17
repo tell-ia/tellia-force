@@ -653,7 +653,10 @@ export function createIrrigationService(
       summary: `Change the irrigation on ${fieldName} from ${before.mm} mm on ${before.date} ` +
         `to ${after.mm} mm on ${after.date}?`,
     };
-    return { preview, change: { ...after, seasonId: season.id } };
+    return {
+      preview,
+      change: { ...after, seasonId: season.id, dateChanged: after.date !== before.date },
+    };
   }
 
   async function create(
