@@ -149,7 +149,47 @@ export interface IrrigationService extends FarmInfoService, ProductCheckService,
 
 const normalize = (s: string) =>
   s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const words = (s: string) => normalize(s).split(" ").filter((w) => w.length > 2);
+/** Articles say nothing about which field: "Le Puy" must not match every "Le ..." field. */
+const ARTICLES = new Set(["les", "des", "the", "los", "las", "del"]);
+const words = (s: string) =>
+  normalize(s).split(" ").filter((w) => w.length > 2 && !ARTICLES.has(w));
+
+/**
+ * How a word sounds, roughly, in French: speech-to-text spells field names by ear
+ * ("Le Puits" comes back as "Le Puy", "La Vallée" as "the valley"). Silent endings go,
+ * y is i, eau/au is o, ai/ei is e, double letters are one.
+ */
+const sound = (w: string) =>
+  w.replace(/ph/g, "f").replace(/qu|ck|c(?=[aou])/g, "k").replace(/y/g, "i")
+    .replace(/e?au/g, "o").replace(/[ae]i/g, "e").replace(/h/g, "")
+    .replace(/(.)\1+/g, "$1").replace(/(?<=..)[stxdzpe]+$/, "");
+
+/** Edit distance, for one slip left after `sound` ("longre" / "longue"). */
+function distance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/** 20 for the same word, 15 if it sounds the same, 10 if it sounds one letter off. */
+function wordScore(q: string, nameWords: string[]): number {
+  let best = 0;
+  for (const n of nameWords) {
+    const [sq, sn] = [sound(q), sound(n)];
+    if (q === n) return 20;
+    if (sq === sn) best = Math.max(best, 15);
+    else if (Math.min(sq.length, sn.length) >= 4 && distance(sq, sn) <= 1) {
+      best = Math.max(best, 10);
+    }
+  }
+  return best;
+}
 
 /** Largest single application advised; deeper deficits are split over several days. */
 export const MAX_APPLICATION_MM = 35;
@@ -776,8 +816,8 @@ export function createIrrigationService(
           )
         ) score = 40;
         else {
-          const nameWords = new Set(words(field.name));
-          score = 20 * qWords.filter((w) => nameWords.has(w)).length;
+          const nameWords = words(field.name);
+          score = qWords.reduce((sum, w) => sum + wordScore(w, nameWords), 0);
         }
         if (score > 0) {
           out.push({
