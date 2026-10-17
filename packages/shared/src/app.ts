@@ -264,6 +264,19 @@ export type DemoDateState = z.infer<typeof DemoDateStateSchema>;
 export const SetDemoDateBodySchema = z.object({ date: IsoDateSchema.nullable() });
 export type SetDemoDateBody = z.infer<typeof SetDemoDateBodySchema>;
 
+// --- Voice input -----------------------------------------------------------
+
+/**
+ * POST /voice/session: a short-lived OpenAI Realtime key, scoped to one transcription session.
+ * The app opens WebRTC to OpenAI with it; the real OPENAI_API_KEY never leaves the server.
+ */
+export const VoiceSessionSchema = z.object({
+  clientSecret: z.string().min(1), // "ek_…"
+  expiresAt: z.number().int(), // epoch seconds
+  model: z.string().min(1),
+});
+export type VoiceSession = z.infer<typeof VoiceSessionSchema>;
+
 /** Phase 3 renders real AI SDK v7 tool parts; this is the dev-playground shape. */
 export const ChatRoleSchema = z.enum(["assistant", "farmer"]);
 export const ChatMessageSchema = z.object({

@@ -14,6 +14,7 @@ import { createSettingsController } from "./modules/settings/settings.controller
 import { createVapiController, memberByPhoneIn } from "./modules/vapi/vapi.controller";
 import { closeOpenSmsConversations, sessionCustomerNumber, vapiSmsSender } from "./modules/vapi/vapiSessions";
 import { createNotifyController } from "./modules/notify/notify.controller";
+import { createVoiceController } from "./modules/voice/voice.controller";
 import { db } from "./supabase";
 
 const app = new Hono();
@@ -89,6 +90,9 @@ app.route(
     sessionNumber: vapiKey ? (id) => sessionCustomerNumber({ privateKey: vapiKey }, id) : undefined,
   }),
 );
+
+// Chat voice input: a short-lived OpenAI key for live transcription (the key never leaves here).
+app.route("/voice", createVoiceController({ registry, apiKey: config.OPENAI_API_KEY }));
 
 // Chat advisor (Mastra): GET /chat/history, POST /chat (AI SDK v7 stream) and /api/*.
 // LibSQL needs its directory to exist before it opens the file.
