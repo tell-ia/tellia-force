@@ -31,7 +31,7 @@ import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "./requestContext";
 
 /** Workflows that wait for the farmer's yes/no (confirmIrrigation), and the step that waits. */
-const CONFIRMABLE = [
+export const CONFIRMABLE = [
   { workflowId: "record-irrigation", step: "confirm" },
   { workflowId: "correct-irrigation", step: "confirm-correction" },
 ] as const;

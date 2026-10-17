@@ -97,6 +97,29 @@ A member can have many conversations. The app picks one with the request header 
   the app shows a fallback while `title` is `null` or a generic placeholder.
 - `GET /chat/history` for a thread that does not exist yet answers `200` with no messages.
 
+### Editing a sent message
+
+`POST /chat/threads/:threadId/truncate` with `{ fromMessageId }` -> `{ data: { threadId, removed,
+cancelledRuns } }` (`TruncateChatThread*Schema` in `@tellia/shared/app`). Conversation memory is
+server-side, so a client-only edit would leave the old question and its replies in what the agent
+recalls. The call deletes that message and every later one of the thread (`memory.deleteMessages`),
+then the app sends the new text.
+
+- **Flow in the app**: truncate, then `sendMessage({ text, messageId })`. In AI SDK v7 `messageId`
+  replaces that user message in the client list and drops every later one; the request still carries
+  the full list and Mastra saves messages by id, so the kept ones are not duplicated. Message ids in
+  `GET /chat/history` are the ids the client sent (Mastra keeps them), so the id the app holds is
+  the id the server deletes.
+- **Checks**: same as `x-thread-id`. A forged, malformed or foreign thread id is `403`; an unknown
+  thread or message is `404`; a message that is not a farmer message is `400`. Nothing is deleted
+  on any error.
+- **Confirmation cards in the removed messages** (`recordIrrigation` / `correctIrrigation`): if the
+  run is still suspended (the farmer never answered) and belongs to the caller, the server answers
+  "No" for them (`confirmed: false`: the draft is deleted, a correction changes nothing) and counts
+  them in `cancelledRuns`. A card already answered is left alone: a saved, updated or deleted
+  irrigation stays as it is, the edit never undoes it. A card before the edited message is not
+  touched. A failed cancel is logged and ignored, the draft then stays as in "Unanswered drafts".
+
 ## `/irrigation` REST endpoints (no LLM, for VAPI and the UI)
 
 VAPI webhooks must call these, **not `/chat`**, to stay under the 2 s voice budget. Send the same
