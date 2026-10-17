@@ -4,6 +4,7 @@ import type { IrrigationRecord, ParcelReport } from "@tellia/shared";
 import { deleteIrrigation, getParcelReport, listIrrigations } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
+import { useFieldOutcome } from "../../app/FarmPlanContext";
 import { navigate } from "../../app/router";
 import { font, v } from "../../theme/tokens";
 import { InfoHint, Label, SectionCard } from "../../components/ui/primitives";
@@ -44,6 +45,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
   // reload in place (no full-page loader, no new anchor scroll; a failed reload keeps the page).
   const [version, setVersion] = useState(0);
   const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId, version], { keepDataOnError: true });
+  const outcome = useFieldOutcome(parcelId); // the field's forecast under the farm rotation plan
   const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId, version]);
   const removeWatering = async (operationId: number) => {
     await deleteIrrigation(operationId);
@@ -117,18 +119,32 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
             </div>
           </SectionCard>
 
-          {data.series && (
-            <SectionCard id="balance" style={{ gap: 12, position: "relative", boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
-              <CornerHint text="Bars show water added each day (rain in blue, irrigation, the plan). The line is the soil reserve over time — solid for the past, dashed for the forecast. The dotted red line is the stress threshold." />
-              <div ref={balanceRef} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
-                <Label>Water balance · {data.series.length ? dayRange(data.series[0]!.date, data.series.at(-1)!.date) : ""}</Label>
-                <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
-              </div>
-              <WaterBalanceChart series={data.series} reserve={data.reserve} plan={data.plan} />
-              <BalanceLegend withPlan={!!data.plan} />
-            </SectionCard>
-          )}
+          {(() => {
+            // Forecast follows the farm's reel-gun rotation when a plan exists (so it
+            // dips if this field is watered late); else the field's own ideal balance.
+            const planned = outcome?.series?.length ? outcome.series : null;
+            const series = planned ?? data.series;
+            if (!series) return null;
+            return (
+              <SectionCard id="balance" style={{ gap: 12, position: "relative", boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
+                <CornerHint text="Bars show water added each day (rain in blue, irrigation). The line is the soil reserve over time — solid for the past, dashed for the forecast. The dotted red line is the stress threshold." />
+                <div ref={balanceRef} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
+                  <Label>Water balance · {series.length ? dayRange(series[0]!.date, series.at(-1)!.date) : ""}</Label>
+                  <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
+                </div>
+                <WaterBalanceChart series={series} reserve={data.reserve} plan={planned ? undefined : data.plan} />
+                <BalanceLegend withPlan={!planned && !!data.plan} />
+                {planned && (
+                  <span style={{ fontSize: 11, color: outcome?.late ? v("act") : v("ink2"), lineHeight: 1.5 }}>
+                    {outcome?.late
+                      ? "Follows the reel-gun rotation: this field is watered late, so the reserve dips below comfort before the gun arrives."
+                      : "Follows the reel-gun rotation plan."}
+                  </span>
+                )}
+              </SectionCard>
+            );
+          })()}
 
           <SectionCard id="log" style={{ gap: 10 }}>
             <div ref={logRef} />

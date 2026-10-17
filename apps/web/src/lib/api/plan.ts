@@ -1,11 +1,32 @@
 import {
   ScenarioResultSchema,
+  type BalancePoint,
   type DayBalance,
   type FieldReport,
   type RefillPlanSeries,
 } from "@tellia/shared";
 import { http } from "./core";
 import { toBalancePoint } from "../mappers/parcel";
+
+/** Re-simulate a field with a fixed list of irrigation events (the plan's ACTUAL
+ *  watering dates), so the reserve curve reflects when the rotation really waters it. */
+export async function simulateFieldEvents(
+  fieldId: number,
+  asOf: string,
+  events: { date: string; grossMm: number }[],
+): Promise<BalancePoint[] | null> {
+  if (events.length === 0) return null;
+  try {
+    const res = await http.post(
+      `/irrigation/fields/${fieldId}/simulate`,
+      { events: events.map((e) => ({ type: "irrigation", date: e.date, mm: Math.round(e.grossMm) })), date: asOf },
+      ScenarioResultSchema,
+    );
+    return res.series.map((d) => toBalancePoint(d, asOf));
+  } catch {
+    return null;
+  }
+}
 
 // Build the real multi-pass refill plan by driving the engine: add an irrigation
 // pass on each day the balance crosses the readily-available-water line

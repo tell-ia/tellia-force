@@ -12,3 +12,4 @@ export * from "./db";
 export * from "./irrigation";
 export * from "./farm";
 export * from "./app";
+export * from "./reelGun";

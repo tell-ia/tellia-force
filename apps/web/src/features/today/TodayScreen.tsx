@@ -1,9 +1,10 @@
-import { ChevronDown, Droplet, Sun } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronRight, Droplet, Sun } from "lucide-react";
 import { useState } from "react";
-import type { FarmToday, ParcelSummary } from "@tellia/shared";
+import type { FarmFieldOutcome, FarmToday, ParcelSummary } from "@tellia/shared";
 import { getFarmToday } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { farmAccent, useFarm } from "../../app/FarmContext";
+import { useFarmPlan } from "../../app/FarmPlanContext";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, StatusPill } from "../../components/ui/primitives";
@@ -13,6 +14,7 @@ import { PersonaSheet } from "./PersonaSheet";
 
 export function TodayScreen() {
   const { farm, farms } = useFarm();
+  const { plan } = useFarmPlan();
   const [sheetOpen, setSheetOpen] = useState(false);
   const { data, loading } = useAsync<FarmToday | null>(
     () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
@@ -60,10 +62,15 @@ export function TodayScreen() {
           <div style={{ fontSize: 14, color: v("ink2") }}>{data?.weatherNote ?? " "}</div>
         </div>
 
+        <TodayPlanCard />
+        <TodayMovesCard />
+
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Label>Today's actions</Label>
           {data.parcels.map((p) =>
-            p.status === "action" ? <ActionCard key={p.id} p={p} /> : <ParcelRow key={p.id} p={p} />,
+            p.status === "action"
+              ? <ActionCard key={p.id} p={p} outcome={plan?.fields.find((f) => f.fieldId === p.id) ?? null} />
+              : <ParcelRow key={p.id} p={p} />,
           )}
         </div>
 
@@ -85,7 +92,93 @@ export function TodayScreen() {
   );
 }
 
-function ActionCard({ p }: { p: ParcelSummary }) {
+function TodayPlanCard() {
+  const { plan, loading } = useFarmPlan();
+  const today = plan ? plan.runs.filter((r) => Math.floor(r.startHour / 24) === 0) : [];
+  const summary = loading
+    ? "Planning the reel-gun rotation…"
+    : !plan || plan.runs.length === 0
+      ? "No watering scheduled this week"
+      : today.length > 0
+        ? today.slice(0, 2).map((r) => `Gun ${r.gunIndex + 1} → ${r.fieldName} ${r.grossMm} mm`).join(" · ")
+        : `${plan.runs.length} runs over the week · ${plan.guns.length} reel gun${plan.guns.length > 1 ? "s" : ""}`;
+  return (
+    <button
+      type="button"
+      onClick={() => navigate("plan")}
+      style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", textAlign: "left", color: v("ink"), background: v("surface"), border: `1.5px solid ${v("brand")}`, borderRadius: radius.card, padding: 16, cursor: "pointer" }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ width: 40, height: 40, flex: "none", borderRadius: 20, background: v("brand"), color: v("bg"), display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <CalendarRange size={20} strokeWidth={2} />
+        </span>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
+          <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 20 }}>Irrigation plan</span>
+          <span style={{ fontSize: 12, color: v("ink2") }}>Reel-gun rotation across the fields</span>
+        </div>
+        <ChevronRight size={20} style={{ color: v("ink2") }} />
+      </div>
+      <div style={{ fontSize: 13, color: today.length > 0 ? v("ink") : v("ink2") }}>
+        {today.length > 0 ? <strong>Today · </strong> : null}{summary}
+      </div>
+      {plan && !plan.feasible && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: v("act") }}>
+          <span style={{ fontSize: 14 }}>⚠</span> One gun can't keep up — tap to add a reel gun
+        </div>
+      )}
+    </button>
+  );
+}
+
+/** Today's reel-gun moves: for each gun, the runs it does today and when it must be moved
+ *  from one field to the next. A gun can't be two places at once, so each move is a task. */
+function TodayMovesCard() {
+  const { plan } = useFarmPlan();
+  if (!plan || plan.runs.length === 0) return null;
+  const byGun = new Map<number, typeof plan.runs>();
+  for (const r of plan.runs) {
+    const arr = byGun.get(r.gunIndex) ?? [];
+    arr.push(r);
+    byGun.set(r.gunIndex, arr);
+  }
+  type Task = { gun: number; field: string; at: number; move: boolean };
+  const tasks: Task[] = [];
+  for (const [gun, runs] of byGun) {
+    const sorted = [...runs].sort((a, b) => a.startHour - b.startHour);
+    sorted.forEach((r, i) => {
+      if (Math.floor(r.startHour / 24) !== 0) return; // today only
+      const moved = i > 0 && sorted[i - 1]!.fieldName !== r.fieldName;
+      // Keep the first placement of the day and every real move; skip staying put.
+      if (i > 0 && !moved) return;
+      tasks.push({ gun, field: r.fieldName, at: r.startHour % 24, move: moved });
+    });
+  }
+  tasks.sort((a, b) => a.at - b.at);
+  if (tasks.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <Label>Reel-gun moves today</Label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {tasks.map((t, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: v("surface"), border: `1px solid ${v("line")}`, borderRadius: radius.card, padding: "10px 14px" }}>
+            <span style={{ width: 30, height: 30, flex: "none", borderRadius: 15, background: v("sunk"), color: v("ink"), display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13 }}>G{t.gun + 1}</span>
+            <span style={{ flex: 1, fontSize: 13 }}>
+              <b>{fmtHour(t.at)}</b> — {t.move ? "move to" : "set up on"} <b>{t.field}</b>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function fmtShortDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()]} ${d.getUTCDate()}`;
+}
+const fmtHour = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:00`;
+
+function ActionCard({ p, outcome }: { p: ParcelSummary; outcome: FarmFieldOutcome | null }) {
   return (
     <button
       type="button"
@@ -112,6 +205,17 @@ function ActionCard({ p }: { p: ParcelSummary }) {
         </div>
         <StatusPill tone="action" label={p.badgeLabel} icon={<Droplet size={12} strokeWidth={2.5} />} />
       </div>
+      {outcome && (
+        <div style={{ fontSize: 12, fontWeight: 600, color: outcome.todayGross != null ? v("brand") : outcome.late ? v("act") : v("ink2") }}>
+          {outcome.todayGross != null
+            ? `Plan: water today · Gun ${(outcome.todayGunIndex ?? 0) + 1}${outcome.todayStartHour != null ? ` from ${fmtHour(outcome.todayStartHour)}` : ""}`
+            : outcome.late
+              ? `Plan: gun busy — next ${outcome.nextDate ? fmtShortDay(outcome.nextDate) : "soon"} (dips below comfort)`
+              : outcome.nextDate
+                ? `Plan: ${fmtShortDay(outcome.nextDate)} · Gun ${(outcome.todayGunIndex ?? 0) + 1}`
+                : ""}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
           <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 52, lineHeight: 0.9, color: v("act") }}>{p.grossMm ?? p.netMm}</span>

@@ -349,3 +349,71 @@ export function parseParcelReport(data: unknown): ParcelReport | null {
   const r = ParcelReportSchema.safeParse(data);
   return r.success ? r.data : null;
 }
+
+// --- Cross-field irrigation plan (reel-gun rotation) ----------------------
+//
+// A field is covered by several reel RUNS (strips). Each gun does one run at a time,
+// so runs across fields are sequenced on each gun's timeline: move (setup + tow),
+// then run for its hours. A run is `late` when its gun was still busy when the field
+// needed water; `bumped` marks an earlier run whose dose was raised (within the soil
+// cap) so the field holds until the gun comes back. Times are hours from `asOf` 00:00.
+
+export const FarmPlanRunSchema = z.object({
+  fieldId: z.number().int(),
+  fieldName: z.string(),
+  gunIndex: z.number().int(), // which reel gun runs it
+  runIndex: z.number().int(), // run number within the field's pass
+  passIndex: z.number().int(), // 0 = first watering of the field, 1 = next…
+  startHour: z.number(),
+  endHour: z.number(),
+  neededHour: z.number(), // when the field needed water (engine trigger)
+  grossMm: z.number(),
+  netMm: z.number(),
+  areaHa: z.number(), // the run's share of the field
+  late: z.boolean(),
+  bumped: z.boolean(),
+  note: z.string().nullable(),
+});
+export type FarmPlanRun = z.infer<typeof FarmPlanRunSchema>;
+
+export const FarmPlanGunSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  flowM3h: z.number(),
+  stripWidthM: z.number(),
+});
+export type FarmPlanGun = z.infer<typeof FarmPlanGunSchema>;
+
+// The consequence of the plan on one field: its forecast re-simulated with the
+// ACTUAL watering dates the rotation gives it (so the reserve dips when a pass runs
+// late), plus what the gun does for it today.
+export const FarmFieldOutcomeSchema = z.object({
+  fieldId: z.number().int(),
+  fieldName: z.string(),
+  late: z.boolean(),
+  todayGross: z.number().nullable(), // mm the gun applies here today (null = nothing today)
+  todayGunIndex: z.number().int().nullable(),
+  todayStartHour: z.number().nullable(), // hour-of-day the gun starts here today (null = nothing today)
+  comfortDay: z.number().int().nullable(), // projected days from asOf until back above comfort (0 = already, null = never at this gun count)
+  nextDate: IsoDateSchema.nullable(), // next watering day in the plan
+  series: z.array(BalancePointSchema), // reserve re-simulated on the plan's real dates
+});
+export type FarmFieldOutcome = z.infer<typeof FarmFieldOutcomeSchema>;
+
+export const FarmIrrigationPlanSchema = z.object({
+  farmId: z.number().int(),
+  asOf: IsoDateSchema,
+  horizonDays: z.number().int(),
+  guns: z.array(FarmPlanGunSchema),
+  pumpM3h: z.number(),
+  moveMinutes: z.number(),
+  runs: z.array(FarmPlanRunSchema),
+  fields: z.array(FarmFieldOutcomeSchema),
+  feasible: z.boolean(), // every field stays above its comfort line
+  suggestedGuns: z.number().int(), // guns to run a steady rotation without over-buying
+  comfortInDays: z.number().int().nullable(), // days until every field is back above comfort (null = not within the forecast window)
+  cyclesToComfort: z.number().int().nullable(), // rotation rounds to get there
+  warnings: z.array(z.string()),
+  totalHours: z.number(),
+});
+export type FarmIrrigationPlan = z.infer<typeof FarmIrrigationPlanSchema>;

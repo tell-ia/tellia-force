@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 // Minimal hash router — no dependency. Capacitor deep links (Phase 5) resolve to
 // these hashes, e.g. telliaforce://parcel/101#balance → #/parcel/101.
 
-export type RouteName = "today" | "chat" | "log" | "admin" | "parcel" | "gallery";
+export type RouteName = "today" | "chat" | "log" | "admin" | "parcel" | "gallery" | "plan" | "equipment" | "fields";
 
 export interface Route {
   name: RouteName;
@@ -26,7 +26,7 @@ export function parseRoute(hash: string): Route {
   if (head === "log" && seg[1]) {
     return { name: "log", params: { id: seg[1] }, anchor };
   }
-  const known: readonly string[] = ["today", "chat", "log", "admin", "gallery"];
+  const known: readonly string[] = ["today", "chat", "log", "admin", "gallery", "plan", "equipment", "fields"];
   const name = (known.includes(head) ? head : "today") as RouteName;
   return { name, params: {}, anchor };
 }

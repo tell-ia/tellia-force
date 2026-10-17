@@ -9,6 +9,9 @@ import { LogScreen } from "../features/log/LogScreen";
 import { AdminScreen } from "../features/admin/AdminScreen";
 import { ParcelScreen } from "../features/parcel/ParcelScreen";
 import { GalleryScreen } from "../features/gallery/GalleryScreen";
+import { FarmPlanScreen } from "../features/plan/FarmPlanScreen";
+import { EquipmentScreen } from "../features/plan/EquipmentScreen";
+import { FieldsScreen } from "../features/plan/FieldsScreen";
 
 export function AppShell() {
   const route = useRoute();
@@ -27,6 +30,15 @@ export function AppShell() {
       break;
     case "gallery":
       content = <GalleryScreen />;
+      break;
+    case "plan":
+      content = <FarmPlanScreen />;
+      break;
+    case "equipment":
+      content = <EquipmentScreen />;
+      break;
+    case "fields":
+      content = <FieldsScreen />;
       break;
     case "parcel":
       content = <ParcelScreen parcelId={Number(route.params.id)} anchor={route.anchor} />;
