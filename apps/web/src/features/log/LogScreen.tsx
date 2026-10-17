@@ -266,7 +266,7 @@ function StepBtn({ label, onClick, disabled = false, children }: { label: string
 export function FieldChips({ parcels, selected, disabled, onPick }: { parcels: ParcelSummary[]; selected: number | null; disabled: boolean; onPick: (id: number) => void }) {
   if (parcels.length === 0) return null;
   return (
-    <div role="group" aria-label="Field" style={{ display: "flex", gap: 8, overflowX: "auto", margin: "0 -16px", padding: "0 16px 2px" }}>
+    <div role="group" aria-label="Field" style={{ flex: "none", display: "flex", gap: 8, overflowX: "auto", margin: "0 -16px", padding: "0 16px 2px" }}>
       {parcels.map((p) => {
         const on = p.id === selected;
         return (

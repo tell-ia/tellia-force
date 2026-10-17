@@ -10,6 +10,10 @@
 - 2026-10-17 Task 2: web saves for real (POST, errors shown, Undo = DELETE), `listIrrigations`;
   Log screen field chips + `#/log/:id` + real date + "See the log"; field page "Irrigation log"
   section + "Log watering" button + `#log` anchor. Web: 73 passed.
+- 2026-10-17 Task 3 (emulator): field chips were squeezed to 0 height in the scrolling column
+  (fixed: `flex: none`). Checked: chips switch the field, field page "Irrigation log" (20 rows, stops at
+  today), "Log watering" opens the Log screen on that field. The real save is left to Vincent
+  (agents never write the shared DB).
 
 ## In progress
 
