@@ -45,6 +45,20 @@ export const wateredPct = (noWaterPct: number, netMm: number, capacityMm: number
   Math.min(100, Math.round(noWaterPct + (netMm / capacityMm) * 100));
 
 /**
+ * When the deficit is larger than one pass, the field is refilled over several
+ * passes (the reel gun caps each pass). Returns the plan, or null for a single pass.
+ */
+export function refillPlan(deficitMm: number, netMm: number): { morePasses: number; note: string } | null {
+  if (netMm <= 0 || deficitMm <= netMm) return null;
+  const morePasses = Math.ceil(deficitMm / netMm) - 1;
+  if (morePasses < 1) return null;
+  return {
+    morePasses,
+    note: `then ~${morePasses} more pass${morePasses > 1 ? "es" : ""} to refill (${Math.round(deficitMm)} mm deficit)`,
+  };
+}
+
+/**
  * Engine FieldReport → ReserveGauge props. This is what the fast advisor
  * endpoint gives; the full `get_parcel_report` carries the same reserve block.
  */
@@ -154,12 +168,12 @@ export function fieldReportToParcelReport(
     asOf: r.asOf,
     recommendation: {
       decision: r.decision,
-      headline: r.headline || headlineFor(r),
+      headline: headlineFor(r), // short pill; the engine's full sentence is in `reason`
       netMm: r.irrigateMm,
       grossMm: r.irrigateGrossMm,
       efficiency,
       reason: r.reason,
-      secondPass: null,
+      secondPass: refillPlan(r.depletionMm, r.irrigateMm)?.note ?? null,
     },
     reserve: fieldReportToReserve(r),
     method: "FAO-56 soil water balance (live). Weather from AgERA5; stages from degree-days.",

@@ -1,5 +1,5 @@
 import type { Field, FarmAdvice, FarmSummary, FarmToday, FieldReport, ParcelStatus, ParcelSummary } from "@tellia/shared";
-import { cropLabel, eveLabel } from "./parcel";
+import { cropLabel, eveLabel, refillPlan } from "./parcel";
 
 // Engine FarmAdvice (ranked FieldReport[]) → the Today screen's FarmToday.
 // Pure; tested in today.test.ts.
@@ -59,6 +59,7 @@ export function toFarmToday(advice: FarmAdvice, farm: FarmSummary, fields: Field
         netMm: acting ? r.irrigateMm : null,
         reservePct: acting ? 100 - r.depletionPct : null,
         thresholdLabel: acting ? eveLabel(r.asOf, r.daysUntilIrrigation) : null,
+        refillNote: acting ? (refillPlan(r.depletionMm, r.irrigateMm)?.note ?? null) : null,
       } satisfies ParcelSummary;
     })
     .sort((a, b) => RANK[a.status] - RANK[b.status]);

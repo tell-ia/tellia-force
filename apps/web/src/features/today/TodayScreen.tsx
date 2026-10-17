@@ -121,6 +121,12 @@ function ActionCard({ p }: { p: ParcelSummary }) {
           </div>
         </div>
       </div>
+      {p.refillNote && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: v("act"), fontWeight: 600 }}>
+          <span style={{ fontSize: 14 }}>↻</span>
+          {p.netMm} mm now, {p.refillNote}
+        </div>
+      )}
     </button>
   );
 }

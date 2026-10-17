@@ -52,6 +52,8 @@ export const ParcelSummarySchema = z.object({
   netMm: z.number().nullable(),
   reservePct: z.number().int().nullable(),
   thresholdLabel: z.string().nullable(),
+  /** Big-deficit fields: "then ~N more passes to refill". */
+  refillNote: z.string().nullable().optional(),
 });
 export type ParcelSummary = z.infer<typeof ParcelSummarySchema>;
 
