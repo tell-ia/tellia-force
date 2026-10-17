@@ -5,8 +5,9 @@ import { getParcelReport } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
-import { font, radius, v } from "../../theme/tokens";
+import { font, v } from "../../theme/tokens";
 import { DateChip, Label, SectionCard } from "../../components/ui/primitives";
+import { Loader } from "../../components/ui/Loader";
 import { RecommendationCard } from "./RecommendationCard";
 import {
   BalanceLegend,
@@ -52,7 +53,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
         <DateChip>Wed 13 Jul 2022</DateChip>
       </div>
 
-      {loading && <div aria-hidden="true" style={{ height: 280, borderRadius: radius.hero, background: v("sunk"), opacity: 0.6 }} />}
+      {loading && <Loader />}
       {error && <div style={{ color: v("act") }}>Couldn't load this parcel: {error}</div>}
 
       {data && (
