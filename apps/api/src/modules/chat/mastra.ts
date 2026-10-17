@@ -36,7 +36,11 @@ export function createMastra(
 ) {
   const { registry } = opts;
   const workflows = createAdvisorWorkflows(registry, opts.timezone);
-  return new Mastra({
+  // The member middleware reads thread memory through the advisor agent once the instance exists.
+  // deno-lint-ignore prefer-const
+  let mastra: Mastra;
+  const getMemory = async () => await mastra.getAgentById(ADVISOR_ID).getMemory();
+  mastra = new Mastra({
     storage: new LibSQLStore({ id: "mastra-store", url: opts.storageUrl }),
     agents: {
       [ADVISOR_ID]: createAdvisorAgent({
@@ -57,7 +61,7 @@ export function createMastra(
       cors: false,
       middleware: [
         ...(opts.openMastraApi ? [] : [{ path: "/api/*", handler: apiDisabled }]),
-        ...createMemberMiddleware(registry),
+        ...createMemberMiddleware(registry, getMemory),
       ],
       apiRoutes: [
         chatRoute({
@@ -69,10 +73,11 @@ export function createMastra(
       ],
     },
   });
+  return mastra;
 }
 
 /**
- * Mounts GET /chat/history, then Mastra's routes (POST /chat, /api/*) on the app.
+ * Mounts GET /chat/history and GET /chat/threads, then Mastra's routes (POST /chat, /api/*) on the app.
  * Must run after the app's CORS middleware and before Deno.serve.
  */
 export async function mountChat(

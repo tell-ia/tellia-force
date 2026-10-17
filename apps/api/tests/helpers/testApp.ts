@@ -153,7 +153,7 @@ export async function makeTestChatApp(
   const { app, registry, data, service } = await makeTestApp({ farms: opts.farms });
   app.use(
     "*",
-    cors({ origin: "*", allowHeaders: ["Content-Type", "x-member-id"] }),
+    cors({ origin: "*", allowHeaders: ["Content-Type", "x-member-id", "x-thread-id"] }),
   );
   const mastra = createMastra({
     registry,

@@ -25,7 +25,7 @@ app.use(
   cors({
     origin: corsOrigins,
     credentials: true,
-    allowHeaders: ["Content-Type", "Authorization", "x-member-id"],
+    allowHeaders: ["Content-Type", "Authorization", "x-member-id", "x-thread-id"],
   }),
 );
 app.onError(onError);

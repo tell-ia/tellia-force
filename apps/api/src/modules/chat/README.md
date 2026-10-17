@@ -6,7 +6,7 @@ conversation: it never computes numbers.
 
 ## Chat in the web app
 
-`POST /chat` streams AI SDK v7 UI messages. `GET /chat/history` returns today's conversation.
+`POST /chat` streams AI SDK v7 UI messages. `GET /chat/history` returns one conversation (see Sessions below), `GET /chat/threads` lists them.
 
 1. **Load `GET /chat/history` first.** Response: `{ data: { threadId, messages } }`, where
    `messages` are v7 UI messages (empty list before the first chat). Pass them as the initial
@@ -18,8 +18,7 @@ conversation: it never computes numbers.
    everything: fields, weather (the farm's region), records, and the reply language (Elena, member
    5, gets Spanish; Marco, member 9, Italian). Without the header the main contact of the first farm
    (member 1, Loiret) is used. An unknown id returns `400` with the `ApiError` envelope. Memory
-   resource is `member-{id}` and the thread is `member-{id}-{YYYY-MM-DD}` (one conversation per
-   member per day).
+   resource is `member-{id}`; the thread is chosen with `x-thread-id` (see Sessions).
 4. **Render each tool part as a card.** The tool key is in the part type (`tool-<key>`). For each
    part: skeleton while the state is `input-available` / `input-streaming`, card when it is
    `output-available`, error card on `output-error`.
@@ -80,6 +79,23 @@ or `Non` through `useChat`; the assistant then calls `confirmIrrigation`, which 
 of run: `saved` (new irrigation), `updated` or `deleted` (correction), `cancelled` (the farmer said
 no). Only confirmed irrigations count in the advice. A declined draft is deleted; a declined
 correction changes nothing.
+
+## Sessions (threads)
+
+A member can have many conversations. The app picks one with the request header `x-thread-id`, on
+`POST /chat`, `GET /chat/history` and `GET /chat/threads` alike (also in the CORS allow list).
+
+- **Id format**: `member-{memberId}-{uuid}`, made by the client (`newThreadId` in `@tellia/shared`).
+  The thread is created lazily by Mastra memory with its first message, so "New chat" taps leave
+  nothing behind. The old day ids `member-{id}-{YYYY-MM-DD}` stay valid.
+- **Isolation**: the id must start with the caller's `member-{memberId}-` and be `[A-Za-z0-9-]` up
+  to 64 chars, and an existing thread must belong to `member-{memberId}`. Otherwise `403`
+  (`http_403`, the `ApiError` envelope), for malformed, foreign and forged ids alike.
+- **No header**: the member's most recently updated thread, else `member-{id}-{today}`.
+- `GET /chat/threads` -> `{ data: ChatThreadSummary[] }` (`id`, `title` or `null`, `createdAt`,
+  `updatedAt`), newest updated first. Titles come from `MODEL_MINI` shortly after the first reply;
+  the app shows a fallback while `title` is `null` or a generic placeholder.
+- `GET /chat/history` for a thread that does not exist yet answers `200` with no messages.
 
 ## `/irrigation` REST endpoints (no LLM, for VAPI and the UI)
 
@@ -144,8 +160,8 @@ trusted as given. **Do not expose the server publicly.**
 "Today" for the whole project (chat instructions, the daily thread, every tool, VAPI) is
 `registry.today()`: the date picked with the app's date chip (`GET/PUT /settings/date`, kept in
 `data/demo-date.json`), else `DEMO_DATE`, else the real date in `TIMEZONE`. One date for everyone.
-A new date starts a new chat thread (threads are per member per day), and closes the open VAPI
-SMS conversations for the same reason (they remember the old day).
+A new date closes the open VAPI SMS conversations (they remember the old day). Chat threads are
+not tied to the date any more (see Sessions).
 
 ## Testing
 

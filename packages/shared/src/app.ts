@@ -215,6 +215,37 @@ export type IrrigationLog = z.infer<typeof IrrigationLogSchema>;
 
 // --- Chat (v0 text-only) ---------------------------------------------------
 
+// --- Chat sessions (threads) -----------------------------------------------
+// One Mastra thread per conversation. The app picks the thread with this request header on
+// POST /chat, GET /chat/history and GET /chat/threads. A thread id always starts with its
+// member's prefix, so the server can refuse another member's id without a lookup.
+
+export const CHAT_THREAD_HEADER = "x-thread-id";
+
+/** `member-<memberId>-`: every thread id of that member starts with it. */
+export const memberThreadPrefix = (memberId: number): string => `member-${memberId}-`;
+
+/** A fresh thread id: the member prefix plus a random UUID (made on the client). */
+export const newThreadId = (memberId: number, uuid: string): string => `${memberThreadPrefix(memberId)}${uuid}`;
+
+/** Prefix, then letters, digits and dashes only (covers UUIDs and the old `member-1-2026-07-05` ids). */
+export const isThreadIdOfMember = (threadId: string, memberId: number): boolean =>
+  threadId.startsWith(memberThreadPrefix(memberId)) &&
+  /^[A-Za-z0-9-]{1,64}$/.test(threadId.slice(memberThreadPrefix(memberId).length));
+
+/** One past conversation. `title` is the generated one, `null` until there is one. */
+export const ChatThreadSummarySchema = z.object({
+  id: z.string().min(1),
+  title: z.string().nullable(),
+  createdAt: z.string(), // ISO timestamp
+  updatedAt: z.string(), // ISO timestamp
+});
+export type ChatThreadSummary = z.infer<typeof ChatThreadSummarySchema>;
+
+/** GET /chat/threads: the caller's threads, most recently updated first. */
+export const ChatThreadListSchema = z.array(ChatThreadSummarySchema);
+export type ChatThreadList = z.infer<typeof ChatThreadListSchema>;
+
 // --- Member phone (VAPI persona hack) --------------------------------------
 
 /** Set a member's phone when a persona is selected, so the single VAPI number
