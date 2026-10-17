@@ -8,7 +8,8 @@
     "./env": "./src/env.ts",
     "./api": "./src/api.ts",
     "./db": "./src/db.ts",
-    "./irrigation": "./src/irrigation.ts"
+    "./irrigation": "./src/irrigation.ts",
+    "./farm": "./src/farm.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

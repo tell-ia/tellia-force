@@ -8,6 +8,10 @@ import type { SoilWaterClass } from "../engine/soil";
 export type IsoDate = string;
 export type OperationStatus = "draft" | "planned" | "confirmed";
 
+/** Who created an operation: exactly the values the DB check on `operation.source` allows. */
+export const OPERATION_SOURCES = ["import", "whatsapp", "phone_call", "web", "agent"] as const;
+export type OperationSource = (typeof OPERATION_SOURCES)[number];
+
 export interface Farm {
   id: number;
   name: string;
@@ -15,6 +19,8 @@ export interface Farm {
   lon: number;
   /** Region mean annual precipitation / mean annual ET0. Below 0.5 = dry region. Null if unknown. */
   aridityIndex?: number | null;
+  /** ISO country ("FR", "ES"...). E-Phy product rules are French. Missing = unknown. */
+  countryCode?: string | null;
 }
 
 export interface Member {
@@ -30,6 +36,8 @@ export interface Field {
   areaHa: number;
   irrigable: boolean;
   centroid: { lat: number; lon: number } | null;
+  /** owned, rented... */
+  tenure?: string | null;
 }
 
 export interface CropSeason {
@@ -40,16 +48,35 @@ export interface CropSeason {
   status: string;
   /** Variety group ("early", "late"...): picks the crop phase row. Null = default row. */
   earlinessGroup?: string | null;
+  variety?: string | null;
+  previousCropCode?: string | null;
 }
 
+/** A soil analysis. The engine reads sand, clay and organic matter; the rest is for people. */
 export interface SoilAnalysis {
   sandPct: number;
   clayPct: number;
   organicMatterPct: number;
+  sampledOn?: IsoDate | null;
+  siltPct?: number | null;
+  ph?: number | null;
+  nitrogenGKg?: number | null;
+  phosphorusMgKg?: number | null;
+  potassiumMgKg?: number | null;
+  sulfurMgKg?: number | null;
+  calciumMgKg?: number | null;
+  magnesiumMgKg?: number | null;
+  zincMgKg?: number | null;
+  boronMgKg?: number | null;
+  cecCmolKg?: number | null;
+  bulkDensityKgDm3?: number | null;
+  limeRequirementTHa?: number | null;
 }
 
 export interface CropRef {
   code: string;
+  /** Crop group of the regional statistics (`regional_benchmark`). Missing = unknown. */
+  cropGroupCode?: string | null;
   nameFr: string;
   nameEn: string;
   /** Language code -> crop name, for every language the DB has a name in. */
@@ -85,6 +112,8 @@ export interface StoredWeatherDay {
 export interface IrrigationSystem {
   id: number;
   name: string;
+  /** reel_gun, pivot, sprinkler or drip. */
+  type?: string | null;
   /** Share of pumped water that reaches the roots: net mm = gross mm x efficiency. */
   efficiency: number;
   doseMinMm: number | null;
@@ -109,8 +138,91 @@ export interface IrrigationOperation {
   date: IsoDate;
   mm: number;
   status: OperationStatus;
-  source: string;
+  source: OperationSource;
   memberId: number | null;
+}
+
+/** Journal operation types (`operation.op_type`). */
+export type OperationType =
+  | "sowing"
+  | "fertilisation"
+  | "spraying"
+  | "irrigation"
+  | "harvest"
+  | "tillage"
+  | "observation"
+  | "other";
+
+/** A product used in an operation (`operation_input`). Dose is per hectare. */
+export interface OperationProduct {
+  productId: number | null;
+  productName: string;
+  dose: number | null;
+  doseUnit: string | null;
+  target: string | null;
+}
+
+/** One journal row (`operation`) with its products. Values that do not apply may be absent. */
+export interface FarmOperation {
+  operationId: number;
+  fieldId: number;
+  seasonId: number | null;
+  date: IsoDate;
+  type: OperationType;
+  status: OperationStatus | "cancelled";
+  bbch?: number | null;
+  fertiliserType?: string | null;
+  nKgHa?: number | null;
+  p2o5KgHa?: number | null;
+  k2oKgHa?: number | null;
+  waterMm?: number | null;
+  variety?: string | null;
+  seedRateKgHa?: number | null;
+  yieldTHa?: number | null;
+  moisturePct?: number | null;
+  proteinPct?: number | null;
+  method?: string | null;
+  notes?: string | null;
+  products: OperationProduct[];
+}
+
+/** A crop protection product of the E-Phy catalogue (`product`, shared by every farm). */
+export interface Product {
+  id: number;
+  name: string;
+  /** French marketing authorisation number (AMM). */
+  ammNumber: string | null;
+  /** herbicide, fungicide, insecticide... */
+  kind: string | null;
+  activeSubstances: string | null;
+}
+
+/** An authorised use of a product on a crop (`product_use`, E-Phy, shared by every farm). */
+export interface ProductUse {
+  productId: number;
+  cropCode: string;
+  target: string | null;
+  maxDose: number | null;
+  doseUnit: string | null;
+  maxApplications: number | null;
+  preHarvestIntervalDays: number | null;
+  bbchMin: number | null;
+  bbchMax: number | null;
+  bufferZoneWaterM: number | null;
+  conditions: string | null;
+}
+
+/** Which journal rows to read. Dates are inclusive. */
+export interface OperationFilter {
+  from: IsoDate;
+  to: IsoDate;
+  fieldId?: number;
+  type?: OperationType;
+  /**
+   * Also keep the rows of this crop season dated before `from` (still up to `to`): a season's
+   * own work can start before sowing (the manure spread is linked to the season it feeds).
+   */
+  seasonId?: number;
 }
 
 export interface NewIrrigation {
@@ -119,8 +231,88 @@ export interface NewIrrigation {
   date: IsoDate;
   mm: number;
   status: OperationStatus;
-  source: string;
+  source: OperationSource;
   memberId: number | null;
+}
+
+/** A grain sale of the farm (`sale`). Synthetic. */
+export interface SaleRecord {
+  id: number;
+  date: IsoDate;
+  cropCode: string;
+  harvestYear: number;
+  volumeT: number;
+  priceEurT: number;
+  buyer: string | null;
+  contractType: string | null;
+  qualityGrade: string | null;
+}
+
+/** A monthly reference price of a crop (`market_price`, shared by every farm). Synthetic. */
+export interface MarketPriceRecord {
+  cropCode: string;
+  year: number;
+  month: number;
+  priceEurT: number;
+}
+
+/** A CAP payment of the farm (`subsidy`). Synthetic. */
+export interface SubsidyRecord {
+  id: number;
+  year: number;
+  scheme: string;
+  amountEur: number;
+}
+
+/** One year of the farm's accounts (`farm_economics`), EUR. Synthetic. */
+export interface FarmEconomicsRecord {
+  year: number;
+  totalOutputEur: number | null;
+  seedsEur: number | null;
+  fertiliserEur: number | null;
+  cropProtectionEur: number | null;
+  energyEur: number | null;
+  contractWorkEur: number | null;
+  wagesEur: number | null;
+  depreciationEur: number | null;
+  totalInputsEur: number | null;
+  farmNetValueAddedEur: number | null;
+}
+
+/** Real averages of the farm's region for a crop group and year (`regional_benchmark`). */
+export interface RegionalBenchmarkRecord {
+  cropGroupCode: string;
+  cropGroupName: string | null;
+  year: number;
+  yieldTHa: number | null;
+  yieldSourceGeography: string | null;
+  yieldValueType: string | null;
+  nKgHa: number | null;
+  p2o5KgHa: number | null;
+  k2oKgHa: number | null;
+  npkReferenceYear: number | null;
+  irrigatedShare: number | null;
+  pesticideTotalKgAiHa: number | null;
+  herbicideKgAiHa: number | null;
+  fungicideKgAiHa: number | null;
+  insecticideKgAiHa: number | null;
+  pesticideReference: string | null;
+}
+
+/** Filters of the business tables; a missing value does not filter. */
+export interface LookupFilter {
+  /** sale: harvest year; other tables: their year. */
+  year?: number;
+  cropCode?: string;
+}
+
+/** New values of a corrected irrigation. `seasonId` is the crop season on the new date. */
+export interface IrrigationChange {
+  date: IsoDate;
+  mm: number;
+  seasonId: number;
+  /** The date moves: the crop stage (BBCH) stored for the old date no longer applies. */
+  dateChanged: boolean;
 }
 
 /** The crop name in a language ("fr", "es", "it-IT"...), falling back to English. */
@@ -188,9 +380,43 @@ export interface FarmData {
     fieldId: number,
     opts: { includeDrafts: boolean },
   ): Promise<IrrigationOperation[]>;
+  /**
+   * Journal rows in [from, to] of this farm (plus rows of `seasonId` before `from`), confirmed
+   * and planned only (drafts and cancelled rows are left out), with their products. Order is
+   * not guaranteed.
+   */
+  listOperations(filter: OperationFilter): Promise<FarmOperation[]>;
+  /** The whole E-Phy product catalogue (shared by every farm). Fails loudly, never [] on error. */
+  listProducts(): Promise<Product[]>;
+  /** Every authorised use of one catalogue product, all crops (shared by every farm). */
+  listProductUses(productId: number): Promise<ProductUse[]>;
+  /**
+   * Distinct names of the products in this farm's journal that are not in the catalogue
+   * (`operation_input.product_id` null): the synthetic products of farms outside France.
+   */
+  listJournalProductNames(): Promise<string[]>;
+  /** Every crop of the reference table (shared by every farm). Fails loudly, never [] on error. */
+  listCropRefs(): Promise<CropRef[]>;
+  /** This farm's grain sales (year = harvest year). Order is not guaranteed. */
+  listSales(filter: LookupFilter): Promise<SaleRecord[]>;
+  /** Monthly reference prices (shared by every farm). Order is not guaranteed. */
+  listMarketPrices(filter: LookupFilter): Promise<MarketPriceRecord[]>;
+  /** This farm's CAP payments. Order is not guaranteed. */
+  listSubsidies(filter: { year?: number }): Promise<SubsidyRecord[]>;
+  /** This farm's yearly accounts. Order is not guaranteed. */
+  listFarmEconomics(filter: { year?: number }): Promise<FarmEconomicsRecord[]>;
+  /** Regional averages of this farm's region (`nuts3_id`). Order is not guaranteed. */
+  listRegionalBenchmarks(
+    filter: { year?: number; cropGroupCode?: string },
+  ): Promise<RegionalBenchmarkRecord[]>;
   /** One irrigation operation by id, or null when missing / not an irrigation. */
   getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;
   setIrrigationStatus(operationId: number, status: OperationStatus): Promise<IrrigationOperation>;
+  /**
+   * New date, mm and crop season of an irrigation of this farm (a new date clears the stored
+   * crop stage); 404 when there is none.
+   */
+  updateIrrigation(operationId: number, change: IrrigationChange): Promise<IrrigationOperation>;
   deleteIrrigation(operationId: number): Promise<void>;
 }

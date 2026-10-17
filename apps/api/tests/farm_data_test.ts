@@ -1,6 +1,10 @@
 import { HTTPException } from "hono/http-exception";
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { cropNameIn, pickCropPhases } from "../src/modules/irrigation/data/farmData";
+import {
+  cropNameIn,
+  OPERATION_SOURCES,
+  pickCropPhases,
+} from "../src/modules/irrigation/data/farmData";
 import {
   createMemoryFarmData,
   createMemoryFarmDirectory,
@@ -18,6 +22,7 @@ import {
   mapSoilWaterClass,
   mapWeatherDay,
   toOperationInsert,
+  toOperationUpdate,
 } from "../src/modules/irrigation/data/supabaseFarmData";
 import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
 import { MAIZE_EARLY_PHASES, MAIZE_PARAMS, REEL_GUN, SOIL_CLASSES } from "./fixtures/fao.ts";
@@ -37,7 +42,7 @@ Deno.test("listIrrigations excludes drafts unless asked", async () => {
     date: "2026-07-01",
     mm: 20,
     status: "draft",
-    source: "assistant",
+    source: "agent",
     memberId: 1,
   });
   assertEquals((await d.listIrrigations(10, { includeDrafts: false })).length, 1);
@@ -52,7 +57,7 @@ Deno.test("create, confirm, delete lifecycle", async () => {
     date: "2026-07-01",
     mm: 20,
     status: "draft",
-    source: "assistant",
+    source: "agent",
     memberId: 1,
   });
   assertEquals(op.status, "draft");
@@ -135,7 +140,7 @@ Deno.test("toOperationInsert builds the snake_case row", () => {
       date: "2026-07-05",
       mm: 25,
       status: "draft",
-      source: "assistant",
+      source: "agent",
       memberId: 1,
     }, 12.5),
     {
@@ -145,10 +150,56 @@ Deno.test("toOperationInsert builds the snake_case row", () => {
       op_type: "irrigation",
       water_mm: 25,
       status: "draft",
-      source: "assistant",
+      source: "agent",
       origin: "assistant",
       member_id: 1,
       area_ha: 12.5,
+    },
+  );
+});
+
+Deno.test("memory twin: updateIrrigation changes date, mm and season only", async () => {
+  const d = createMemoryFarmData(makeFarmFixture());
+  const op = await d.updateIrrigation(1, {
+    date: "2026-06-22",
+    mm: 25,
+    seasonId: 109,
+    dateChanged: true,
+  });
+  assertEquals(op, {
+    operationId: 1,
+    fieldId: 10,
+    seasonId: 109,
+    date: "2026-06-22",
+    mm: 25,
+    status: "confirmed",
+    source: "import",
+    memberId: null,
+  });
+  assertEquals(await d.getIrrigation(1), op);
+});
+
+Deno.test("toOperationUpdate: the new date, mm and season, with updated_at", () => {
+  const now = new Date("2026-07-05T08:00:00Z");
+  // A new date clears the crop stage the import stored for the old date.
+  assertEquals(
+    toOperationUpdate({ date: "2026-06-22", mm: 25, seasonId: 109, dateChanged: true }, now),
+    {
+      op_date: "2026-06-22",
+      water_mm: 25,
+      crop_season_id: 109,
+      bbch: null,
+      updated_at: "2026-07-05T08:00:00.000Z",
+    },
+  );
+  // Only the mm changes: the stage of that day stays.
+  assertEquals(
+    toOperationUpdate({ date: "2026-06-21", mm: 25, seasonId: 109, dateChanged: false }, now),
+    {
+      op_date: "2026-06-21",
+      water_mm: 25,
+      crop_season_id: 109,
+      updated_at: "2026-07-05T08:00:00.000Z",
     },
   );
 });
@@ -162,8 +213,16 @@ Deno.test("toOperationInsert: origin is app for the REST source, assistant other
     status: "confirmed" as const,
     memberId: 1,
   };
-  assertEquals(toOperationInsert({ ...base, source: "app" }, null).origin, "app");
-  assertEquals(toOperationInsert({ ...base, source: "assistant" }, null).origin, "assistant");
+  assertEquals(toOperationInsert({ ...base, source: "web" }, null).origin, "app");
+  assertEquals(toOperationInsert({ ...base, source: "agent" }, null).origin, "assistant");
+});
+
+Deno.test("OPERATION_SOURCES matches the operation.source check in seed/schema.sql", async () => {
+  const sql = await Deno.readTextFile(new URL("../../../seed/schema.sql", import.meta.url));
+  const check = sql.match(/create table operation \([\s\S]*?check \(source in \(([^)]*)\)\)/);
+  assert(check, "operation.source check not found in seed/schema.sql");
+  const allowed = check[1].split(",").map((s) => s.trim().replace(/^'|'$/g, ""));
+  assertEquals([...OPERATION_SOURCES].sort(), allowed.sort());
 });
 
 Deno.test("averageByDay averages per MM-DD and folds Feb 29 into Feb 28", () => {
@@ -180,10 +239,15 @@ Deno.test("averageByDay averages per MM-DD and folds Feb 29 into Feb 28", () => 
   assertEquals(m.has("03-01"), false);
 });
 
-Deno.test("memory twin: missing id is a 404 on status and delete", async () => {
+Deno.test("memory twin: missing id is a 404 on status, update and delete", async () => {
   const d = createMemoryFarmData(makeFarmFixture());
   for (
-    const call of [() => d.setIrrigationStatus(9999, "confirmed"), () => d.deleteIrrigation(9999)]
+    const call of [
+      () => d.setIrrigationStatus(9999, "confirmed"),
+      () =>
+        d.updateIrrigation(9999, { date: "2026-07-01", mm: 10, seasonId: 109, dateChanged: true }),
+      () => d.deleteIrrigation(9999),
+    ]
   ) {
     const e = await assertRejects(call, HTTPException);
     assertEquals(e.status, 404);
@@ -217,7 +281,13 @@ Deno.test("supabase update/delete are scoped to the farm and op_type=irrigation,
   };
   // deno-lint-ignore no-explicit-any
   const d = createSupabaseFarmData({ from: () => qb } as any, 1);
-  for (const call of [() => d.setIrrigationStatus(5, "confirmed"), () => d.deleteIrrigation(5)]) {
+  for (
+    const call of [
+      () => d.setIrrigationStatus(5, "confirmed"),
+      () => d.updateIrrigation(5, { date: "2026-07-01", mm: 10, seasonId: 109, dateChanged: true }),
+      () => d.deleteIrrigation(5),
+    ]
+  ) {
     calls.length = 0;
     const e = await assertRejects(call, HTTPException);
     assertEquals(e.status, 404);
@@ -532,7 +602,15 @@ Deno.test("row mappers: soil class, irrigation system, earliness, Tmax, aridity"
   assertEquals(mapIrrigationSystem(faoTables().irrigation_system[0]), REEL_GUN);
   assertEquals(
     mapIrrigationSystem({ id: 3, name: "Drip", efficiency: "0.9" }),
-    { id: 3, name: "Drip", efficiency: 0.9, doseMinMm: null, doseMaxMm: null, roundDays: null },
+    {
+      id: 3,
+      name: "Drip",
+      type: null,
+      efficiency: 0.9,
+      doseMinMm: null,
+      doseMaxMm: null,
+      roundDays: null,
+    },
   );
   const season = {
     id: 1,

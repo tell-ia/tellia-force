@@ -44,10 +44,13 @@ apps/api/
     modules/
       items/items.controller.ts   # example CRUD, copy for new resources
       irrigation/      # FAO-56 engine (pure), FarmData (Supabase + in-memory twin),
-                       # weather (DB + Open-Meteo), service, REST /irrigation (no LLM)
-      chat/            # Mastra: advisor agent, 8 tools, 4 workflows, POST /chat,
+                       # weather (DB + Open-Meteo), service, REST /irrigation (no LLM);
+                       # farmInfo / productCheck / farmLookup services (journal, E-Phy, sales)
+      chat/            # Mastra: advisor agent, 13 tools, 5 workflows, POST /chat,
                        # GET /chat/history, x-member-id middleware. See chat/README.md
+      vapi/            # phone assistant: POST /vapi/tools, 12 phone tools. See vapi/README.md
   scripts/smoke.ts     # real-model smoke test against a running server
+  scripts/vapiSetup.ts # pushes the phone tools + prompt to VAPI (agents: --dry-run only)
   tests/               # offline suite; tests/live/ needs RUN_LIVE_TESTS=1
 ```
 
@@ -62,10 +65,21 @@ apps/api/
   Inserts may omit `farm_id`: a DB trigger copies it from the field.
 - **Only `confirmed` irrigations count** in the water balance. The assistant saves `draft`
   operations and confirms them only when the same member resumes the `record-irrigation`
-  workflow with `confirmed: true`. Declined drafts are deleted.
+  workflow with `confirmed: true`. Declined drafts are deleted. Corrections work the same way:
+  `correctIrrigation` starts `correct-irrigation`, which changes or deletes a confirmed
+  irrigation only after the same member's yes. `confirmIrrigation` resumes both workflows.
+- **The 5 workflows**: `farm-advice`, `simulate-scenario`, `record-irrigation`,
+  `correct-irrigation`, `morning-warmup` (`chat/workflows/index.ts`).
+- **The 13 chat tool keys** (`chat/tools.ts`, a UI contract): `resolveField`, `getFarmAdvice`,
+  `getFieldReport`, `simulateScenario`, `getWeather`, `getIrrigationHistory`, `recordIrrigation`,
+  `confirmIrrigation`, `getFieldDetails`, `getFieldJournal`, `checkProductUse`,
+  `correctIrrigation`, `lookupFarmData`. Their output schemas are in `@tellia/shared/irrigation`
+  and `@tellia/shared/farm`. The phone has the same tools in snake_case, without
+  `confirmIrrigation` (the voice asks first, then calls `record_irrigation` or
+  `correct_irrigation` directly; refused for unknown callers).
 - **`MODEL`** (env, default `openai/gpt-6.1-sol`) is the chat model, `MODEL_MINI` is for thread
   titles. Both use `OPENAI_API_KEY`. `DEMO_DATE` pins "today".
 - Identity is the `x-member-id` header (no auth, team decision): don't expose the server
   publicly, `/api/*` exposes Mastra's built-in routes.
-- Tests and agents must never write to the shared Supabase DB. The 8 tool keys are a UI
+- Tests and agents must never write to the shared Supabase DB. The 13 tool keys are a UI
   contract; don't rename them.

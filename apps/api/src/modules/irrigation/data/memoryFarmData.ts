@@ -10,15 +10,24 @@ import type {
   Farm,
   FarmData,
   FarmDirectory,
+  FarmEconomicsRecord,
+  FarmOperation,
   Field,
+  IrrigationChange,
   IrrigationOperation,
   IrrigationSystem,
   IsoDate,
+  MarketPriceRecord,
   Member,
   NewIrrigation,
   OperationStatus,
+  Product,
+  ProductUse,
+  RegionalBenchmarkRecord,
+  SaleRecord,
   SoilAnalysis,
   StoredWeatherDay,
+  SubsidyRecord,
 } from "./farmData";
 import { pickCropPhases } from "./farmData";
 
@@ -43,13 +52,47 @@ export interface FarmFixture {
   soilClasses?: SoilWaterClass[];
   /** Irrigation equipment keyed by field id. */
   irrigationSystems?: Record<number, IrrigationSystem>;
+  /**
+   * Journal rows other than irrigations (any status). Irrigations live in `irrigations` and
+   * join the journal from there. Ids must not overlap with `irrigations`.
+   */
+  operations?: FarmOperation[];
+  /** E-Phy catalogue (a global table in the DB: give every farm the same list). */
+  products?: Product[];
+  /** E-Phy uses of the catalogue products (global, like `products`). */
+  productUses?: ProductUse[];
+  /** This farm's grain sales. */
+  sales?: SaleRecord[];
+  /** Monthly reference prices (a global table in the DB: give every farm the same list). */
+  marketPrices?: MarketPriceRecord[];
+  /** This farm's CAP payments. */
+  subsidies?: SubsidyRecord[];
+  /** This farm's yearly accounts. */
+  farmEconomics?: FarmEconomicsRecord[];
+  /** Regional averages of this farm's region only (the DB filters on the farm's nuts3_id). */
+  regionalBenchmarks?: RegionalBenchmarkRecord[];
+}
+
+/** An irrigation as a journal row. */
+function irrigationRow(o: IrrigationOperation): FarmOperation {
+  return {
+    operationId: o.operationId,
+    fieldId: o.fieldId,
+    seasonId: o.seasonId,
+    date: o.date,
+    type: "irrigation",
+    status: o.status,
+    waterMm: o.mm,
+    products: [],
+  };
 }
 
 /** In-memory FarmData for tests. Copies the fixture so tests can't leak state. */
 export function createMemoryFarmData(fixture: FarmFixture): FarmData {
   const f = structuredClone(fixture);
   const ops = f.irrigations;
-  let nextId = Math.max(0, ...ops.map((o) => o.operationId)) + 1;
+  const journal = f.operations ?? [];
+  let nextId = Math.max(0, ...[...ops, ...journal].map((o) => o.operationId)) + 1;
 
   const find = (id: number) => {
     const op = ops.find((o) => o.operationId === id);
@@ -88,6 +131,51 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
       ops.filter((o) => o.fieldId === fieldId && (opts.includeDrafts || o.status !== "draft"))
         .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.operationId - b.operationId)
         .map((o) => ({ ...o })),
+    listOperations: async ({ from, to, fieldId, type, seasonId }) =>
+      [...journal, ...ops.map(irrigationRow)]
+        .filter((o) =>
+          (o.status === "confirmed" || o.status === "planned") &&
+          (o.date >= from || (seasonId !== undefined && o.seasonId === seasonId)) &&
+          o.date <= to && (fieldId === undefined || o.fieldId === fieldId) &&
+          (type === undefined || o.type === type)
+        )
+        .map((o) => structuredClone(o)),
+    listProducts: async () => structuredClone(f.products ?? []),
+    listProductUses: async (productId) =>
+      structuredClone((f.productUses ?? []).filter((u) => u.productId === productId)),
+    listJournalProductNames: async () => [
+      ...new Set(
+        journal.flatMap((o) => o.products).filter((p) => p.productId == null).map((p) =>
+          p.productName
+        ),
+      ),
+    ],
+    listCropRefs: async () => structuredClone(f.cropRefs),
+    listSales: async ({ year, cropCode }) =>
+      structuredClone(
+        (f.sales ?? []).filter((r) =>
+          (year === undefined || r.harvestYear === year) &&
+          (cropCode === undefined || r.cropCode === cropCode)
+        ),
+      ),
+    listMarketPrices: async ({ year, cropCode }) =>
+      structuredClone(
+        (f.marketPrices ?? []).filter((r) =>
+          (year === undefined || r.year === year) &&
+          (cropCode === undefined || r.cropCode === cropCode)
+        ),
+      ),
+    listSubsidies: async ({ year }) =>
+      structuredClone((f.subsidies ?? []).filter((r) => year === undefined || r.year === year)),
+    listFarmEconomics: async ({ year }) =>
+      structuredClone((f.farmEconomics ?? []).filter((r) => year === undefined || r.year === year)),
+    listRegionalBenchmarks: async ({ year, cropGroupCode }) =>
+      structuredClone(
+        (f.regionalBenchmarks ?? []).filter((r) =>
+          (year === undefined || r.year === year) &&
+          (cropGroupCode === undefined || r.cropGroupCode === cropGroupCode)
+        ),
+      ),
     getIrrigation: async (id) => {
       const op = ops.find((o) => o.operationId === id);
       return op ? { ...op } : null;
@@ -100,6 +188,11 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
     setIrrigationStatus: async (id: number, status: OperationStatus) => {
       const op = find(id);
       op.status = status;
+      return { ...op };
+    },
+    updateIrrigation: async (id: number, { date, mm, seasonId }: IrrigationChange) => {
+      const op = find(id);
+      Object.assign(op, { date, mm, seasonId });
       return { ...op };
     },
     deleteIrrigation: async (id) => {

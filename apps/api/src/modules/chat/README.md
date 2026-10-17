@@ -28,30 +28,64 @@ conversation: it never computes numbers.
 
 ### Tool keys (UI card contract)
 
-Renaming a key breaks the UI. Output shapes are in `@tellia/shared/irrigation`.
+13 tools. Renaming a key breaks the UI. Output shapes are in `@tellia/shared/irrigation` (the first
+8 rows) and `@tellia/shared/farm` (the 5 last rows and `IrrigationConfirmation`).
 
-| Part type                   | Card                                                     | Output                                                                     |
-| --------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `tool-resolveField`         | field chips                                              | `{ matches: [{ fieldId, name, cropName }] }`                               |
-| `tool-getFarmAdvice`        | ranked advice list, most urgent first                    | `FarmAdvice` `{ asOf, reports: FieldReport[] }`                            |
-| `tool-getFieldReport`       | one field: decision, mm, depletion, rain, reason         | `FieldReport`                                                              |
-| `tool-simulateScenario`     | what-if: baseline vs scenario and the comparison summary | `ScenarioResult`                                                           |
-| `tool-getWeather`           | weather strip, 3 days before to 3 days after             | `{ fieldId, days: WeatherDay[] }`                                          |
-| `tool-getIrrigationHistory` | confirmed irrigations, newest first                      | `{ fieldId, records: IrrigationRecord[] }`                                 |
-| `tool-recordIrrigation`     | **confirmation card** with Oui / Non buttons             | `{ runId, status: "awaiting_confirmation", summary, fieldName, date, mm }` |
-| `tool-confirmIrrigation`    | saved / cancelled badge                                  | `{ status: "saved" \| "cancelled", record? }`                              |
+| Part type                   | Card                                                         | Output                                                                                                         |
+| --------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `tool-resolveField`         | field chips                                                  | `{ matches: [{ fieldId, name, cropName }] }`                                                                   |
+| `tool-getFarmAdvice`        | ranked advice list, most urgent first                        | `FarmAdvice` `{ asOf, reports: FieldReport[] }`                                                                |
+| `tool-getFieldReport`       | one field: decision, mm, depletion, rain, reason             | `FieldReport`                                                                                                  |
+| `tool-simulateScenario`     | what-if: baseline vs scenario and the comparison summary     | `ScenarioResult`                                                                                               |
+| `tool-getWeather`           | weather strip, 3 days before to 3 days after                 | `{ fieldId, days: WeatherDay[] }`                                                                              |
+| `tool-getIrrigationHistory` | confirmed irrigations, newest first                          | `{ fieldId, records: IrrigationRecord[] }`                                                                     |
+| `tool-recordIrrigation`     | **confirmation card** with Oui / Non buttons                 | `{ runId, status: "awaiting_confirmation", summary, fieldName, date, mm }`                                     |
+| `tool-confirmIrrigation`    | saved / updated / deleted / cancelled badge                  | `IrrigationConfirmation` `{ status: "saved" \| "updated" \| "deleted" \| "cancelled", record? }`               |
+| `tool-getFieldDetails`      | one field: area, crop today, irrigation system, soil         | `FieldDetails` `{ field, crop, irrigationSystem, soil }`                                                       |
+| `tool-getFieldJournal`      | journal entries (planned ones marked) and the totals         | `FieldJournal` `{ fieldId, fieldName, type, from, to, entries, totals, truncated }`                            |
+| `tool-checkProductUse`      | product verdict: uses, applications left, pre-harvest check  | `ProductCheck` `{ status, product, matches, authorised, uses, usage, applicationsLeft, ... }`                  |
+| `tool-correctIrrigation`    | **confirmation card** with Oui / Non buttons, before → after | `IrrigationCorrection` `{ runId, status: "awaiting_confirmation", summary, fieldName, action, before, after }` |
+| `tool-lookupFarmData`       | one table: rows (at most 8 shown) and the server summary     | `FarmLookup` `{ table, synthetic, note, year, cropCode, rows, count, truncated, summary }`                     |
 
-**Confirmation card.** `tool-recordIrrigation` means nothing is saved yet. Show `summary` with Oui
-and Non buttons. A button simply sends the user message `Oui` or `Non` through `useChat`; the
-assistant then calls `confirmIrrigation`. Only confirmed irrigations count in the advice. A declined
-draft is deleted.
+What the 5 farm tools answer (every number and total is computed by the server):
+
+- `getFieldDetails` `{ fieldId }`: the field, the crop growing today (variety, sowing and expected
+  harvest dates, previous crop), the irrigation system and the latest soil analysis (USDA texture
+  class, pH, organic matter, N, P, K and more). Each part is `null` when there is none.
+- `getFieldJournal` `{ fieldId?, type?, from?, to? }`: the farm journal (`operation` and its
+  products). Default range: the field's crop season (sowing to harvest, plus the season's own rows
+  before sowing, like its manure spread; `from` is then the first day covered); with no field, the
+  last 365 days. Drafts and
+  cancelled rows never show; rows after today are `planned: true`. At most 20 entries, newest first.
+  `totals` cover the whole range (count per type, N / P2O5 / K2O kg/ha, irrigation mm, sprays);
+  kg/ha and mm sums are `null` when the rows cover several fields.
+- `checkProductUse` `{ product, fieldId, date? }`: finds the product by name or AMM number. `status`
+  is `found`, `ambiguous` (the `matches`, no verdict) or `not_found`. Gives the E-Phy uses on the
+  field's crop, the times used this season, `applicationsLeft`, `daysToHarvest` and `preHarvestOk`.
+  `authorised` is `null` (no verdict) for products with no E-Phy data and for farms outside France.
+  The crop stage (BBCH) is not checked: it is a warning.
+- `correctIrrigation` `{ operationId, action: "update" | "delete", date?, mm? }`: starts the
+  `correct-irrigation` workflow on a confirmed irrigation of the caller's farm (the model finds the
+  `operationId` with `getIrrigationHistory`). Nothing changes yet. `after` is `null` for a delete.
+- `lookupFarmData` `{ table, year?, cropCode?, limit? }`: one of `sale`, `market_price`, `subsidy`,
+  `farm_economics`, `regional_benchmark`. Sales, subsidies and accounts are the caller's farm;
+  market prices are global (`forecast: true` after the current month); benchmarks are the farm's
+  region. `limit` ≤ 50 (default 20). `summary`: sales (tonnes, revenue, average price, per crop),
+  subsidies (total, per year), `null` for the other tables. `synthetic: true` means demo data
+  (`regional_benchmark` is real statistics, `false`).
+
+**Confirmation card.** `tool-recordIrrigation` and `tool-correctIrrigation` mean nothing is saved or
+changed yet. Show `summary` with Oui and Non buttons. A button simply sends the user message `Oui`
+or `Non` through `useChat`; the assistant then calls `confirmIrrigation`, which finishes either kind
+of run: `saved` (new irrigation), `updated` or `deleted` (correction), `cancelled` (the farmer said
+no). Only confirmed irrigations count in the advice. A declined draft is deleted; a declined
+correction changes nothing.
 
 ## `/irrigation` REST endpoints (no LLM, for VAPI and the UI)
 
 VAPI webhooks must call these, **not `/chat`**, to stay under the 2 s voice budget. Send the same
 `x-member-id` header to pick the caller's farm (default: farm 1's main contact); another farm's
-field is `404`. Responses use
-the `{ data }` envelope.
+field is `404`. Responses use the `{ data }` envelope.
 
 | Method and path                                 | Purpose                                        |
 | ----------------------------------------------- | ---------------------------------------------- |
@@ -66,14 +100,18 @@ See `irrigation.controller.ts` for the exact schemas (shared Zod in `@tellia/sha
 single application is capped at **35 mm** (`MAX_APPLICATION_MM`): advice never recommends more than
 35 mm at once, and says to re-check after.
 
-## The four workflows
+## The five workflows
 
-| Id                  | What it does                                                                                                                                                                                    |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `farm-advice`       | reports for every irrigable field in parallel, then ranks them                                                                                                                                  |
-| `simulate-scenario` | applies what-if events (irrigation, rain, drought, flood, frost, hail) and compares with the baseline                                                                                           |
-| `record-irrigation` | validates, saves a `draft` operation, then **suspends** for the farmer's yes/no. Resume with `confirmed: true` makes it `confirmed`; `false` deletes the draft. Only the same member can resume |
-| `morning-warmup`    | cron `0 5 * * *` (Europe/Paris): computes all field reports so the first calls of the day hit the weather cache                                                                                 |
+| Id                   | What it does                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `farm-advice`        | reports for every irrigable field in parallel, then ranks them                                                                                                                                                                                                                                                                                                                      |
+| `simulate-scenario`  | applies what-if events (irrigation, rain, drought, flood, frost, hail) and compares with the baseline                                                                                                                                                                                                                                                                               |
+| `record-irrigation`  | validates, saves a `draft` operation, then **suspends** for the farmer's yes/no. Resume with `confirmed: true` makes it `confirmed`; `false` deletes the draft. Only the same member can resume                                                                                                                                                                                     |
+| `correct-irrigation` | validates the change (a `confirmed` irrigation of the caller's farm; the new day and mm pass the recording checks; the record moves to the crop season of its new day), then **suspends** with a before → after summary. `confirmed: true` updates or deletes it, only if the record still has the values of the question; `false` changes nothing. Only the same member can resume |
+| `morning-warmup`     | cron `0 5 * * *` (Europe/Paris): computes all field reports so the first calls of the day hit the weather cache                                                                                                                                                                                                                                                                     |
+
+`confirmIrrigation` finds which workflow owns the `runId` (`record-irrigation` or
+`correct-irrigation`) and checks the member and the farm before it resumes the run.
 
 ## Engine method and simplifications
 
@@ -103,14 +141,18 @@ trusted as given. **Do not expose the server publicly.**
 
 ## Testing
 
-`deno task test` is offline. `deno task test:live` calls the real model (about 10 calls, no Supabase
-writes) and needs `apps/api/.env`. `deno task smoke` queries a running server with two read-only
-questions.
+`deno task test` is offline. `deno task test:live` calls the real model (about 12 chat turns, no
+Supabase writes, in-memory farm) and needs `apps/api/.env`: `tests/live/chat_live_test.ts` covers
+advice, scenario, recording and memory; `tests/live/chat_tools_live_test.ts` covers the 5 farm
+tools, one turn per read tool and the correction flow (correct → `Oui` → `confirmIrrigation` →
+`updated`). They check the tool calls and that the numbers in the reply come from the tools, never
+the wording. `deno task smoke` queries a running server with two read-only questions.
 
 ## Unanswered drafts
 
-When the farmer never answers a `record_irrigation` confirmation, the draft stays as a `draft`
-operation row. Drafts never count toward the water balance. Cleaning them up is backlog.
+When the farmer never answers a `recordIrrigation` confirmation, the draft stays as a `draft`
+operation row. Drafts never count toward the water balance. Cleaning them up is backlog. An
+unanswered `correctIrrigation` changes nothing: the record keeps its values.
 
 ## Mastra `/api/*`
 

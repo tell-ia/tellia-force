@@ -1,5 +1,5 @@
-// The eight chat tools. The member and their farm come only from the request context, never
-// from input, so a tool can only see and write the caller's own farm.
+// The chat tools. The member and their farm come only from the request context, never from
+// input, so a tool can only see and write the caller's own farm.
 
 import { createTool } from "@mastra/core/tools";
 import type { RequestContext } from "@mastra/core/request-context";
@@ -13,8 +13,28 @@ import {
   ScenarioResultSchema,
   WeatherDaySchema,
 } from "@tellia/shared/irrigation";
+import {
+  CorrectionActionSchema,
+  FarmLookupQuerySchema,
+  FarmLookupSchema,
+  FieldDetailsSchema,
+  FieldJournalSchema,
+  IrrigationConfirmationSchema,
+  IrrigationCorrectionSchema,
+  JournalTypeSchema,
+  LOOKUP_DEFAULT_ROWS,
+  LOOKUP_MAX_ROWS,
+  LookupTableSchema,
+  ProductCheckSchema,
+} from "@tellia/shared/farm";
 import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "./requestContext";
+
+/** Workflows that wait for the farmer's yes/no (confirmIrrigation), and the step that waits. */
+const CONFIRMABLE = [
+  { workflowId: "record-irrigation", step: "confirm" },
+  { workflowId: "correct-irrigation", step: "confirm-correction" },
+] as const;
 
 /** The calling member's id from the request context; throws when absent. */
 export function memberIdFrom(ctx: { requestContext?: RequestContext<any> }): number {
@@ -68,7 +88,7 @@ export function createAdvisorTools(registry: FarmRegistry) {
   };
 
   const date = IsoDateSchema.optional().describe("Day to evaluate, YYYY-MM-DD. Default: today.");
-  const fieldId = z.number().int().describe("Field id, from resolve_field.");
+  const fieldId = z.number().int().describe("Field id, from resolveField.");
 
   const resolveField = createTool({
     id: "resolve_field",
@@ -173,15 +193,10 @@ export function createAdvisorTools(registry: FarmRegistry) {
     date: IsoDateSchema,
     mm: z.number(),
   });
-  const ConfirmOutput = z.object({
-    status: z.enum(["saved", "cancelled"]),
-    record: IrrigationRecordSchema.optional(),
-  });
-
   const recordIrrigation = createTool({
     id: "record_irrigation",
     description:
-      "Start recording an irrigation the farmer says they did. Nothing is saved yet: it returns a summary; ask the farmer this summary as a yes/no question, then call confirm_irrigation with their answer.",
+      "Start recording an irrigation the farmer says they did. Nothing is saved yet: it returns a summary; ask the farmer this summary as a yes/no question, then call confirmIrrigation with their answer.",
     inputSchema: z.object({
       fieldId,
       date: IsoDateSchema.describe("Day the irrigation happened, YYYY-MM-DD."),
@@ -209,35 +224,148 @@ export function createAdvisorTools(registry: FarmRegistry) {
     },
   });
 
+  const correctIrrigation = createTool({
+    id: "correct_irrigation",
+    description:
+      "Change the day or the mm of an irrigation already recorded, or delete it, when the farmer says it was wrong. Find its operationId with getIrrigationHistory first. Nothing changes yet: it returns a summary; ask the farmer this summary as a yes/no question, then call confirmIrrigation with their answer.",
+    inputSchema: z.object({
+      operationId: z.number().int().describe(
+        "operationId of the irrigation to correct, from getIrrigationHistory.",
+      ),
+      action: CorrectionActionSchema.describe(
+        "update: change its day and/or mm; delete: remove it.",
+      ),
+      date: IsoDateSchema.optional().describe(
+        "update only: the right day, YYYY-MM-DD. Leave it out to keep the day.",
+      ),
+      mm: z.number().positive().max(200).optional().describe(
+        "update only: the right water applied, in mm. Leave it out to keep the mm.",
+      ),
+    }),
+    outputSchema: IrrigationCorrectionSchema,
+    execute: async ({ operationId, action, date, mm }, ctx) => {
+      const memberId = memberIdFrom(ctx);
+      if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
+      const run = await ctx.mastra.getWorkflow("correct-irrigation").createRun();
+      const result = await run.start({
+        inputData: { farmId: farmIdFrom(ctx), memberId, operationId, action, date, mm },
+        requestContext: ctx.requestContext,
+      });
+      if (result.status !== "suspended") throw new Error(failureMessage(result));
+      const p = result.suspendPayload?.["confirm-correction"] ?? result.suspendPayload;
+      return IrrigationCorrectionSchema.parse({
+        runId: run.runId,
+        status: "awaiting_confirmation",
+        summary: p.summary,
+        fieldName: p.fieldName,
+        action: p.action,
+        before: p.before,
+        after: p.after,
+      });
+    },
+  });
+
   const confirmIrrigation = createTool({
     id: "confirm_irrigation",
     description:
-      "Finish a record_irrigation run, only with the farmer's explicit answer to its yes/no question: confirmed true saves the irrigation, false discards it. Never call it on your own initiative.",
+      "Finish a recordIrrigation or correctIrrigation run, only with the farmer's explicit answer to its yes/no question. confirmed true: saves the new irrigation (status saved) or applies the correction (updated or deleted); false: changes nothing (cancelled). Never call it on your own initiative.",
     inputSchema: z.object({
-      runId: z.string().describe("runId returned by record_irrigation."),
+      runId: z.string().describe("runId returned by recordIrrigation or correctIrrigation."),
       confirmed: z.boolean(),
     }),
-    outputSchema: ConfirmOutput,
+    outputSchema: IrrigationConfirmationSchema,
     execute: async ({ runId, confirmed }, ctx) => {
       const memberId = memberIdFrom(ctx);
+      const farmId = farmIdFrom(ctx);
       if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
-      const workflow = ctx.mastra.getWorkflow("record-irrigation");
+      // Mastra's run lookup filters on the workflow: only the workflow that owns the runId
+      // finds it.
+      let found;
+      for (const c of CONFIRMABLE) {
+        const workflow = ctx.mastra.getWorkflow(c.workflowId);
+        const state = await workflow.getWorkflowRunById(runId);
+        if (state) {
+          found = { workflow, state, step: c.step };
+          break;
+        }
+      }
+      if (!found) throw new Error("unknown confirmation");
+      const { workflow, state, step } = found;
       // Refuse before resuming, so a foreign attempt leaves the run suspended for its owner.
-      const state = await workflow.getWorkflowRunById(runId);
-      if (!state) throw new Error("unknown confirmation");
-      if (state.payload?.memberId !== memberId || state.payload?.farmId !== farmIdFrom(ctx)) {
+      if (state.payload?.memberId !== memberId || state.payload?.farmId !== farmId) {
         throw new Error("this confirmation belongs to another member");
       }
       if (state.status !== "suspended") throw new Error("this confirmation is no longer pending");
       const run = await workflow.createRun({ runId });
       const result = await run.resume({
-        step: "confirm",
+        step,
         resumeData: { confirmed },
         requestContext: ctx.requestContext,
       });
       if (result.status !== "success") throw new Error(failureMessage(result));
-      return ConfirmOutput.parse(result.result);
+      return IrrigationConfirmationSchema.parse(result.result);
     },
+  });
+
+  const getFieldDetails = createTool({
+    id: "get_field_details",
+    description:
+      "Facts about one field: area, tenure, the crop growing today (variety, sowing and expected harvest dates, previous crop), the irrigation system and the latest soil analysis (texture class, pH, organic matter, N, P, K and more). Use it for 'tell me about this field' or soil questions.",
+    inputSchema: z.object({ fieldId }),
+    outputSchema: FieldDetailsSchema,
+    execute: async ({ fieldId }, ctx) => (await serviceOf(ctx)).getFieldDetails(fieldId),
+  });
+
+  const getFieldJournal = createTool({
+    id: "get_field_journal",
+    description:
+      "The farm journal: what was done on a field, or on every field (sowing, fertilisation, spraying with its products, irrigation, harvest, tillage, observations). Newest first, at most 20 entries; entries with planned true are not done yet. totals cover the whole range, not only the entries shown: count per type, N, P2O5 and K2O in kg/ha, irrigation mm, number of sprays. Default range: the field's crop season; with no field, the last 365 days. Use it for 'what did I do on...', 'when did I last spray...', 'how much nitrogen this season'. Copy the totals; never add entries up yourself.",
+    inputSchema: z.object({
+      fieldId: z.number().int().optional().describe(
+        "Field id, from resolveField. Leave it out for the whole farm.",
+      ),
+      type: JournalTypeSchema.optional().describe("Only this kind of operation."),
+      from: IsoDateSchema.optional().describe("First day, YYYY-MM-DD."),
+      to: IsoDateSchema.optional().describe("Last day, YYYY-MM-DD."),
+    }),
+    outputSchema: FieldJournalSchema,
+    execute: async ({ fieldId, type, from, to }, ctx) =>
+      (await serviceOf(ctx)).getFieldJournal({ fieldId, type, from, to }),
+  });
+
+  const checkProductUse = createTool({
+    id: "check_product_use",
+    description:
+      "Can a crop protection product go on a field's crop on a day? Finds the product by name or AMM number and gives its E-Phy uses for the crop (target, max dose, max applications, pre-harvest interval, BBCH range, buffer zone near water), the times it was used on the field this season, applicationsLeft, daysToHarvest and preHarvestOk. status ambiguous: list the matches and ask which one, give no verdict. status not_found: say so. authorised false: not authorised on this crop; authorised null: no verdict, say why from the warnings. applicationsLeft is null when the crop has several uses. The crop stage is not checked. Copy the numbers, mention every warning and never invent a rule.",
+    inputSchema: z.object({
+      product: z.string().min(1).describe("Product name or AMM number, as the farmer said it."),
+      fieldId,
+      date: IsoDateSchema.optional().describe(
+        "Day of the planned spray, YYYY-MM-DD. Default: today.",
+      ),
+    }),
+    outputSchema: ProductCheckSchema,
+    execute: async ({ product, fieldId, date }, ctx) =>
+      (await serviceOf(ctx)).checkProductUse({ product, fieldId, date }),
+  });
+
+  const lookup = FarmLookupQuerySchema.shape;
+  const lookupFarmData = createTool({
+    id: "lookup_farm_data",
+    description:
+      `Business and reference data, one table at a time: sale (this farm's grain sales: date, crop, harvest year, tonnes, price EUR/t, revenue), market_price (monthly reference price per crop, EUR/t, the same for every farm; forecast true = a month after the current one), subsidy (this farm's CAP payments per year and scheme), farm_economics (this farm's yearly accounts: output, input costs, net value added, EUR), regional_benchmark (real averages of the farm's region per crop group: yield t/ha, N, P2O5 and K2O kg/ha, pesticide use). Rows are newest first, at most limit (default ${LOOKUP_DEFAULT_ROWS}); count and summary cover every matching row (sale: tonnes, revenue, average price, per crop; subsidy: total EUR, per year). Copy the summary; never add rows up yourself. note says where the data comes from (synthetic true = demo data).`,
+    inputSchema: z.object({
+      table: LookupTableSchema.describe("The table to read."),
+      year: lookup.year.describe("Only this year (sale: the harvest year)."),
+      cropCode: lookup.cropCode.describe(
+        "Only this crop: a crop code (MAIZ, COWT...) or a crop name in any language. sale, market_price and regional_benchmark only.",
+      ),
+      limit: lookup.limit.describe(
+        `Rows to show, 1 to ${LOOKUP_MAX_ROWS}. Default ${LOOKUP_DEFAULT_ROWS}.`,
+      ),
+    }),
+    outputSchema: FarmLookupSchema,
+    execute: async (query, ctx) => (await serviceOf(ctx)).lookupFarmData(query),
   });
 
   return {
@@ -249,5 +377,10 @@ export function createAdvisorTools(registry: FarmRegistry) {
     simulateScenario,
     recordIrrigation,
     confirmIrrigation,
+    getFieldDetails,
+    getFieldJournal,
+    checkProductUse,
+    correctIrrigation,
+    lookupFarmData,
   };
 }

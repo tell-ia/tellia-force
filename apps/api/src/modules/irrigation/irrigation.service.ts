@@ -13,6 +13,7 @@ import {
   type ScenarioResult,
   type WeatherDay,
 } from "@tellia/shared/irrigation";
+import type { CorrectionAction, IrrigationAmount } from "@tellia/shared/farm";
 import {
   cropNameIn,
   type CropRef,
@@ -22,6 +23,7 @@ import {
   type Field,
   type IrrigationOperation,
   type IrrigationSystem,
+  type OperationSource,
   type OperationStatus,
 } from "./data/farmData";
 import { cropWaterParams, kcAtFraction, kcFromRef, seasonFraction } from "./engine/crop";
@@ -34,6 +36,9 @@ import {
   type Phase,
 } from "./engine/cropModel";
 import { buildFieldReport, rankReports, reportBalance, type ReportInput } from "./engine/report";
+import { createFarmInfoService, type FarmInfoService } from "./farmInfo.service";
+import { createProductCheckService, type ProductCheckService } from "./productCheck.service";
+import { createFarmLookupService, type FarmLookupService } from "./farmLookup.service";
 import { applyScenario, compareReports } from "./engine/scenario";
 import {
   DEFAULT_LOAM,
@@ -68,7 +73,30 @@ export interface IrrigationPreview {
   summary: string;
 }
 
-export interface IrrigationService {
+/** A correction of a confirmed irrigation. For an update, a missing date or mm keeps the old one. */
+export interface IrrigationCorrectionInput {
+  operationId: number;
+  action: CorrectionAction;
+  date?: string;
+  mm?: number;
+}
+
+export interface IrrigationCorrectionPreview {
+  operationId: number;
+  fieldId: number;
+  fieldName: string;
+  action: CorrectionAction;
+  before: IrrigationAmount;
+  /** Null for a delete. */
+  after: IrrigationAmount | null;
+  summary: string;
+}
+
+/**
+ * Irrigation use cases, plus field details and the journal (farmInfo.service.ts), the
+ * product check (productCheck.service.ts) and the farm data lookup (farmLookup.service.ts).
+ */
+export interface IrrigationService extends FarmInfoService, ProductCheckService, FarmLookupService {
   today(): string;
   /** Main contact's member id, or null when the farm has none. */
   defaultMemberId(): Promise<number | null>;
@@ -96,12 +124,26 @@ export interface IrrigationService {
   confirmIrrigation(operationId: number): Promise<IrrigationRecord>;
   cancelIrrigation(operationId: number): Promise<void>;
   recordIrrigation(
-    input: IrrigationDraftInput & { source: string },
+    input: IrrigationDraftInput & { source: OperationSource },
   ): Promise<IrrigationRecord>;
   listIrrigations(
     fieldId: number,
     range?: { from?: string; to?: string },
   ): Promise<IrrigationRecord[]>;
+  /**
+   * Checks a correction and says it in one question; changes nothing. The operation must be a
+   * confirmed irrigation of this farm; new values pass the same checks as a new record.
+   */
+  previewIrrigationCorrection(input: IrrigationCorrectionInput): Promise<
+    IrrigationCorrectionPreview
+  >;
+  /** Applies an update after the same checks as the preview. Returns the updated record. */
+  updateIrrigation(
+    operationId: number,
+    change: { date?: string; mm?: number },
+  ): Promise<IrrigationRecord>;
+  /** Deletes a confirmed irrigation of this farm. Returns the record as it was. */
+  deleteIrrigation(operationId: number): Promise<IrrigationRecord>;
 }
 
 const normalize = (s: string) =>
@@ -554,8 +596,71 @@ export function createIrrigationService(
     return op;
   }
 
+  /** Only confirmed irrigations can be corrected: drafts and planned rows are refused. */
+  async function findConfirmedIrrigation(operationId: number): Promise<IrrigationOperation> {
+    const op = await findOperation(operationId);
+    if (op.status !== "confirmed") {
+      throw new HTTPException(409, {
+        message:
+          `irrigation operation ${operationId} is ${op.status}; only confirmed irrigations can be corrected`,
+      });
+    }
+    return op;
+  }
+
+  /** The operation to correct, its field and its current values. */
+  async function correctionBase(operationId: number) {
+    const op = await findConfirmedIrrigation(operationId);
+    const field = await getField(op.fieldId);
+    return {
+      operationId: op.operationId,
+      fieldId: field.id,
+      fieldName: field.name,
+      before: { date: op.date, mm: op.mm },
+    };
+  }
+
+  async function planDelete(operationId: number): Promise<IrrigationCorrectionPreview> {
+    const base = await correctionBase(operationId);
+    const { before, fieldName } = base;
+    return {
+      ...base,
+      action: "delete",
+      after: null,
+      summary: `Delete the irrigation of ${before.mm} mm on ${fieldName} on ${before.date}?`,
+    };
+  }
+
+  /**
+   * An update passes the checks of a new record (date not in the future, mm in (0, 200], a crop
+   * season on the new date) and must change something. The season is the one on the new date.
+   */
+  async function planUpdate(operationId: number, change: { date?: string; mm?: number }) {
+    if (change.date === undefined && change.mm === undefined) {
+      throw bad("an update needs the new date or the new mm");
+    }
+    const base = await correctionBase(operationId);
+    const { before, fieldName } = base;
+    const after = { date: change.date ?? before.date, mm: change.mm ?? before.mm };
+    const { season } = await validateIrrigation({ fieldId: base.fieldId, ...after });
+    if (after.date === before.date && after.mm === before.mm) {
+      throw bad(`the irrigation is already ${before.mm} mm on ${before.date}; nothing to change`);
+    }
+    const preview: IrrigationCorrectionPreview = {
+      ...base,
+      action: "update",
+      after,
+      summary: `Change the irrigation on ${fieldName} from ${before.mm} mm on ${before.date} ` +
+        `to ${after.mm} mm on ${after.date}?`,
+    };
+    return {
+      preview,
+      change: { ...after, seasonId: season.id, dateChanged: after.date !== before.date },
+    };
+  }
+
   async function create(
-    input: IrrigationDraftInput & { source: string },
+    input: IrrigationDraftInput & { source: OperationSource },
     status: OperationStatus,
   ): Promise<IrrigationRecord> {
     const { field, season } = await validateIrrigation(input);
@@ -576,6 +681,10 @@ export function createIrrigationService(
   }
 
   return {
+    ...createFarmInfoService({ data, today: deps.today, language }),
+    ...createProductCheckService({ data, today: deps.today, language }),
+    ...createFarmLookupService({ data, today: deps.today, language }),
+
     today: () => deps.today(),
 
     async defaultMemberId() {
@@ -588,10 +697,15 @@ export function createIrrigationService(
       const qWords = words(query);
       const asOf = deps.today();
       const out: (FieldMatch & { score: number })[] = [];
-      for (const field of await data.listFields()) {
+      // Crops of every field in parallel: one by one, a farm's ~20 lookups took ~1.5 s.
+      const fields = await Promise.all(
+        (await data.listFields()).map(async (field) => {
+          const season = await data.getSeasonAt(field.id, asOf);
+          return { field, ref: season ? await data.getCropRef(season.cropCode) : null };
+        }),
+      );
+      for (const { field, ref } of fields) {
         const name = normalize(field.name);
-        const season = await data.getSeasonAt(field.id, asOf);
-        const ref = season ? await data.getCropRef(season.cropCode) : null;
         // Any language the farmer may use: "maïs", "maíz", "mais", "maize"...
         const crops = ref
           ? [...new Set(Object.values(ref.names).concat(ref.nameEn))].map(normalize)
@@ -693,7 +807,7 @@ export function createIrrigationService(
       };
     },
 
-    createDraftIrrigation: (input) => create({ ...input, source: "assistant" }, "draft"),
+    createDraftIrrigation: (input) => create({ ...input, source: "agent" }, "draft"),
 
     async confirmIrrigation(operationId) {
       const op = await findOperation(operationId);
@@ -723,6 +837,23 @@ export function createIrrigationService(
         )
         .sort((a, b) => b.date.localeCompare(a.date) || b.operationId - a.operationId)
         .map(toRecord);
+    },
+
+    async previewIrrigationCorrection({ operationId, action, date, mm }) {
+      if (action === "delete") return planDelete(operationId);
+      if (action === "update") return (await planUpdate(operationId, { date, mm })).preview;
+      throw bad("action must be update or delete");
+    },
+
+    async updateIrrigation(operationId, change) {
+      const plan = await planUpdate(operationId, change);
+      return toRecord(await data.updateIrrigation(operationId, plan.change));
+    },
+
+    async deleteIrrigation(operationId) {
+      const op = await findConfirmedIrrigation(operationId);
+      await data.deleteIrrigation(operationId);
+      return toRecord(op);
     },
   };
 }

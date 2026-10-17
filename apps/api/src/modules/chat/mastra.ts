@@ -1,4 +1,4 @@
-// The Mastra instance: advisor agent, the four workflows, LibSQL storage and POST /chat.
+// The Mastra instance: advisor agent, the five workflows, LibSQL storage and POST /chat.
 
 import { Mastra } from "@mastra/core";
 import type { MastraModelConfig } from "@mastra/core/llm";
@@ -49,6 +49,7 @@ export function createMastra(
       "farm-advice": workflows.farmAdvice,
       "simulate-scenario": workflows.simulateScenario,
       "record-irrigation": workflows.recordIrrigation,
+      "correct-irrigation": workflows.correctIrrigation,
       "morning-warmup": workflows.morningWarmup,
     },
     server: {

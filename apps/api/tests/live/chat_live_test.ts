@@ -9,6 +9,7 @@ import {
   DB_TESTS,
   LIVE,
   makeLiveApp,
+  numbersIn,
   turnWithRetry,
 } from "../helpers/liveApp.ts";
 
@@ -18,17 +19,6 @@ const TODAY = "2026-07-05";
 const YESTERDAY = "2026-07-04";
 const called = (t: ChatTurn, name: string) => t.toolCalls.filter((c) => c.name === name);
 
-/** Every finite number anywhere in the tool outputs (recursive; null/undefined skipped). */
-function numbersIn(v: unknown, acc: number[] = []): number[] {
-  if (typeof v === "number") {
-    if (Number.isFinite(v)) acc.push(v);
-  } else if (Array.isArray(v)) {
-    for (const x of v) numbersIn(x, acc);
-  } else if (v !== null && v !== undefined && typeof v === "object") {
-    for (const x of Object.values(v)) numbersIn(x, acc);
-  }
-  return acc;
-}
 const toolNumbers = (t: ChatTurn) => numbersIn(t.toolCalls.map((c) => c.output));
 
 /** Every "N mm" in the text must equal a grounded number from the tool output (±0.5). */

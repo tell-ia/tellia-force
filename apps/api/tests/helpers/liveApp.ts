@@ -88,6 +88,44 @@ export async function chatTurn(
   return { ...parseSse(raw), msFirstText, msTotal: performance.now() - t0 };
 }
 
+/** Every finite number anywhere in a value (recursive; null/undefined skipped). */
+export function numbersIn(v: unknown, acc: number[] = []): number[] {
+  if (typeof v === "number") {
+    if (Number.isFinite(v)) acc.push(v);
+  } else if (Array.isArray(v)) {
+    for (const x of v) numbersIn(x, acc);
+  } else if (v !== null && v !== undefined && typeof v === "object") {
+    for (const x of Object.values(v)) numbersIn(x, acc);
+  }
+  return acc;
+}
+
+/** A number as written in a reply: "6,4", "12.5", "22 400" (space, nbsp or narrow nbsp). */
+const NUMBER = String.raw`(?<![\d.,])(\d{1,3}(?:[   ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)`;
+
+/** What a written number can mean: "22.400" may be 22.4 or 22 400. */
+function readings(raw: string): number[] {
+  const compact = raw.replace(/[   ]/g, "");
+  const out = [Number(compact.replace(",", "."))];
+  if (/^\d{1,3}([.,]\d{3})+$/.test(compact)) out.push(Number(compact.replace(/[.,]/g, "")));
+  return out.filter(Number.isFinite);
+}
+
+/**
+ * Every number written just before `unit` (a regex source, case-insensitive) must equal a
+ * number in `allowed` (±tol). Returns the numbers found and the ungrounded ones.
+ */
+export function grounded(text: string, unit: string, allowed: number[], tol = 0.5) {
+  const found: string[] = [];
+  const bad: string[] = [];
+  for (const m of text.matchAll(new RegExp(`${NUMBER}\\s*(?:${unit})`, "gi"))) {
+    found.push(m[1]);
+    const ok = readings(m[1]).some((n) => allowed.some((a) => Math.abs(a - n) <= tol));
+    if (!ok) bad.push(m[1]);
+  }
+  return { found, bad };
+}
+
 /** Runs a turn, retrying once when `ok` fails (the model skipped a tool); logs the retry. */
 export async function turnWithRetry(
   label: string,

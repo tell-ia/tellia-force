@@ -1,4 +1,4 @@
-// The four Mastra workflows. Steps call the irrigation service, never the FAO maths.
+// The five Mastra workflows. Steps call the irrigation service, never the FAO maths.
 
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { z } from "zod";
@@ -10,6 +10,7 @@ import {
   ScenarioEventSchema,
   ScenarioResultSchema,
 } from "@tellia/shared/irrigation";
+import { CorrectionActionSchema, IrrigationAmountSchema } from "@tellia/shared/farm";
 import { rankReports } from "../../irrigation/engine/report";
 import type { FarmRegistry } from "../../irrigation/farmRegistry";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "../requestContext";
@@ -18,6 +19,21 @@ export const MORNING_WARMUP_CRON = "0 5 * * *";
 export const MORNING_WARMUP_TIMEZONE = "Europe/Paris"; // default
 
 const FarmId = z.number().int();
+
+/** Only the member who started a run (on that farm) may answer its yes/no question. */
+function assertStarter(
+  requestContext: { get(key: string): unknown },
+  started: { memberId: number; farmId: number },
+  what: string,
+) {
+  if (
+    requestContext.get(MEMBER_ID_KEY) !== started.memberId ||
+    requestContext.get(FARM_ID_KEY) !== started.farmId
+  ) {
+    throw new Error(`only the member who started this ${what} can confirm it`);
+  }
+}
+
 const FieldTargetSchema = z.object({
   farmId: FarmId,
   fieldId: z.number().int(),
@@ -167,13 +183,7 @@ export function createAdvisorWorkflows(
         const { summary, operationId, fieldId, fieldName, date, mm } = inputData;
         return await suspend({ summary, operationId, fieldId, fieldName, date, mm });
       }
-      // Only the member who started the run (on that farm) may answer it.
-      if (
-        requestContext.get(MEMBER_ID_KEY) !== inputData.memberId ||
-        requestContext.get(FARM_ID_KEY) !== inputData.farmId
-      ) {
-        throw new Error("only the member who started this irrigation record can confirm it");
-      }
+      assertStarter(requestContext, inputData, "irrigation record");
       return { ...inputData, confirmed: resumeData.confirmed };
     },
   });
@@ -207,6 +217,102 @@ export function createAdvisorWorkflows(
     .then(draft)
     .then(confirm)
     .then(finish)
+    .commit();
+
+  // --- correct-irrigation ----------------------------------------------------
+  const CorrectInput = z.object({
+    farmId: FarmId,
+    memberId: z.number().int(),
+    operationId: z.number().int(),
+    action: CorrectionActionSchema,
+    date: IsoDateSchema.optional(),
+    mm: z.number().optional(),
+  });
+  const CorrectionAsked = z.object({
+    summary: z.string(),
+    operationId: z.number().int(),
+    fieldId: z.number().int(),
+    fieldName: z.string(),
+    action: CorrectionActionSchema,
+    before: IrrigationAmountSchema,
+    after: IrrigationAmountSchema.nullable(),
+  });
+  const CorrectionPreviewed = CorrectInput.extend(CorrectionAsked.shape);
+  const CorrectionDecided = CorrectionPreviewed.extend({ confirmed: z.boolean() });
+
+  const validateCorrection = createStep({
+    id: "validate-correction",
+    inputSchema: CorrectInput,
+    outputSchema: CorrectionPreviewed,
+    execute: async ({ inputData }) => {
+      const { data, service } = await registry.forFarm(inputData.farmId);
+      // The member must belong to the farm whose irrigation the run changes.
+      if (!(await data.getMember(inputData.memberId))) {
+        throw new Error(`member ${inputData.memberId} is not on farm ${inputData.farmId}`);
+      }
+      const { operationId, action, date, mm } = inputData;
+      const p = await service.previewIrrigationCorrection({ operationId, action, date, mm });
+      return {
+        ...inputData,
+        summary: p.summary,
+        fieldId: p.fieldId,
+        fieldName: p.fieldName,
+        before: p.before,
+        after: p.after,
+      };
+    },
+  });
+  const confirmCorrection = createStep({
+    id: "confirm-correction",
+    inputSchema: CorrectionPreviewed,
+    outputSchema: CorrectionDecided,
+    suspendSchema: CorrectionAsked,
+    resumeSchema: z.object({ confirmed: z.boolean() }),
+    execute: async ({ inputData, resumeData, suspend, requestContext }) => {
+      if (!resumeData) {
+        const { summary, operationId, fieldId, fieldName, action, before, after } = inputData;
+        return await suspend({ summary, operationId, fieldId, fieldName, action, before, after });
+      }
+      assertStarter(requestContext, inputData, "irrigation correction");
+      return { ...inputData, confirmed: resumeData.confirmed };
+    },
+  });
+  const CorrectionOutput = z.object({
+    status: z.enum(["updated", "deleted", "cancelled"]),
+    record: IrrigationRecordSchema.optional(),
+  });
+  const applyCorrection = createStep({
+    id: "apply-correction",
+    inputSchema: CorrectionDecided,
+    outputSchema: CorrectionOutput,
+    execute: async ({ inputData }) => {
+      if (!inputData.confirmed) return { status: "cancelled" as const };
+      const { data, service } = await registry.forFarm(inputData.farmId);
+      // The farmer said yes to the values in the question: refuse if the record moved since.
+      const now = await data.getIrrigation(inputData.operationId);
+      if (now?.date !== inputData.before.date || now?.mm !== inputData.before.mm) {
+        throw new Error("this irrigation changed since the question; nothing was changed");
+      }
+      if (inputData.action === "delete") {
+        await service.deleteIrrigation(inputData.operationId);
+        return { status: "deleted" as const };
+      }
+      return {
+        status: "updated" as const,
+        record: await service.updateIrrigation(inputData.operationId, inputData.after ?? {}),
+      };
+    },
+  });
+  const correctIrrigation = createWorkflow({
+    id: "correct-irrigation",
+    description:
+      "Check a change or deletion of a confirmed irrigation, wait for the farmer's yes/no, then apply it or change nothing.",
+    inputSchema: CorrectInput,
+    outputSchema: CorrectionOutput,
+  })
+    .then(validateCorrection)
+    .then(confirmCorrection)
+    .then(applyCorrection)
     .commit();
 
   // --- morning-warmup --------------------------------------------------------
@@ -273,7 +379,7 @@ export function createAdvisorWorkflows(
     .then(warmup)
     .commit();
 
-  return { farmAdvice, simulateScenario, recordIrrigation, morningWarmup };
+  return { farmAdvice, simulateScenario, recordIrrigation, correctIrrigation, morningWarmup };
 }
 
 export type AdvisorWorkflows = ReturnType<typeof createAdvisorWorkflows>;

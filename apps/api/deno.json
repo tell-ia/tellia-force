@@ -33,6 +33,7 @@
     "@tellia/shared/api": "../../packages/shared/src/api.ts",
     "@tellia/shared/db": "../../packages/shared/src/db.ts",
     "@tellia/shared/irrigation": "../../packages/shared/src/irrigation.ts",
+    "@tellia/shared/farm": "../../packages/shared/src/farm.ts",
     "@tellia/shared/app": "../../packages/shared/src/app.ts"
   },
   "fmt": {

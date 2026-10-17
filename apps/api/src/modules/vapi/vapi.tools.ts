@@ -5,7 +5,17 @@
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { type FieldReport, IsoDateSchema, ScenarioEventSchema } from "@tellia/shared/irrigation";
+import {
+  CorrectionActionSchema,
+  type FarmLookup,
+  FarmLookupQuerySchema,
+  type JournalEntry,
+  JournalTypeSchema,
+  LookupTableSchema,
+  type ProductUseRule,
+} from "@tellia/shared/farm";
 import type { FarmScope } from "../irrigation/farmRegistry";
+import { bbchRange } from "../irrigation/productCheck.service";
 
 export interface VapiCaller {
   memberId: number;
@@ -47,6 +57,84 @@ function brief(r: FieldReport) {
     rainNext3DaysMm: r.rainNext3DaysMm,
     reason: r.reason,
     warnings: r.warnings,
+  };
+}
+
+/** The voice reads every entry: fewer than the chat's 20. */
+export const VOICE_JOURNAL_ENTRIES = 10;
+
+/** One journal entry, flat: products as short strings ("ELUMIS 1.25 L/ha"). */
+function voiceEntry(e: JournalEntry) {
+  const { operationId: _id, fieldId: _f, status: _s, bbch: _b, products, ...rest } = e;
+  return {
+    ...rest,
+    ...(products.length
+      ? {
+        products: products.map((p) =>
+          [p.productName, p.dose, p.doseUnit].filter((x) => x != null).join(" ")
+        ),
+      }
+      : {}),
+  };
+}
+
+/**
+ * One E-Phy use as a short string: "Pyrale(s): max 0.2 L/ha, 2 applications, 7 days before
+ * harvest, 50 m from water". Conditions are left out (too long to read aloud).
+ */
+function voiceUse(u: ProductUseRule): string {
+  const parts = [
+    u.maxDose != null ? `max ${[u.maxDose, u.doseUnit].filter((x) => x != null).join(" ")}` : null,
+    u.maxApplications != null
+      ? `${u.maxApplications} application${u.maxApplications === 1 ? "" : "s"}`
+      : null,
+    u.preHarvestIntervalDays != null ? `${u.preHarvestIntervalDays} days before harvest` : null,
+    u.bbchMin != null || u.bbchMax != null ? bbchRange(u.bbchMin, u.bbchMax) : null,
+    u.bufferZoneWaterM != null ? `${u.bufferZoneWaterM} m from water` : null,
+  ].filter((x) => x != null);
+  return `${u.target ?? "any target"}: ${parts.join(", ") || "no limits given"}`;
+}
+
+/** The voice reads every row: at most this many, whatever limit the model asks for. */
+export const VOICE_LOOKUP_ROWS = 10;
+
+/** Lookup rows without codes, ids and long texts the voice does not need. */
+function voiceRows(l: FarmLookup): object[] {
+  switch (l.table) {
+    case "sale":
+      return l.rows.map((r) => ({
+        saleDate: r.saleDate,
+        cropName: r.cropName,
+        harvestYear: r.harvestYear,
+        volumeT: r.volumeT,
+        priceEurT: r.priceEurT,
+        revenueEur: r.revenueEur,
+        contractType: r.contractType,
+      }));
+    case "market_price":
+      return l.rows.map(({ cropCode: _c, ...r }) => r);
+    case "regional_benchmark":
+      return l.rows.map((r) => ({
+        cropGroupName: r.cropGroupName ?? r.cropGroupCode,
+        year: r.year,
+        yieldTHa: r.yieldTHa,
+        nKgHa: r.nKgHa,
+        p2o5KgHa: r.p2o5KgHa,
+        k2oKgHa: r.k2oKgHa,
+        irrigatedShare: r.irrigatedShare,
+        pesticideTotalKgAiHa: r.pesticideTotalKgAiHa,
+      }));
+    default:
+      return l.rows;
+  }
+}
+
+/** The lookup summary without crop codes. */
+function voiceSummary(l: FarmLookup) {
+  if (l.table !== "sale") return l.summary;
+  return {
+    ...l.summary,
+    byCrop: l.summary.byCrop.map(({ cropCode: _c, ...c }) => c),
   };
 }
 
@@ -137,6 +225,131 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
     },
   }),
 
+  get_field_details: defineTool({
+    description:
+      "Facts about one field: size, the crop growing today (variety, sowing and harvest dates, previous crop), its irrigation system and its latest soil analysis (texture, pH, organic matter, nitrogen, phosphorus, potassium).",
+    parameters: z.object({ fieldId }),
+    run: async ({ fieldId }, { scope }) => {
+      const { field, crop, irrigationSystem: system, soil } = await scope.service.getFieldDetails(
+        fieldId,
+      );
+      return {
+        fieldId: field.id,
+        fieldName: field.name,
+        areaHa: field.areaHa,
+        tenure: field.tenure,
+        irrigable: field.irrigable,
+        cropName: crop?.name ?? null,
+        variety: crop?.variety ?? null,
+        sowingDate: crop?.sowingDate ?? null,
+        harvestDate: crop?.harvestDate ?? null,
+        cropStatus: crop?.status ?? null,
+        previousCrop: crop?.previousCropName ?? null,
+        irrigationSystem: system?.name ?? null,
+        irrigationSystemType: system?.type ?? null,
+        soilSampledOn: soil?.sampledOn ?? null,
+        soilTexture: soil?.textureClass ?? null,
+        ph: soil?.ph ?? null,
+        organicMatterPct: soil?.organicMatterPct ?? null,
+        sandPct: soil?.sandPct ?? null,
+        siltPct: soil?.siltPct ?? null,
+        clayPct: soil?.clayPct ?? null,
+        nitrogenGKg: soil?.nitrogenGKg ?? null,
+        phosphorusMgKg: soil?.phosphorusMgKg ?? null,
+        potassiumMgKg: soil?.potassiumMgKg ?? null,
+        limeRequirementTHa: soil?.limeRequirementTHa ?? null,
+      };
+    },
+  }),
+
+  get_field_journal: defineTool({
+    description:
+      "What was done on a field, or on every field: sowing, fertiliser, sprays and their products, irrigation, harvest. Newest first, with totals for the whole period (nitrogen, phosphorus and potassium in kg per hectare, irrigation mm, number of sprays). Entries with planned true are not done yet. Default period: the field's crop season, or the last year for the whole farm.",
+    parameters: z.object({
+      fieldId: z.number().int().optional().describe(
+        "Field id, from resolve_field. Leave it out for the whole farm.",
+      ),
+      type: JournalTypeSchema.optional().describe("Only this kind of work."),
+      from: IsoDateSchema.optional().describe("First day, YYYY-MM-DD."),
+      to: IsoDateSchema.optional().describe("Last day, YYYY-MM-DD."),
+    }),
+    run: async ({ fieldId, type, from, to }, { scope }) => {
+      const j = await scope.service.getFieldJournal({ fieldId, type, from, to });
+      const entries = j.entries.slice(0, VOICE_JOURNAL_ENTRIES).map(voiceEntry);
+      return {
+        fieldName: j.fieldName,
+        from: j.from,
+        to: j.to,
+        entries,
+        totals: j.totals,
+        truncated: j.truncated || j.entries.length > entries.length,
+      };
+    },
+  }),
+
+  check_product_use: defineTool({
+    description:
+      "Check a crop protection product for a field's crop on a day: is it authorised (French E-Phy register), how many times it was used this season, how many applications are left, the days to harvest and whether the pre-harvest interval is met. If several products match, ask which one. The crop stage is not checked. Say every warning and never invent a rule.",
+    parameters: z.object({
+      product: z.string().min(1).describe("Product name or AMM number, as the farmer said it."),
+      fieldId,
+      date: IsoDateSchema.optional().describe(
+        "Day of the planned spray, YYYY-MM-DD. Default: today.",
+      ),
+    }),
+    run: async ({ product, fieldId, date }, { scope }) => {
+      const c = await scope.service.checkProductUse({ product, fieldId, date });
+      return {
+        status: c.status,
+        product: c.product?.name ?? null,
+        matches: c.matches.map((m) => m.name),
+        fieldName: c.fieldName,
+        cropName: c.crop?.name ?? null,
+        date: c.date,
+        authorised: c.authorised,
+        uses: c.uses.map(voiceUse),
+        timesUsed: c.usage?.timesUsed ?? null,
+        lastUsed: c.usage?.lastDate ?? null,
+        applicationsLeft: c.applicationsLeft,
+        daysToHarvest: c.daysToHarvest,
+        preHarvestOk: c.preHarvestOk,
+        warnings: c.warnings,
+      };
+    },
+  }),
+
+  lookup_farm_data: defineTool({
+    description:
+      "Farm business data, one table at a time: sale (the farm's grain sales: tonnes, price per tonne, revenue), market_price (monthly reference price per crop in euros per tonne; forecast true means a month still to come), subsidy (the farm's CAP payments), farm_economics (the farm's yearly accounts), regional_benchmark (real averages of the region: yield, fertiliser, pesticides). Use summary for totals and averages; never add rows up yourself. Sales, prices, subsidies and accounts are demo data.",
+    parameters: z.object({
+      table: LookupTableSchema.describe("The table to read."),
+      year: FarmLookupQuerySchema.shape.year.describe("Only this year (sale: the harvest year)."),
+      cropCode: FarmLookupQuerySchema.shape.cropCode.describe(
+        "Only this crop: a crop name or code, e.g. wheat or MAIZ. For sale, market_price and regional_benchmark.",
+      ),
+      limit: FarmLookupQuerySchema.shape.limit.describe(
+        `Rows to read, at most ${VOICE_LOOKUP_ROWS}.`,
+      ),
+    }),
+    run: async ({ table, year, cropCode, limit }, { scope }) => {
+      const l = await scope.service.lookupFarmData({
+        table,
+        year,
+        cropCode,
+        limit: Math.min(limit ?? VOICE_LOOKUP_ROWS, VOICE_LOOKUP_ROWS),
+      });
+      return {
+        table: l.table,
+        note: l.note,
+        year: l.year,
+        count: l.count,
+        truncated: l.truncated,
+        summary: voiceSummary(l),
+        rows: voiceRows(l),
+      };
+    },
+  }),
+
   record_irrigation: defineTool({
     description:
       "Save an irrigation the farmer did. Only call it after you read back the field, date and mm and the farmer clearly said yes.",
@@ -159,6 +372,51 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
         source: "phone_call",
       });
       return { saved: true, record };
+    },
+  }),
+
+  correct_irrigation: defineTool({
+    description:
+      "Change the day or the millimetres of an irrigation already recorded, or delete it. Find it with get_irrigation_history (its operationId). Only call it after you read back the change and the farmer clearly said yes.",
+    parameters: z.object({
+      operationId: z.number().int().describe(
+        "operationId of the irrigation, from get_irrigation_history.",
+      ),
+      action: CorrectionActionSchema.describe(
+        "update: change its day and/or millimetres; delete: remove it.",
+      ),
+      date: IsoDateSchema.optional().describe(
+        "update only: the right day, YYYY-MM-DD. Leave it out to keep the day.",
+      ),
+      mm: z.number().positive().max(200).optional().describe(
+        "update only: the right water applied, in mm. Leave it out to keep the mm.",
+      ),
+    }),
+    run: async ({ operationId, action, date, mm }, { scope, known }) => {
+      if (!known) {
+        throw new HTTPException(403, {
+          message: "this phone number is not a farm member, so it cannot change irrigations",
+        });
+      }
+      const { fieldName, before } = await scope.service.previewIrrigationCorrection({
+        operationId,
+        action,
+        date,
+        mm,
+      });
+      if (action === "delete") {
+        await scope.service.deleteIrrigation(operationId);
+        return { status: "deleted", fieldName, date: before.date, mm: before.mm };
+      }
+      const record = await scope.service.updateIrrigation(operationId, { date, mm });
+      return {
+        status: "updated",
+        fieldName,
+        oldDate: before.date,
+        oldMm: before.mm,
+        newDate: record.date,
+        newMm: record.mm,
+      };
     },
   }),
 };

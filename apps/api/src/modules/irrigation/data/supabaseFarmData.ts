@@ -10,13 +10,25 @@ import type {
   Farm,
   FarmData,
   FarmDirectory,
+  FarmEconomicsRecord,
+  FarmOperation,
   Field,
+  IrrigationChange,
   IrrigationOperation,
   IrrigationSystem,
+  MarketPriceRecord,
   Member,
+  OperationProduct,
+  OperationSource,
   OperationStatus,
+  OperationType,
+  Product,
+  ProductUse,
+  RegionalBenchmarkRecord,
+  SaleRecord,
   SoilAnalysis,
   StoredWeatherDay,
+  SubsidyRecord,
 } from "./farmData";
 import { pickCropPhases } from "./farmData";
 
@@ -29,6 +41,8 @@ type Row = Record<string, unknown>;
 
 /** A numeric column as a number; null stays null. */
 const num = (v: unknown) => (v == null ? null : Number(v));
+/** A text column as a string; null stays null. */
+const str = (v: unknown) => (v == null ? null : String(v));
 
 // ---- pure row mappers (snake_case -> camelCase), unit-tested ----
 
@@ -40,6 +54,7 @@ export function mapFarm(r: Row, region: Row | null = null): Farm {
     lat: r.lat as number,
     lon: r.lon as number,
     aridityIndex: aridityIndex(region),
+    countryCode: str(r.country_code),
   };
 }
 
@@ -68,6 +83,7 @@ export function mapField(r: Row): Field {
     areaHa: r.area_ha as number,
     irrigable: r.irrigable as boolean,
     centroid: lat != null && lon != null ? { lat, lon } : null,
+    tenure: str(r.tenure),
   };
 }
 
@@ -81,6 +97,8 @@ export function mapCropSeason(r: Row): CropSeason {
   };
   // Only when the row has the column (a DB without it keeps the old shape).
   if ("earliness_group" in r) season.earlinessGroup = (r.earliness_group as string | null) ?? null;
+  if ("variety" in r) season.variety = str(r.variety);
+  if ("previous_crop_code" in r) season.previousCropCode = str(r.previous_crop_code);
   return season;
 }
 
@@ -89,6 +107,20 @@ export function mapSoil(r: Row): SoilAnalysis {
     sandPct: r.sand_pct as number,
     clayPct: r.clay_pct as number,
     organicMatterPct: r.organic_matter_pct as number,
+    sampledOn: str(r.sampled_on),
+    siltPct: num(r.silt_pct),
+    ph: num(r.ph_h2o),
+    nitrogenGKg: num(r.nitrogen_g_kg),
+    phosphorusMgKg: num(r.phosphorus_mg_kg),
+    potassiumMgKg: num(r.potassium_mg_kg),
+    sulfurMgKg: num(r.sulfur_mg_kg),
+    calciumMgKg: num(r.calcium_mg_kg),
+    magnesiumMgKg: num(r.magnesium_mg_kg),
+    zincMgKg: num(r.zinc_mg_kg),
+    boronMgKg: num(r.boron_mg_kg),
+    cecCmolKg: num(r.cec_cmol_kg),
+    bulkDensityKgDm3: num(r.bulk_density_kg_dm3),
+    limeRequirementTHa: num(r.lime_requirement_t_ha),
   };
 }
 
@@ -102,6 +134,7 @@ export function mapCropRef(r: Row): CropRef {
   }
   return {
     code: r.crop_code as string,
+    cropGroupCode: str(r.crop_group_code),
     nameFr: r.name_fr as string,
     nameEn: r.name_en as string,
     names,
@@ -193,6 +226,7 @@ export function mapIrrigationSystem(r: Row): IrrigationSystem {
   return {
     id: r.id as number,
     name: r.name as string,
+    type: str(r.system_type),
     efficiency: Number(r.efficiency),
     doseMinMm: num(r.dose_min_mm),
     doseMaxMm: num(r.dose_max_mm),
@@ -208,8 +242,166 @@ export function mapOperation(r: Row): IrrigationOperation {
     date: r.op_date as string,
     mm: r.water_mm as number,
     status: r.status as OperationStatus,
-    source: r.source as string,
+    source: r.source as OperationSource,
     memberId: (r.member_id as number | null) ?? null,
+  };
+}
+
+/** Columns read for the journal: the operation and its products (PostgREST embed). */
+export const JOURNAL_SELECT =
+  "id,field_id,crop_season_id,op_date,op_type,status,bbch,fertiliser_type,n_kg_ha,p2o5_kg_ha," +
+  "k2o_kg_ha,method,water_mm,variety,seed_rate_kg_ha,yield_t_ha,moisture_pct,protein_pct,notes," +
+  "operation_input(product_id,product_name,dose,dose_unit,target)";
+
+export function mapOperationProduct(r: Row): OperationProduct {
+  return {
+    productId: num(r.product_id),
+    productName: r.product_name as string,
+    dose: num(r.dose),
+    doseUnit: str(r.dose_unit),
+    target: str(r.target),
+  };
+}
+
+/** One journal row with its embedded `operation_input` rows. */
+export function mapFarmOperation(r: Row): FarmOperation {
+  return {
+    operationId: Number(r.id),
+    fieldId: r.field_id as number,
+    seasonId: num(r.crop_season_id),
+    date: r.op_date as string,
+    type: r.op_type as OperationType,
+    status: r.status as FarmOperation["status"],
+    bbch: num(r.bbch),
+    fertiliserType: str(r.fertiliser_type),
+    nKgHa: num(r.n_kg_ha),
+    p2o5KgHa: num(r.p2o5_kg_ha),
+    k2oKgHa: num(r.k2o_kg_ha),
+    waterMm: num(r.water_mm),
+    variety: str(r.variety),
+    seedRateKgHa: num(r.seed_rate_kg_ha),
+    yieldTHa: num(r.yield_t_ha),
+    moisturePct: num(r.moisture_pct),
+    proteinPct: num(r.protein_pct),
+    method: str(r.method),
+    notes: str(r.notes),
+    products: ((r.operation_input as Row[] | null | undefined) ?? []).map(mapOperationProduct),
+  };
+}
+
+/** Columns read from the E-Phy catalogue. */
+export const PRODUCT_SELECT = "id,name,amm_number,product_kind,active_substances";
+/** Columns read from the E-Phy uses. */
+export const PRODUCT_USE_SELECT =
+  "product_id,crop_code,target,max_dose,dose_unit,max_applications,pre_harvest_interval_days," +
+  "bbch_min,bbch_max,buffer_zone_water_m,conditions";
+
+export function mapProduct(r: Row): Product {
+  return {
+    id: Number(r.id),
+    name: r.name as string,
+    ammNumber: str(r.amm_number),
+    kind: str(r.product_kind),
+    activeSubstances: str(r.active_substances),
+  };
+}
+
+export function mapProductUse(r: Row): ProductUse {
+  return {
+    productId: Number(r.product_id),
+    cropCode: r.crop_code as string,
+    target: str(r.target),
+    maxDose: num(r.max_dose),
+    doseUnit: str(r.dose_unit),
+    maxApplications: num(r.max_applications),
+    preHarvestIntervalDays: num(r.pre_harvest_interval_days),
+    bbchMin: num(r.bbch_min),
+    bbchMax: num(r.bbch_max),
+    bufferZoneWaterM: num(r.buffer_zone_water_m),
+    conditions: str(r.conditions),
+  };
+}
+
+// ---- business tables of the farm data lookup ----
+
+export const SALE_SELECT =
+  "id,sale_date,crop_code,harvest_year,volume_t,price_eur_t,buyer,contract_type,quality_grade";
+export const MARKET_PRICE_SELECT = "crop_code,year,month,price_eur_t";
+export const SUBSIDY_SELECT = "id,year,scheme,amount_eur";
+export const FARM_ECONOMICS_SELECT =
+  "year,total_output_eur,seeds_eur,fertiliser_eur,crop_protection_eur,energy_eur," +
+  "contract_work_eur,wages_eur,depreciation_eur,total_inputs_eur,farm_net_value_added_eur";
+export const REGIONAL_BENCHMARK_SELECT =
+  "crop_group_code,crop_group_name,year,yield_t_ha,yield_source_geography,yield_value_type," +
+  "n_kg_ha,p2o5_kg_ha,k2o_kg_ha,npk_reference_year,irrigated_share,pesticide_total_kg_ai_ha," +
+  "herbicide_kg_ai_ha,fungicide_kg_ai_ha,insecticide_kg_ai_ha,pesticide_reference";
+
+export function mapSale(r: Row): SaleRecord {
+  return {
+    id: Number(r.id),
+    date: r.sale_date as string,
+    cropCode: r.crop_code as string,
+    harvestYear: Number(r.harvest_year),
+    volumeT: Number(r.volume_t),
+    priceEurT: Number(r.price_eur_t),
+    buyer: str(r.buyer),
+    contractType: str(r.contract_type),
+    qualityGrade: str(r.quality_grade),
+  };
+}
+
+export function mapMarketPrice(r: Row): MarketPriceRecord {
+  return {
+    cropCode: r.crop_code as string,
+    year: Number(r.year),
+    month: Number(r.month),
+    priceEurT: Number(r.price_eur_t),
+  };
+}
+
+export function mapSubsidy(r: Row): SubsidyRecord {
+  return {
+    id: Number(r.id),
+    year: Number(r.year),
+    scheme: r.scheme as string,
+    amountEur: Number(r.amount_eur),
+  };
+}
+
+export function mapFarmEconomics(r: Row): FarmEconomicsRecord {
+  return {
+    year: Number(r.year),
+    totalOutputEur: num(r.total_output_eur),
+    seedsEur: num(r.seeds_eur),
+    fertiliserEur: num(r.fertiliser_eur),
+    cropProtectionEur: num(r.crop_protection_eur),
+    energyEur: num(r.energy_eur),
+    contractWorkEur: num(r.contract_work_eur),
+    wagesEur: num(r.wages_eur),
+    depreciationEur: num(r.depreciation_eur),
+    totalInputsEur: num(r.total_inputs_eur),
+    farmNetValueAddedEur: num(r.farm_net_value_added_eur),
+  };
+}
+
+export function mapRegionalBenchmark(r: Row): RegionalBenchmarkRecord {
+  return {
+    cropGroupCode: r.crop_group_code as string,
+    cropGroupName: str(r.crop_group_name),
+    year: Number(r.year),
+    yieldTHa: num(r.yield_t_ha),
+    yieldSourceGeography: str(r.yield_source_geography),
+    yieldValueType: str(r.yield_value_type),
+    nKgHa: num(r.n_kg_ha),
+    p2o5KgHa: num(r.p2o5_kg_ha),
+    k2oKgHa: num(r.k2o_kg_ha),
+    npkReferenceYear: num(r.npk_reference_year),
+    irrigatedShare: num(r.irrigated_share),
+    pesticideTotalKgAiHa: num(r.pesticide_total_kg_ai_ha),
+    herbicideKgAiHa: num(r.herbicide_kg_ai_ha),
+    fungicideKgAiHa: num(r.fungicide_kg_ai_ha),
+    insecticideKgAiHa: num(r.insecticide_kg_ai_ha),
+    pesticideReference: str(r.pesticide_reference),
   };
 }
 
@@ -241,7 +433,7 @@ export function toOperationInsert(
     date: string;
     mm: number;
     status: OperationStatus;
-    source: string;
+    source: OperationSource;
     memberId: number | null;
   },
   areaHa: number | null,
@@ -254,9 +446,23 @@ export function toOperationInsert(
     water_mm: input.mm,
     status: input.status,
     source: input.source,
-    origin: input.source === "app" ? "app" : "assistant",
+    origin: input.source === "web" ? "app" : "assistant",
     member_id: input.memberId,
     area_ha: areaHa,
+  };
+}
+
+/**
+ * Columns a correction changes on an irrigation row, with its `updated_at`. A new date clears
+ * `bbch`: the stage the import stored was the crop stage of the old date.
+ */
+export function toOperationUpdate(change: IrrigationChange, now: Date): Row {
+  return {
+    op_date: change.date,
+    water_mm: change.mm,
+    crop_season_id: change.seasonId,
+    ...(change.dateChanged ? { bbch: null } : {}),
+    updated_at: now.toISOString(),
   };
 }
 
@@ -347,6 +553,12 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
     }
     return farmP;
   }
+  // The catalogue never changes while the API runs. Unlike `reference`, a failure throws:
+  // an empty catalogue would wrongly answer "no such product".
+  let productsP: Promise<Product[]> | null = null;
+  // Same for the crops: an empty list would wrongly answer "unknown crop".
+  let cropRefsP: Promise<CropRef[]> | null = null;
+
   const irrigationOps = () =>
     db.from("operation").select("*").eq("farm_id", farmId).eq("op_type", "irrigation")
       .not("water_mm", "is", null);
@@ -463,6 +675,97 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       if (!opts.includeDrafts) q = q.neq("status", "draft");
       return (await rows(q.order("op_date").order("id"))).map(mapOperation);
     },
+    async listOperations({ from, to, fieldId, type, seasonId }) {
+      const r = await paged((a, b) => {
+        // Embedded products are filtered on the farm too (every farm table is).
+        let q = db.from("operation").select(JOURNAL_SELECT).eq("farm_id", farmId)
+          .eq("operation_input.farm_id", farmId).in("status", ["confirmed", "planned"]);
+        q = seasonId === undefined
+          ? q.gte("op_date", from).lte("op_date", to)
+          : q.lte("op_date", to).or(`op_date.gte.${from},crop_season_id.eq.${seasonId}`);
+        if (fieldId !== undefined) q = q.eq("field_id", fieldId);
+        if (type !== undefined) q = q.eq("op_type", type);
+        return q.order("op_date").order("id").range(a, b);
+      });
+      return r.map(mapFarmOperation);
+    },
+    listProducts() {
+      if (!productsP) {
+        productsP = paged((a, b) =>
+          db.from("product").select(PRODUCT_SELECT).order("id").range(a, b)
+        ).then((r) => r.map(mapProduct));
+        productsP.catch(() => (productsP = null));
+      }
+      return productsP;
+    },
+    async listProductUses(productId) {
+      const r = await rows(
+        db.from("product_use").select(PRODUCT_USE_SELECT).eq("product_id", productId).order("id"),
+      );
+      return r.map(mapProductUse);
+    },
+    async listJournalProductNames() {
+      const r = await paged((a, b) =>
+        db.from("operation_input").select("product_name").eq("farm_id", farmId)
+          .is("product_id", null).order("id").range(a, b)
+      );
+      return [...new Set(r.map((x) => x.product_name as string).filter(Boolean))];
+    },
+    listCropRefs() {
+      if (!cropRefsP) {
+        cropRefsP = rows(db.from("crop_ref").select("*").order("crop_code")).then((r) =>
+          r.map(mapCropRef)
+        );
+        cropRefsP.catch(() => (cropRefsP = null));
+      }
+      return cropRefsP;
+    },
+    async listSales({ year, cropCode }) {
+      const r = await paged((a, b) => {
+        let q = db.from("sale").select(SALE_SELECT).eq("farm_id", farmId);
+        if (year !== undefined) q = q.eq("harvest_year", year);
+        if (cropCode !== undefined) q = q.eq("crop_code", cropCode);
+        return q.order("id").range(a, b);
+      });
+      return r.map(mapSale);
+    },
+    async listMarketPrices({ year, cropCode }) {
+      // Global reference table: no farm filter.
+      const r = await paged((a, b) => {
+        let q = db.from("market_price").select(MARKET_PRICE_SELECT);
+        if (year !== undefined) q = q.eq("year", year);
+        if (cropCode !== undefined) q = q.eq("crop_code", cropCode);
+        return q.order("year").order("month").order("crop_code").range(a, b);
+      });
+      return r.map(mapMarketPrice);
+    },
+    async listSubsidies({ year }) {
+      const r = await paged((a, b) => {
+        let q = db.from("subsidy").select(SUBSIDY_SELECT).eq("farm_id", farmId);
+        if (year !== undefined) q = q.eq("year", year);
+        return q.order("id").range(a, b);
+      });
+      return r.map(mapSubsidy);
+    },
+    async listFarmEconomics({ year }) {
+      const r = await paged((a, b) => {
+        let q = db.from("farm_economics").select(FARM_ECONOMICS_SELECT).eq("farm_id", farmId);
+        if (year !== undefined) q = q.eq("year", year);
+        return q.order("year").range(a, b);
+      });
+      return r.map(mapFarmEconomics);
+    },
+    async listRegionalBenchmarks({ year, cropGroupCode }) {
+      const region = (await farmRow()).nuts3_id;
+      const r = await paged((a, b) => {
+        let q = db.from("regional_benchmark").select(REGIONAL_BENCHMARK_SELECT)
+          .eq("nuts3_id", region);
+        if (year !== undefined) q = q.eq("year", year);
+        if (cropGroupCode !== undefined) q = q.eq("crop_group_code", cropGroupCode);
+        return q.order("year").order("crop_group_code").range(a, b);
+      });
+      return r.map(mapRegionalBenchmark);
+    },
     async getIrrigation(operationId) {
       const r = await one(irrigationOps().eq("id", operationId).limit(1));
       return r ? mapOperation(r) : null;
@@ -484,6 +787,14 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
     async setIrrigationStatus(operationId, status) {
       const r = await one(
         db.from("operation").update({ status, updated_at: new Date().toISOString() })
+          .eq("id", operationId).eq("farm_id", farmId).eq("op_type", "irrigation").select("*"),
+      );
+      if (!r) throw notFound(operationId);
+      return mapOperation(r);
+    },
+    async updateIrrigation(operationId, change) {
+      const r = await one(
+        db.from("operation").update(toOperationUpdate(change, new Date()))
           .eq("id", operationId).eq("farm_id", farmId).eq("op_type", "irrigation").select("*"),
       );
       if (!r) throw notFound(operationId);

@@ -19,7 +19,12 @@ const RULES = `Rules:
 5. Questions about drought, rain, flood, frost, hail, or "what if I water..." go to simulateScenario; use its comparison summary.
 6. If the field is ambiguous, resolve it and ask. Never invent a field. If a tool fails, say so briefly.
 7. Mention any warnings the tools return.
-8. Format every reply in simple Markdown for the app: **bold** the decision and the mm to pump, and use a short bullet list (- item) when you talk about several fields. Keep paragraphs short. No headings, tables, code blocks or images.`;
+8. getFieldDetails for facts about one field: crop and variety, sowing and harvest dates, soil analysis, irrigation system.
+9. getFieldJournal for what was done on the fields (sowing, fertiliser, sprays and their products, harvest), like "when did I last spray" or "how much nitrogen this season"; copy its totals.
+10. checkProductUse for "can I (still) spray this product on this field": give its verdict and warnings; if several products match, ask which one; never invent a rule.
+11. When the farmer says a recorded irrigation was wrong (other mm or day) or must be deleted: find its operationId with getIrrigationHistory; call correctIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId.
+12. lookupFarmData for sales, market prices, subsidies, farm accounts and regional averages, like "how much wheat did I sell in 2024" or "wheat price trend"; copy its summary.
+13. Format every reply in simple Markdown for the app: **bold** the decision and the mm to pump, and use a short bullet list (- item) when you talk about several fields. Keep paragraphs short. No headings, tables, code blocks or images.`;
 
 export async function buildInstructions(
   registry: FarmRegistry,

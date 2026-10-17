@@ -297,3 +297,161 @@ Deno.test("farm-advice: FAO-56 reports stay short, as in the REST advice", opts,
   assertEquals(f10.series, undefined);
   assertEquals(f10.season, undefined);
 });
+
+// --- correct-irrigation ---------------------------------------------------------
+
+type TestMastra = Awaited<ReturnType<typeof setup>>["mastra"];
+
+/** Starts a correction of the fixture's 30 mm on 2026-06-21 (operation 1, farm 1) by default. */
+async function startCorrection(
+  mastra: TestMastra,
+  input: { operationId?: number; action: "update" | "delete"; date?: string; mm?: number },
+  member = 1,
+  farm = farmOf(member),
+) {
+  const run = await mastra.getWorkflow("correct-irrigation").createRun();
+  const res = await run.start({
+    inputData: { farmId: farm, memberId: member, operationId: 1, ...input },
+    requestContext: ctxFor(member, farm),
+  });
+  return { run, res };
+}
+
+const resumeCorrection = async (
+  mastra: TestMastra,
+  runId: string,
+  confirmed: boolean,
+  member: number,
+) =>
+  (await mastra.getWorkflow("correct-irrigation").createRun({ runId })).resume({
+    step: "confirm-correction",
+    resumeData: { confirmed },
+    requestContext: ctxFor(member),
+  });
+
+// deno-lint-ignore no-explicit-any
+const failure = (res: any) => String(res.error?.message ?? res.error);
+
+Deno.test("correct-irrigation: suspends with a summary, then yes updates", opts, async () => {
+  const { data, mastra } = await setup();
+  const { run, res } = await startCorrection(mastra, { action: "update", mm: 25 });
+  assertEquals(res.status, "suspended");
+  // deno-lint-ignore no-explicit-any
+  const payload = (res as any).suspendPayload["confirm-correction"];
+  assertEquals(
+    payload.summary,
+    "Change the irrigation on La Vallée from 30 mm on 2026-06-21 to 25 mm on 2026-06-21?",
+  );
+  assertEquals(payload.before, { date: "2026-06-21", mm: 30 });
+  assertEquals(payload.after, { date: "2026-06-21", mm: 25 });
+  assertEquals((await data.getIrrigation(1))?.mm, 30, "nothing changes before the answer");
+  const done = await resumeCorrection(mastra, run.runId, true, 1);
+  assertEquals(done.status, "success");
+  // deno-lint-ignore no-explicit-any
+  const out = (done as any).result;
+  assertEquals(out.status, "updated");
+  assertEquals([out.record.date, out.record.mm], ["2026-06-21", 25]);
+  assertEquals((await data.getIrrigation(1))?.mm, 25);
+});
+
+Deno.test("correct-irrigation: yes on a delete removes the record", opts, async () => {
+  const { data, mastra } = await setup();
+  const { run, res } = await startCorrection(mastra, { action: "delete" });
+  // deno-lint-ignore no-explicit-any
+  assertEquals((res as any).suspendPayload["confirm-correction"].after, null);
+  const done = await resumeCorrection(mastra, run.runId, true, 1);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((done as any).result, { status: "deleted" });
+  assertEquals(await data.getIrrigation(1), null);
+});
+
+Deno.test("correct-irrigation: no changes nothing", opts, async () => {
+  const { data, mastra } = await setup();
+  for (const input of [{ action: "update" as const, mm: 25 }, { action: "delete" as const }]) {
+    const { run } = await startCorrection(mastra, input);
+    const done = await resumeCorrection(mastra, run.runId, false, 1);
+    // deno-lint-ignore no-explicit-any
+    assertEquals((done as any).result, { status: "cancelled" });
+  }
+  const op = await data.getIrrigation(1);
+  assertEquals([op?.date, op?.mm, op?.status], ["2026-06-21", 30, "confirmed"]);
+});
+
+Deno.test("correct-irrigation: another member cannot answer; the record stays", opts, async () => {
+  const { data, mastra } = await setup();
+  const { run } = await startCorrection(mastra, { action: "delete" }, 1);
+  const res = await resumeCorrection(mastra, run.runId, true, 2);
+  assertEquals(res.status, "failed");
+  assertStringIncludes(failure(res), "only the member who started");
+  assertEquals((await data.getIrrigation(1))?.mm, 30);
+});
+
+Deno.test(
+  "correct-irrigation: one farm never corrects another farm's irrigation",
+  opts,
+  async () => {
+    const { registry, data, mastra } = await setup();
+    // A farm 2 member on farm 1's operation 1, then a farm 1 member on farm 2's operation 900.
+    const fromFarm2 = await startCorrection(mastra, { action: "delete" }, 5);
+    assertEquals(fromFarm2.res.status, "failed");
+    assertStringIncludes(failure(fromFarm2.res), "not found");
+    const fromFarm1 = await startCorrection(mastra, { operationId: 900, action: "delete" }, 1);
+    assertEquals(fromFarm1.res.status, "failed");
+    // A farm 2 member claiming farm 1 is not a member there.
+    const claimed = await startCorrection(mastra, { action: "delete" }, 5, 1);
+    assertEquals(claimed.res.status, "failed");
+    assertStringIncludes(failure(claimed.res), "member 5 is not on farm 1");
+    assertEquals((await data.getIrrigation(1))?.mm, 30);
+    assertEquals((await (await registry.forFarm(2)).data.getIrrigation(900))?.mm, 25);
+  },
+);
+
+Deno.test(
+  "correct-irrigation: a draft or a non-irrigation operation is refused",
+  opts,
+  async () => {
+    const { service, mastra } = await setup();
+    const draft = await service.createDraftIrrigation({
+      fieldId: 10,
+      date: "2026-07-04",
+      mm: 10,
+      memberId: 1,
+    });
+    const onDraft = await startCorrection(mastra, {
+      operationId: draft.operationId,
+      action: "update",
+      mm: 20,
+    });
+    assertEquals(onDraft.res.status, "failed");
+    assertStringIncludes(failure(onDraft.res), "only confirmed irrigations");
+    // 1003 is a fertilisation in farm 1's journal.
+    const onFertiliser = await startCorrection(mastra, { operationId: 1003, action: "delete" });
+    assertEquals(onFertiliser.res.status, "failed");
+    assertStringIncludes(failure(onFertiliser.res), "not found");
+  },
+);
+
+Deno.test("correct-irrigation: bad new values fail before the question", opts, async () => {
+  const { data, mastra } = await setup();
+  for (
+    const input of [{ mm: 0 }, { mm: 250 }, { date: "2026-07-06" }, { date: "2026-03-01" }, {}]
+  ) {
+    const { res } = await startCorrection(mastra, { action: "update", ...input });
+    assertEquals(res.status, "failed", JSON.stringify(input));
+  }
+  assertEquals((await data.getIrrigation(1))?.mm, 30);
+});
+
+Deno.test(
+  "correct-irrigation: a record changed since the question is left alone",
+  opts,
+  async () => {
+    const { data, service, mastra } = await setup();
+    const { run } = await startCorrection(mastra, { action: "update", mm: 25 });
+    await service.updateIrrigation(1, { mm: 28 });
+    const res = await resumeCorrection(mastra, run.runId, true, 1);
+    assertEquals(res.status, "failed");
+    assertStringIncludes(failure(res), "changed since the question");
+    assertEquals((await data.getIrrigation(1))?.mm, 28);
+  },
+);
