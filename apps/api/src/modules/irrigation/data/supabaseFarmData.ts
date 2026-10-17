@@ -34,6 +34,13 @@ import type {
 import { pickCropPhases } from "./farmData";
 
 const PAGE = 1000;
+// Farm tables only the seed writes (fields, seasons, soils, irrigation systems): one farm-wide
+// read, shared this long, then filtered in memory. A farm advice reads every field at once:
+// per-field queries were ~44 round trips, ~5 deep (~1 s); the time is the network, not the DB.
+const FARM_TABLE_TTL_MS = 60_000;
+// Irrigation operations change through this API: shared just long enough to serve one request's
+// per-field reads with one query, and dropped on every write.
+const IRRIGATIONS_TTL_MS = 2_000;
 
 export const notFound = (id: number) =>
   new HTTPException(404, { message: `irrigation operation ${id} not found` });
@@ -571,10 +578,70 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
   let productsP: Promise<Product[]> | null = null;
   // Same for the crops: an empty list would wrongly answer "unknown crop".
   let cropRefsP: Promise<CropRef[]> | null = null;
+  function cropRefs(): Promise<CropRef[]> {
+    if (!cropRefsP) {
+      cropRefsP = rows(db.from("crop_ref").select("*").order("crop_code")).then((r) =>
+        r.map(mapCropRef)
+      );
+      cropRefsP.catch(() => (cropRefsP = null));
+    }
+    return cropRefsP;
+  }
 
   const irrigationOps = () =>
     db.from("operation").select("*").eq("farm_id", farmId).eq("op_type", "irrigation")
       .not("water_mm", "is", null);
+
+  /** A farm-wide read shared for `ttlMs` (concurrent callers share the promise). Failures are evicted. */
+  const farmWide = new Map<string, { at: number; value: Promise<Row[]> }>();
+  function shared(key: string, ttlMs: number, load: () => Promise<Row[]>): Promise<Row[]> {
+    const hit = farmWide.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+    const value = load();
+    farmWide.set(key, { at: Date.now(), value });
+    value.catch(() => {
+      if (farmWide.get(key)?.value === value) farmWide.delete(key);
+    });
+    return value;
+  }
+  const fieldRows = () =>
+    shared(
+      "field",
+      FARM_TABLE_TTL_MS,
+      () => rows(db.from("field").select("*").eq("farm_id", farmId).order("id")),
+    );
+  // Newest sowing first, as getSeasonAt picks.
+  const seasonRows = () =>
+    shared(
+      "crop_season",
+      FARM_TABLE_TTL_MS,
+      () =>
+        paged((a, b) =>
+          db.from("crop_season").select("*").eq("farm_id", farmId)
+            .order("sowing_date", { ascending: false }).order("id").range(a, b)
+        ),
+    );
+  // Newest sample first, undated last, as getSoil picks.
+  const soilRows = () =>
+    shared("soil_analysis", FARM_TABLE_TTL_MS, () =>
+      rows(
+        db.from("soil_analysis").select("*").eq("farm_id", farmId)
+          .order("sampled_on", { ascending: false, nullsFirst: false }).order("id"),
+      ));
+  const systemRows = () =>
+    shared(
+      "irrigation_system",
+      FARM_TABLE_TTL_MS,
+      () => rows(db.from("irrigation_system").select("*").eq("farm_id", farmId)),
+    );
+  const irrigationRows = () =>
+    shared(
+      "irrigations",
+      IRRIGATIONS_TTL_MS,
+      () => paged((a, b) => irrigationOps().order("op_date").order("id").range(a, b)),
+    );
+  /** After a write: the next read sees it. */
+  const irrigationsChanged = () => farmWide.delete("irrigations");
 
   return {
     async getFarm() {
@@ -592,27 +659,21 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       return r ? mapMember(r) : null;
     },
     async listFields() {
-      return (await rows(db.from("field").select("*").eq("farm_id", farmId).order("id")))
-        .map(mapField);
+      return (await fieldRows()).map(mapField);
     },
     async getSeasonAt(fieldId, date) {
-      const r = await one(
-        db.from("crop_season").select("*").eq("farm_id", farmId).eq("field_id", fieldId)
-          .lte("sowing_date", date).gte("harvest_date", date)
-          .order("sowing_date", { ascending: false }).limit(1),
+      const r = (await seasonRows()).find((s) =>
+        s.field_id === fieldId && typeof s.sowing_date === "string" &&
+        typeof s.harvest_date === "string" && s.sowing_date <= date && s.harvest_date >= date
       );
       return r ? mapCropSeason(r) : null;
     },
     async getSoil(fieldId) {
-      const r = await one(
-        db.from("soil_analysis").select("*").eq("farm_id", farmId).eq("field_id", fieldId)
-          .order("sampled_on", { ascending: false, nullsFirst: false }).limit(1),
-      );
+      const r = (await soilRows()).find((s) => s.field_id === fieldId);
       return r ? mapSoil(r) : null;
     },
     async getCropRef(code) {
-      const r = await one(db.from("crop_ref").select("*").eq("crop_code", code).limit(1));
-      return r ? mapCropRef(r) : null;
+      return (await cropRefs()).find((c) => c.code === code) ?? null;
     },
     async getCropStages(code) {
       const r = await rows(
@@ -650,15 +711,9 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
     },
     async getIrrigationSystem(fieldId) {
       try {
-        const field = await one(
-          db.from("field").select("irrigation_system_id").eq("id", fieldId).eq("farm_id", farmId)
-            .limit(1),
-        );
+        const field = (await fieldRows()).find((f) => f.id === fieldId);
         if (field?.irrigation_system_id == null) return null;
-        const r = await one(
-          db.from("irrigation_system").select("*").eq("id", field.irrigation_system_id)
-            .eq("farm_id", farmId).limit(1),
-        );
+        const r = (await systemRows()).find((s) => s.id === field.irrigation_system_id);
         return r ? mapIrrigationSystem(r) : null;
       } catch (e) {
         warnOnce("irrigation_system", e);
@@ -692,9 +747,13 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       return p;
     },
     async listIrrigations(fieldId, opts) {
-      let q = irrigationOps().eq("field_id", fieldId);
-      if (!opts.includeDrafts) q = q.neq("status", "draft");
-      return (await rows(q.order("op_date").order("id"))).map(mapOperation);
+      // `status <> 'draft'` in SQL also drops a null status.
+      return (await irrigationRows())
+        .filter((o) =>
+          o.field_id === fieldId &&
+          (opts.includeDrafts || (o.status != null && o.status !== "draft"))
+        )
+        .map(mapOperation);
     },
     async listOperations({ from, to, fieldId, type, seasonId }) {
       const r = await paged((a, b) => {
@@ -732,15 +791,7 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
       );
       return [...new Set(r.map((x) => x.product_name as string).filter(Boolean))];
     },
-    listCropRefs() {
-      if (!cropRefsP) {
-        cropRefsP = rows(db.from("crop_ref").select("*").order("crop_code")).then((r) =>
-          r.map(mapCropRef)
-        );
-        cropRefsP.catch(() => (cropRefsP = null));
-      }
-      return cropRefsP;
-    },
+    listCropRefs: cropRefs,
     async listSales({ year, cropCode }) {
       const r = await paged((a, b) => {
         let q = db.from("sale").select(SALE_SELECT).eq("farm_id", farmId);
@@ -802,6 +853,7 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
           toOperationInsert(input, (field.area_ha as number | undefined) ?? null),
         ).select("*"),
       );
+      irrigationsChanged();
       if (!r) fail("insert returned no row");
       return mapOperation(r!);
     },
@@ -810,6 +862,7 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
         db.from("operation").update({ status, updated_at: new Date().toISOString() })
           .eq("id", operationId).eq("farm_id", farmId).eq("op_type", "irrigation").select("*"),
       );
+      irrigationsChanged();
       if (!r) throw notFound(operationId);
       return mapOperation(r);
     },
@@ -818,6 +871,7 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
         db.from("operation").update(toOperationUpdate(change, new Date()))
           .eq("id", operationId).eq("farm_id", farmId).eq("op_type", "irrigation").select("*"),
       );
+      irrigationsChanged();
       if (!r) throw notFound(operationId);
       return mapOperation(r);
     },
@@ -826,6 +880,7 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
         db.from("operation").delete().eq("id", operationId).eq("farm_id", farmId)
           .eq("op_type", "irrigation").select("id"),
       );
+      irrigationsChanged();
       if (r.length === 0) throw notFound(operationId);
     },
   };
@@ -834,11 +889,28 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
 /** Farm lookups across the shared database, plus one cached FarmData per farm. */
 export function createSupabaseFarmDirectory(db: SupabaseClient): FarmDirectory {
   const perFarm = new Map<number, FarmData>();
+  // Every request resolves its caller's farm first: keep the member -> farm map (seeded data)
+  // instead of one round trip ahead of everything else.
+  let membersP: { at: number; value: Promise<Map<number, number>> } | null = null;
+  function memberFarms(): Promise<Map<number, number>> {
+    if (membersP && Date.now() - membersP.at < FARM_TABLE_TTL_MS) return membersP.value;
+    const value = paged((a, b) => db.from("member").select("id,farm_id").order("id").range(a, b))
+      .then((r) => new Map(r.map((m) => [m.id as number, m.farm_id as number])));
+    const entry = { at: Date.now(), value };
+    membersP = entry;
+    value.catch(() => {
+      if (membersP === entry) membersP = null;
+    });
+    return value;
+  }
   return {
     async listFarmIds() {
       return (await rows(db.from("farm").select("id").order("id"))).map((r) => r.id as number);
     },
     async farmOfMember(memberId) {
+      const known = (await memberFarms()).get(memberId);
+      if (known !== undefined) return known;
+      // A member added since the last read.
       const r = await one(db.from("member").select("farm_id").eq("id", memberId).limit(1));
       return r ? (r.farm_id as number) : null;
     },
