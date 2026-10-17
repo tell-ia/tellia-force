@@ -49,23 +49,48 @@ export const rainPct = (rainMm: number, tawMm: number, noWaterPct: number): numb
   Math.max(0, Math.min(noWaterPct, Math.round((rainMm / tawMm) * 100)));
 
 /**
- * When the deficit is larger than one pass, the field is refilled over several
- * passes (the reel gun caps each pass). Returns the plan, or null for a single pass.
+ * When the gap is larger than one pass, the field is refilled over several passes (the reel
+ * gun caps each pass). A leftover under half a pass is left to the next check, not announced.
+ * Returns the plan, or null for a single pass. With `fillPct` the gap is to that target.
  */
-export function refillPlan(deficitMm: number, netMm: number): { morePasses: number; note: string } | null {
+export function refillPlan(
+  deficitMm: number,
+  netMm: number,
+  fillPct?: number,
+): { morePasses: number; note: string } | null {
   if (netMm <= 0 || deficitMm <= netMm) return null;
-  const morePasses = Math.ceil(deficitMm / netMm) - 1;
+  const morePasses = Math.round((deficitMm - netMm) / netMm);
   if (morePasses < 1) return null;
+  const passes = `~${morePasses} more pass${morePasses > 1 ? "es" : ""}`;
+  const gap = Math.round(deficitMm);
   return {
     morePasses,
-    note: `then ~${morePasses} more pass${morePasses > 1 ? "es" : ""} to refill (${Math.round(deficitMm)} mm deficit)`,
+    note: fillPct !== undefined && fillPct < 100
+      ? `then ${passes} to reach ${fillPct} % (${gap} mm to go)`
+      : `then ${passes} to refill (${gap} mm deficit)`,
   };
 }
 
-/** "then ~1 more pass…" note, counted to the engine's refill target (old reports: to full). */
+/** "then ~2 more passes…" note, counted to the engine's refill target (old reports: to full). */
 export const refillPassesNote = (
-  r: Pick<FieldReport, "depletionMm" | "irrigateMm" | "toTargetMm">,
-): string | null => refillPlan(r.toTargetMm ?? r.depletionMm, r.irrigateMm)?.note ?? null;
+  r: Pick<FieldReport, "depletionMm" | "irrigateMm" | "toTargetMm" | "targetFillPct">,
+): string | null =>
+  (r.toTargetMm === undefined
+    ? refillPlan(r.depletionMm, r.irrigateMm)
+    : refillPlan(r.toTargetMm, r.irrigateMm, r.targetFillPct))?.note ?? null;
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** "Irrigate by Fri 17 Jul" from the engine's last day to water (UTC, like eveLabel). */
+export function irrigateByLabel(asOf: string, by: string | null): string {
+  if (!by) return "Irrigate soon";
+  const utc = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
+  const days = Math.round((utc(by) - utc(asOf)) / 86_400_000);
+  if (days <= 0) return "Irrigate today";
+  if (days === 1) return "Irrigate tomorrow";
+  const d = new Date(utc(by));
+  return `Irrigate by ${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
 
 /**
  * Engine FieldReport → ReserveGauge props. This is what the fast advisor
@@ -96,7 +121,7 @@ function headlineFor(r: FieldReport): string {
     case "frost_hold":
       return "Hold · frost";
     case "plan_irrigation":
-      return "Irrigate soon";
+      return irrigateByLabel(r.asOf, r.irrigateBy);
     case "crop_maturing":
       return "Maturing · stop";
     case "no_irrigation":

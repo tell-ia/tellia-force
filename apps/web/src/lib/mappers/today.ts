@@ -1,5 +1,5 @@
 import type { Field, FarmAdvice, FarmSummary, FarmToday, FieldReport, ParcelStatus, ParcelSummary } from "@tellia/shared";
-import { cropLabel, eveLabel, refillPassesNote } from "./parcel";
+import { cropLabel, eveLabel, irrigateByLabel, refillPassesNote } from "./parcel";
 
 // Engine FarmAdvice (ranked FieldReport[]) → the Today screen's FarmToday.
 // Pure; tested in today.test.ts.
@@ -10,21 +10,13 @@ function statusOf(r: FieldReport): ParcelStatus {
   return "ok";
 }
 
-function dayLabel(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(`${iso}T00:00:00Z`);
-  return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()]}`;
-}
-
 function badgeOf(r: FieldReport): string {
   if (!r.irrigable) return "Rain-fed";
   switch (r.decision) {
     case "irrigate_today":
       return "Irrigate now";
-    case "plan_irrigation": {
-      const by = dayLabel(r.irrigateBy);
-      return by ? `Irrigate by ${by}` : "Irrigate soon";
-    }
+    case "plan_irrigation":
+      return irrigateByLabel(r.asOf, r.irrigateBy);
     case "frost_hold":
       return "Hold · frost";
     case "crop_maturing":

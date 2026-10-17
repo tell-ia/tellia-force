@@ -34,6 +34,7 @@ import { font, radius, v } from "../../theme/tokens";
 import { getParcelReport } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { Loader } from "../../components/ui/Loader";
+import { irrigateByLabel } from "../../lib/mappers/parcel";
 import { BalanceLegend, CropStageTimeline, NextDaysTable, ReserveGauge, SeasonBalanceCard, SoilCard, WaterBalanceChart } from "../parcel/charts";
 
 // Renders one AI SDK tool part as a card. The 13 tool keys are the UI contract
@@ -105,7 +106,7 @@ function FieldReportCard({ r }: { r: Rec }) {
   const decision = str(r.decision);
   return (
     <Card>
-      <Head title={str(r.fieldName) ?? "Field"} badge={decisionLabel(decision)} tone={decision === "irrigate_today" ? "act" : "ok"} />
+      <Head title={str(r.fieldName) ?? "Field"} badge={reportLabel(r)} tone={decision === "irrigate_today" ? "act" : "ok"} />
       {mm != null && mm > 0 && (
         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
           <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 34, color: v("act") }}>{mm}</span>
@@ -168,7 +169,7 @@ function AdviceCard({ reports }: { reports: unknown[] }) {
           return (
             <button key={i} type="button" onClick={() => num(r.fieldId) != null && navigate(`parcel/${num(r.fieldId)}`)} style={rowBtn}>
               <span style={{ fontWeight: 600 }}>{str(r.fieldName) ?? "Field"}</span>
-              <span style={{ fontSize: 13, color: v("ink2") }}>{decisionLabel(str(r.decision))}{mm ? ` · ${mm} mm` : ""}</span>
+              <span style={{ fontSize: 13, color: v("ink2") }}>{reportLabel(r)}{mm ? ` · ${mm} mm` : ""}</span>
             </button>
           );
         })}
@@ -898,3 +899,8 @@ const DECISIONS: Record<string, string> = {
   outside_season: "Off season",
 };
 const decisionLabel = (d?: string): string => (d ? DECISIONS[d] ?? d : "");
+/** Decision of a report, with the day for plan_irrigation ("Irrigate by Fri 17 Jul"). */
+const reportLabel = (r: Rec): string =>
+  str(r.decision) === "plan_irrigation"
+    ? irrigateByLabel(str(r.asOf) ?? "", str(r.irrigateBy) ?? null)
+    : decisionLabel(str(r.decision));

@@ -4,6 +4,7 @@ import {
   eveLabel,
   fieldReportToReserve,
   grossFromNet,
+  irrigateByLabel,
   rainPct,
   refillPassesNote,
   refillPlan,
@@ -78,5 +79,27 @@ describe("parcel mappers (demo numbers)", () => {
     expect(refillPlan(47, 30)).not.toBeNull();
     expect(refillPassesNote({ depletionMm: 47, toTargetMm: 20, irrigateMm: 30 })).toBeNull();
     expect(refillPassesNote({ depletionMm: 47, irrigateMm: 30 })).not.toBeNull();
+  });
+});
+
+describe("irrigation date and passes", () => {
+  it("names the day to irrigate by", () => {
+    expect(irrigateByLabel("2026-07-15", "2026-07-15")).toBe("Irrigate today");
+    expect(irrigateByLabel("2026-07-15", "2026-07-16")).toBe("Irrigate tomorrow");
+    expect(irrigateByLabel("2026-07-15", "2026-07-17")).toBe("Irrigate by Fri 17 Jul");
+    expect(irrigateByLabel("2026-07-15", null)).toBe("Irrigate soon");
+  });
+
+  it("counts the passes still needed to the target, ignoring a leftover under half a pass", () => {
+    // 39 mm to the target, 30 mm per pass: 9 mm left is not worth announcing a pass.
+    expect(refillPassesNote({ depletionMm: 120, toTargetMm: 39, irrigateMm: 30, targetFillPct: 80 })).toBeNull();
+    // 92 mm to go: this pass, then ~2 more.
+    expect(refillPassesNote({ depletionMm: 121, toTargetMm: 92, irrigateMm: 30, targetFillPct: 75 })).toBe(
+      "then ~2 more passes to reach 75 % (92 mm to go)",
+    );
+    // Old reports (no target): counted to field capacity.
+    expect(refillPassesNote({ depletionMm: 75, irrigateMm: 30 })).toBe(
+      "then ~2 more passes to refill (75 mm deficit)",
+    );
   });
 });
