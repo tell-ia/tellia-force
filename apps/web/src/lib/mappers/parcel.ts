@@ -274,14 +274,21 @@ export function fieldReportToParcelReport(
   if (forecast.length) {
     const cap = report.reserve.capacityMm;
     // "+ watered" follows the real plan (reserve climbing back) when we have one.
-    const planRes = opts.plan ? new Map(opts.plan.series.map((p) => [p.date, p.reserveMm])) : null;
+    const planDay = opts.plan ? new Map(opts.plan.series.map((p) => [p.date, p])) : null;
+    const planPass = opts.plan ? new Map(opts.plan.passes.map((p) => [p.date, p.grossMm])) : null;
     report.nextDays = forecast.map((d) => {
       const pctNoWater = Math.round(((d.taw - d.depletion) / d.taw) * 100);
-      const planMm = planRes?.get(d.date);
+      const plan = planDay?.get(d.date);
       const pctWatered =
-        planMm != null ? Math.round((planMm / d.taw) * 100) : wateredPct(pctNoWater, r.irrigateMm, cap);
+        plan ? Math.round((plan.reserveMm / d.taw) * 100) : wateredPct(pctNoWater, r.irrigateMm, cap);
       const pctRain = rainPct(d.rain, d.taw, pctNoWater);
-      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctRain, rainMm: round1(d.rain), pctWatered };
+      // That day's own watering (net, % of the reserve) and the gross mm pumped, for the plan tanks.
+      const pctIrrigation = plan ? Math.round((plan.irrigation / d.taw) * 100) : 0;
+      const waterMm = planPass?.get(d.date);
+      return {
+        day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctRain, rainMm: round1(d.rain), pctWatered,
+        pctIrrigation, ...(waterMm ? { waterMm } : {}),
+      };
     });
   }
 

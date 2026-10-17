@@ -221,7 +221,7 @@ export function CropStageTimeline({ cropStage }: { cropStage: CropTimeline }) {
 // One tank per day, filling from the bottom: soil (already held), that day's rain,
 // then the plan on top. One comfort line runs across every tank.
 // comfortPct defaults to 55 for the chat widget, whose props carry no threshold.
-export function NextDaysTable({ days, hasPlan, comfortPct = 55 }: { days: NextDay[]; hasPlan?: boolean; comfortPct?: number }) {
+export function NextDaysTable({ days, hasPlan, comfortPct = 55, title = "Next 5 days" }: { days: NextDay[]; hasPlan?: boolean; comfortPct?: number; title?: string }) {
   const clipId = `tfTanks${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const TOP = 40; // y of 100%
   const BOT = 170; // y of 0%
@@ -251,7 +251,7 @@ export function NextDaysTable({ days, hasPlan, comfortPct = 55 }: { days: NextDa
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
-        <Label>Next 5 days</Label>
+        <Label>{title}</Label>
         <span style={{ fontSize: 12, color: v("ink2") }}>% of usable reserve</span>
       </div>
       <svg viewBox="0 0 326 206" width="100%" role="img" aria-label={`Soil water tanks, comfort at ${comfortPct}%. ${summary}`} style={{ display: "block", fontFamily: font.body, fontVariantNumeric: "tabular-nums" }}>
@@ -363,5 +363,101 @@ export function SeasonBalanceCard({ season }: { season: SeasonBalance }) {
         </div>
       </div>
     </Collapsible>
+  );
+}
+
+/**
+ * The next 5 days with the plan, one tank per day: the reserve at the end of the day, split into
+ * what was already in the soil (earlier waterings included), that day's rain and that day's own
+ * watering ("+40 mm" above it). The dashed marker is the level without any watering ("dry").
+ */
+export function NextDaysPlanTanks({ days, comfortPct = 55, title = "Next 5 days" }: { days: NextDay[]; comfortPct?: number; title?: string }) {
+  const clipId = `tfPlanTanks${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const TOP = 46; // y of 100%
+  const BOT = 170; // y of 0%
+  const yAt = (pct: number) => BOT - (Math.min(100, Math.max(0, pct)) / 100) * (BOT - TOP);
+  const PLOT_R = 274;
+  const slot = (PLOT_R - 4) / Math.max(1, days.length);
+  const tankW = Math.min(36, slot * 0.66);
+  const cxAt = (i: number) => 4 + slot * (i + 0.5);
+  const yComfort = yAt(comfortPct);
+
+  const tanks = days.map((d, i) => {
+    const water = Math.max(0, d.pctIrrigation ?? 0);
+    const rain = Math.max(0, Math.min(d.pctRain ?? 0, d.pctWatered - water));
+    const soil = Math.max(0, d.pctWatered - water - rain);
+    const x = cxAt(i) - tankW / 2;
+    let level = 0;
+    const segs = ([["soil", soil], ["rain", rain], ["brand", water]] as const)
+      .filter(([, w]) => w > 0)
+      .map(([c, w]) => {
+        const from = level;
+        level += w;
+        return { c, y: yAt(level), h: yAt(from) - yAt(level), base: yAt(from), first: from === 0 };
+      });
+    return { d, i, x, segs, top: yAt(d.pctWatered), dry: yAt(d.pctNoWater), low: d.pctWatered < comfortPct };
+  });
+
+  const summary = days.map((d) => `${d.day}: ${d.pctWatered}% with the plan${d.waterMm ? `, watering ${d.waterMm} mm` : ""}, ${d.pctNoWater}% dry`).join("; ");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingRight: 28 }}>
+        <Label>{title}</Label>
+        <span style={{ fontSize: 12, color: v("ink2") }}>% of usable reserve</span>
+      </div>
+      <svg viewBox="0 0 326 206" width="100%" role="img" aria-label={`Soil water tanks with the plan, comfort at ${comfortPct}%. ${summary}`} style={{ display: "block", fontFamily: font.body, fontVariantNumeric: "tabular-nums" }}>
+        <defs>
+          <clipPath id={clipId}>
+            {tanks.map((t) => <rect key={t.i} x={t.x} y={TOP} width={tankW} height={BOT - TOP} rx="7" />)}
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#${clipId})`}>
+          <rect x="0" y={TOP} width={PLOT_R} height={BOT - TOP} fill={v("sunk")} />
+          {tanks.map((t) =>
+            t.segs.map((s) => (
+              <g key={`${t.i}${s.c}`}>
+                <rect x={t.x} y={s.y} width={tankW} height={s.h} fill={v(s.c)} />
+                {!s.first && <line x1={t.x} y1={s.base} x2={t.x + tankW} y2={s.base} stroke={v("surface")} strokeWidth={2} />}
+              </g>
+            )),
+          )}
+          {/* "dry": the level without any watering */}
+          {tanks.map((t) => <line key={`dry${t.i}`} x1={t.x} y1={t.dry} x2={t.x + tankW} y2={t.dry} stroke={v("ink")} strokeWidth={1.5} strokeDasharray="3 2" />)}
+        </g>
+        <line x1="2" y1={yComfort} x2={PLOT_R - 6} y2={yComfort} stroke={v("act")} strokeWidth={1.5} strokeDasharray="5 3" />
+        <text x={PLOT_R - 2} y={yComfort - 2} fill={v("act")} fontSize="10" fontWeight={600}>comfort</text>
+        <text x={PLOT_R - 2} y={yComfort + 10} fill={v("act")} fontSize="10" fontWeight={600}>{comfortPct}%</text>
+
+        {tanks.map(({ d, i, top, low }) => {
+          const cx = cxAt(i);
+          return (
+            <g key={`lab${i}`}>
+              {(d.rainMm ?? 0) > 0 && (
+                <g>
+                  <path d={`M${cx - 9},4 c4,5 5,8 5,10 a5,5 0 0 1 -10,0 c0,-2 1,-5 5,-10z`} fill={v("rain")} />
+                  <text x={cx - 2} y="16" fill={v("ink2")} fontSize="10">{Math.round(d.rainMm!)} mm</text>
+                </g>
+              )}
+              {d.waterMm ? (
+                <text x={cx} y={top - 20} textAnchor="middle" fill={v("brand")} fontSize="11" fontWeight={700}>+{Math.round(d.waterMm)} mm</text>
+              ) : null}
+              <text x={cx} y={top - 6} textAnchor="middle" fill={low ? v("act") : v("ink")} fontSize="12" fontWeight={600}>{d.pctWatered}</text>
+              <text x={cx} y="186" textAnchor="middle" fill={low ? v("act") : v("ink2")} fontSize="10" fontWeight={low ? 600 : 400}>{d.day}</text>
+              <text x={cx} y="200" textAnchor="middle" fill={v("ink2")} fontSize="10">{d.pctNoWater} dry</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: v("ink2") }}>
+        {([["soil", "in the soil (earlier waterings too)"], ["rain", "rain that day"], ["brand", "watering that day"]] as const).map(([c, label]) => (
+          <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: v(c) }} />{label}
+          </span>
+        ))}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 12, borderTop: `1.5px dashed ${v("ink")}` }} />dry = without watering
+        </span>
+      </div>
+    </div>
   );
 }

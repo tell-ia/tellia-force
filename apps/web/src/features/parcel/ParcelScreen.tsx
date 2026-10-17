@@ -14,6 +14,7 @@ import { RecommendationCard } from "./RecommendationCard";
 import {
   BalanceLegend,
   CropStageTimeline,
+  NextDaysPlanTanks,
   NextDaysTable,
   ReserveGauge,
   SeasonBalanceCard,
@@ -122,9 +123,18 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
           {data.nextDays && (
             <SectionCard style={{ gap: 10, position: "relative" }}>
               <CornerHint text="Each tank is the soil reserve that day, as % of usable water: water already in the soil at the bottom, that day's rain, then the recommended watering on top. The dashed line is the comfort threshold." />
-              <NextDaysTable days={data.nextDays} hasPlan={!!data.plan} comfortPct={data.reserve.thresholdPct} />
+              <NextDaysTable days={data.nextDays} hasPlan={!!data.plan} comfortPct={data.reserve.thresholdPct} title="Next 5 days — before" />
               <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
                 Each tank fills from the bottom: water already in the soil, that day's rain, then the recommended {data.plan ? "plan" : "watering"}. "Dry" is the level without watering. Tomorrow, today's rain counts as soil.
+              </div>
+            </SectionCard>
+          )}
+
+          {data.nextDays && (
+            <SectionCard style={{ gap: 10, position: "relative" }}>
+              <NextDaysPlanTanks days={data.nextDays} comfortPct={data.reserve.thresholdPct} title="Next 5 days — after" />
+              <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
+                Each tank is the reserve at the end of the day with the {data.plan ? "plan" : "advice"}: water already in the soil (earlier waterings included), that day's rain, then that day's own watering. The dashed mark is the level without any watering.
               </div>
             </SectionCard>
           )}

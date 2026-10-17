@@ -161,6 +161,8 @@ export const NextDaySchema = z.object({
   pctRain: z.number().int().optional(), // part of pctNoWater that fell as rain that day (rest = soil)
   rainMm: z.number().optional(), // that day's forecast rain
   pctWatered: z.number().int(),
+  pctIrrigation: z.number().int().optional(), // net water the plan adds that day (% of the reserve)
+  waterMm: z.number().optional(), // gross mm pumped that day by the plan (watering days only)
 });
 
 /** Everything the parcel detail screen needs = the `get_parcel_report` contract. */
