@@ -20,7 +20,7 @@ export function AppShell() {
       content = <ChatScreen />;
       break;
     case "log":
-      content = <LogScreen />;
+      content = <LogScreen fieldId={route.params.id ? Number(route.params.id) : undefined} />;
       break;
     case "admin":
       content = <AdminScreen />;

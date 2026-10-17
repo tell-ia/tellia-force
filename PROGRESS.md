@@ -7,6 +7,9 @@
 - 2026-10-17 Task 1: history never lists irrigations after today (REST, chat, phone share
   `service.listIrrigations`); `DELETE /irrigation/operations/:id` (confirmed, own farm). 2 REST tests.
   Also fixed main's tool-keys test (missing `showWidget`, b6d5710). API: 327 passed.
+- 2026-10-17 Task 2: web saves for real (POST, errors shown, Undo = DELETE), `listIrrigations`;
+  Log screen field chips + `#/log/:id` + real date + "See the log"; field page "Irrigation log"
+  section + "Log watering" button + `#log` anchor. Web: 73 passed.
 
 ## In progress
 

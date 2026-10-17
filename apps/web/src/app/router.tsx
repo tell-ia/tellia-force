@@ -14,7 +14,7 @@ export interface Route {
 const TAB_ROUTES: readonly RouteName[] = ["today", "chat", "log"];
 export const isTabRoute = (name: RouteName): boolean => TAB_ROUTES.includes(name);
 
-function parse(hash: string): Route {
+export function parseRoute(hash: string): Route {
   // hash looks like "#/parcel/101#balance"
   const raw = hash.replace(/^#\/?/, "");
   const [pathPart = "", anchor = ""] = raw.split("#");
@@ -23,15 +23,18 @@ function parse(hash: string): Route {
   if (head === "parcel" && seg[1]) {
     return { name: "parcel", params: { id: seg[1] }, anchor };
   }
+  if (head === "log" && seg[1]) {
+    return { name: "log", params: { id: seg[1] }, anchor };
+  }
   const known: readonly string[] = ["today", "chat", "log", "admin", "gallery"];
   const name = (known.includes(head) ? head : "today") as RouteName;
   return { name, params: {}, anchor };
 }
 
 export function useRoute(): Route {
-  const [route, setRoute] = useState<Route>(() => parse(location.hash));
+  const [route, setRoute] = useState<Route>(() => parseRoute(location.hash));
   useEffect(() => {
-    const onChange = () => setRoute(parse(location.hash));
+    const onChange = () => setRoute(parseRoute(location.hash));
     addEventListener("hashchange", onChange);
     return () => removeEventListener("hashchange", onChange);
   }, []);

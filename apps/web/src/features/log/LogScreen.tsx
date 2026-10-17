@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
-import type { FarmToday, ParcelReport } from "@tellia/shared";
-import { getFarmToday, getParcelReport, recordIrrigation, simulateDose, type DoseSim } from "../../lib/api";
+import type { FarmToday, IrrigationRecord, ParcelReport, ParcelSummary } from "@tellia/shared";
+import { deleteIrrigation, getFarmToday, getParcelReport, recordIrrigation, simulateDose, type DoseSim } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 
 /** Debounce a fast-changing value (the dose stepper) before firing the engine call. */
@@ -15,24 +15,26 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
-import { addDays } from "../../lib/dates";
+import { addDays, formatDay } from "../../lib/dates";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
 import { Loader } from "../../components/ui/Loader";
 
-export function LogScreen() {
+export function LogScreen({ fieldId }: { fieldId?: number }) {
   const { farm } = useFarm();
   const { today: demoToday } = useDemoDate();
-  // Log is contextual to the farm's field that needs water today.
   const { data: today } = useAsync<FarmToday | null>(
     () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
     [farm?.id],
   );
-  const action = today?.parcels.find((p) => p.status === "action") ?? today?.parcels[0];
-  const parcelId = action?.id ?? null;
+  // The field: the one asked for (#/log/:id or a chip), else the one that needs water today.
+  const [picked, setPicked] = useState<number | null>(fieldId ?? null);
+  const parcels = today?.parcels ?? [];
+  const action = parcels.find((p) => p.status === "action") ?? parcels[0];
+  const parcelId = picked ?? action?.id ?? null;
 
-  const { data, loading } = useAsync<ParcelReport | null>(
+  const { data, loading, error } = useAsync<ParcelReport | null>(
     () => (parcelId ? getParcelReport(parcelId) : Promise.resolve(null)),
     [parcelId],
   );
@@ -43,11 +45,16 @@ export function LogScreen() {
 
   // `amount` = what was applied AT THE GUN (gross). Defaults to the advised dose.
   const [amount, setAmount] = useState<number | null>(null);
-  const [logged, setLogged] = useState(false);
+  // The saved irrigation (real row in the DB), or null. Undo deletes it.
+  const [saved, setSaved] = useState<IrrigationRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const logged = saved !== null;
   useEffect(() => {
     if (data) {
       setAmount(advisedGross || 35);
-      setLogged(false);
+      setSaved(null);
+      setSaveError(null);
     }
   }, [data, advisedGross]);
 
@@ -92,12 +99,33 @@ export function LogScreen() {
     [shown, winFrom],
   );
 
-  const confirm = () => {
-    if (!parcelId) return;
-    setLogged(true);
-    // LIVE: records a confirmed irrigation → counts in the next report/advice.
-    void recordIrrigation({ parcelId, date: asOf, grossMm: gross, source: "app" });
+  // LIVE: saves a confirmed irrigation (counts in the next report/advice). "Saved" only on success.
+  const confirm = async () => {
+    if (!parcelId || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      setSaved(await recordIrrigation({ parcelId, date: asOf, grossMm: gross }));
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
   };
+  const undo = async () => {
+    if (!saved || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await deleteIrrigation(saved.operationId);
+      setSaved(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={saving} onPick={setPicked} />;
 
   if (loading || !data || amount === null) {
     return (
@@ -106,7 +134,8 @@ export function LogScreen() {
           <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 34 }}>Log watering</span>
           <span style={{ fontSize: 13, color: v("ink2") }}>Log what you applied — the reserve updates.</span>
         </div>
-        <Loader />
+        {chips}
+        {error ? <div role="alert" style={{ color: v("act"), fontSize: 14, padding: "12px 4px" }}>Couldn't load this field: {error}</div> : <Loader />}
       </div>
     );
   }
@@ -118,17 +147,25 @@ export function LogScreen() {
         <span style={{ fontSize: 13, color: v("ink2") }}>Log what you did — the reserve updates.</span>
       </div>
 
-      {logged && (
-        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, background: v("brand"), color: v("bg"), borderRadius: radius.card, padding: "12px 14px" }}>
+      {chips}
+
+      {saved && (
+        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, background: v("brand"), color: v("bg"), borderRadius: radius.card, padding: "8px 8px 8px 14px" }}>
           <Check size={20} strokeWidth={2.5} />
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Saved. The reserve is updated.</span>
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Saved: {saved.mm} mm on {data.name}, {formatDay(saved.date)}.</span>
+          <button type="button" onClick={() => navigate(`parcel/${saved.fieldId}#log`)} style={{ height: 44, flex: "none", padding: "0 12px", borderRadius: 22, border: 0, background: v("bg"), color: v("brand"), fontWeight: 600, cursor: "pointer" }}>See the log</button>
+        </div>
+      )}
+      {saveError && (
+        <div role="alert" style={{ background: v("actSoft"), color: v("ink"), borderRadius: radius.card, padding: "12px 14px", fontSize: 14 }}>
+          Not saved: {saveError}
         </div>
       )}
 
       {/* Parsed details */}
       <section aria-label="Details" style={{ background: v("surface"), border: `1px solid ${v("line")}`, borderRadius: radius.section, padding: "6px 16px", display: "flex", flexDirection: "column" }}>
         <Row label="Parcel" value={data.name} />
-        <Row label="Date" value="This evening" />
+        <Row label="Date" value={`${formatDay(asOf)} · today`} />
         {/* What TelliaForce advised — the target. */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 52, borderBottom: `1px solid ${v("line")}` }}>
           <span style={{ fontSize: 13, color: v("ink2") }}>TelliaForce advised</span>
@@ -144,9 +181,9 @@ export function LogScreen() {
             <span style={{ fontSize: 11, color: v("ink2") }}>≈ {net} mm reaches the soil</span>
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <StepBtn label="Less" onClick={() => { setAmount((a) => Math.max(5, (a ?? gross) - 5)); setLogged(false); }}>−</StepBtn>
+            <StepBtn label="Less" disabled={logged || saving} onClick={() => setAmount((a) => Math.max(5, (a ?? gross) - 5))}>−</StepBtn>
             <span style={{ width: 76, textAlign: "center", fontFamily: font.display, fontWeight: 700, fontSize: 30, color: v("ink") }}>{gross} mm</span>
-            <StepBtn label="More" onClick={() => { setAmount((a) => Math.min(120, (a ?? gross) + 5)); setLogged(false); }}>+</StepBtn>
+            <StepBtn label="More" disabled={logged || saving} onClick={() => setAmount((a) => Math.min(120, (a ?? gross) + 5))}>+</StepBtn>
           </span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 44 }}>
@@ -198,12 +235,12 @@ export function LogScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
         {logged ? (
-          <button type="button" onClick={() => setLogged(false)} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: "pointer" }}>Undo</button>
+          <button type="button" onClick={() => void undo()} disabled={saving} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: saving ? "default" : "pointer" }}>{saving ? "Deleting…" : "Undo"}</button>
         ) : (
           <button type="button" onClick={() => navigate(`parcel/${parcelId}`)} style={{ height: 54, borderRadius: radius.card, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, cursor: "pointer" }}>Cancel</button>
         )}
-        <button type="button" onClick={confirm} disabled={!logged && (pending || !shown)} style={{ height: 54, borderRadius: radius.card, border: 0, fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: !logged && (pending || !shown) ? "default" : "pointer", opacity: !logged && (pending || !shown) ? 0.55 : 1, background: logged ? v("okSoft") : v("brand"), color: logged ? v("brand") : v("bg") }}>
-          {logged ? "Saved" : pending || !shown ? "Simulating…" : `Confirm ${gross} mm`}
+        <button type="button" onClick={() => void confirm()} disabled={logged || saving || pending || !shown} style={{ height: 54, borderRadius: radius.card, border: 0, fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", cursor: logged || saving || pending || !shown ? "default" : "pointer", opacity: !logged && (saving || pending || !shown) ? 0.55 : 1, background: logged ? v("okSoft") : v("brand"), color: logged ? v("brand") : v("bg") }}>
+          {logged ? "Saved" : saving ? "Saving…" : pending || !shown ? "Simulating…" : `Confirm ${gross} mm`}
         </button>
       </div>
     </div>
@@ -219,9 +256,27 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StepBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function StepBtn({ label, onClick, disabled = false, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button type="button" aria-label={label} onClick={onClick} style={{ width: 44, height: 44, borderRadius: 22, border: `1px solid ${v("line")}`, background: v("bg"), color: v("ink"), fontSize: 20, lineHeight: 1, cursor: "pointer" }}>{children}</button>
+    <button type="button" aria-label={label} onClick={onClick} disabled={disabled} style={{ width: 44, height: 44, borderRadius: 22, border: `1px solid ${v("line")}`, background: v("bg"), color: v("ink"), fontSize: 20, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}>{children}</button>
+  );
+}
+
+/** One chip per field of the farm, most urgent first (the advice order). */
+export function FieldChips({ parcels, selected, disabled, onPick }: { parcels: ParcelSummary[]; selected: number | null; disabled: boolean; onPick: (id: number) => void }) {
+  if (parcels.length === 0) return null;
+  return (
+    <div role="group" aria-label="Field" style={{ display: "flex", gap: 8, overflowX: "auto", margin: "0 -16px", padding: "0 16px 2px" }}>
+      {parcels.map((p) => {
+        const on = p.id === selected;
+        return (
+          <button key={p.id} type="button" aria-pressed={on} disabled={disabled} onClick={() => onPick(p.id)} style={{ flex: "none", height: 44, padding: "0 14px", borderRadius: 22, whiteSpace: "nowrap", fontSize: 13, fontWeight: 600, cursor: disabled ? "default" : "pointer", border: on ? `2px solid ${v("brand")}` : `1px solid ${v("line")}`, background: on ? v("okSoft") : v("surface"), color: v("ink") }}>
+            {p.name}
+            {p.status === "action" && <span style={{ marginLeft: 6, color: v("act") }}>●</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
