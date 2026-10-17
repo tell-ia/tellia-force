@@ -2,6 +2,7 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
 import {
+  FarmLookupSchema,
   FieldDetailsSchema,
   FieldJournalSchema,
   IrrigationConfirmationSchema,
@@ -54,6 +55,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
       "getFieldReport",
       "getIrrigationHistory",
       "getWeather",
+      "lookupFarmData",
       "recordIrrigation",
       "resolveField",
       "simulateScenario",
@@ -65,6 +67,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
   assertEquals(tools.getFieldJournal.id, "get_field_journal");
   assertEquals(tools.checkProductUse.id, "check_product_use");
   assertEquals(tools.correctIrrigation.id, "correct_irrigation");
+  assertEquals(tools.lookupFarmData.id, "lookup_farm_data");
 });
 
 Deno.test("tool texts name other tools by key (what the model sees), never by id", opts, async () => {
@@ -495,3 +498,63 @@ Deno.test("correctIrrigation refuses a draft, a non-irrigation and bad input", o
     "member",
   );
 });
+
+// --- lookupFarmData ----------------------------------------------------------------
+
+Deno.test(
+  "lookupFarmData: rows and summary from the server; unknown table refused",
+  opts,
+  async () => {
+    const { tools, run } = await setup();
+    const sold = FarmLookupSchema.parse(
+      await run(tools.lookupFarmData, { table: "sale", year: 2024, cropCode: "blé" }, 1),
+    );
+    assert(sold.table === "sale");
+    assertEquals([sold.cropCode, sold.count, sold.synthetic], ["COWT", 2, true]);
+    assertEquals(sold.summary, {
+      volumeT: 100,
+      revenueEur: 22400,
+      averagePriceEurT: 224,
+      byCrop: [{
+        cropCode: "COWT",
+        cropName: "Blé tendre d'hiver",
+        volumeT: 100,
+        revenueEur: 22400,
+        averagePriceEurT: 224,
+      }],
+    });
+    const prices = await run(tools.lookupFarmData, { table: "market_price", cropCode: "MAIZ" }, 1);
+    assertEquals(
+      prices.rows.map((r: { month: number; forecast: boolean }) => [r.month, r.forecast]),
+      [[9, true], [8, true], [7, false], [6, false]],
+    );
+    const unknown = await run(tools.lookupFarmData, { table: "member" }, 1);
+    assertEquals(unknown.error, true);
+    const tooMany = await run(tools.lookupFarmData, { table: "sale", limit: 51 }, 1);
+    assertEquals(tooMany.error, true);
+    await assertRejects(() => run(tools.lookupFarmData, { table: "sale" }), Error, "member");
+  },
+);
+
+Deno.test(
+  "lookupFarmData: a farm 2 member never sees farm 1's sales or subsidies",
+  opts,
+  async () => {
+    const { tools, run } = await setup();
+    const sold = await run(tools.lookupFarmData, { table: "sale" }, 5);
+    assertEquals(sold.rows.map((r: { saleDate: string }) => r.saleDate), [
+      "2024-10-20",
+      "2024-07-30",
+    ]);
+    assertEquals([sold.summary.volumeT, sold.summary.revenueEur], [47.5, 10050]);
+    const paid = await run(tools.lookupFarmData, { table: "subsidy" }, 5);
+    assertEquals(paid.summary.totalEur, 9500.5);
+    // Market prices are global: both farms see the same 28 rows.
+    const p1 = await run(tools.lookupFarmData, { table: "market_price", limit: 50 }, 1);
+    const p2 = await run(tools.lookupFarmData, { table: "market_price", limit: 50 }, 5);
+    assertEquals([p1.count, p2.count], [28, 28]);
+    // deno-lint-ignore no-explicit-any
+    const prices = (l: any) => l.rows.map(({ cropName: _n, ...r }: { cropName: string }) => r);
+    assertEquals(prices(p1), prices(p2));
+  },
+);

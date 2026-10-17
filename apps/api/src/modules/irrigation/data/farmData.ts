@@ -75,6 +75,8 @@ export interface SoilAnalysis {
 
 export interface CropRef {
   code: string;
+  /** Crop group of the regional statistics (`regional_benchmark`). Missing = unknown. */
+  cropGroupCode?: string | null;
   nameFr: string;
   nameEn: string;
   /** Language code -> crop name, for every language the DB has a name in. */
@@ -228,6 +230,77 @@ export interface NewIrrigation {
   memberId: number | null;
 }
 
+/** A grain sale of the farm (`sale`). Synthetic. */
+export interface SaleRecord {
+  id: number;
+  date: IsoDate;
+  cropCode: string;
+  harvestYear: number;
+  volumeT: number;
+  priceEurT: number;
+  buyer: string | null;
+  contractType: string | null;
+  qualityGrade: string | null;
+}
+
+/** A monthly reference price of a crop (`market_price`, shared by every farm). Synthetic. */
+export interface MarketPriceRecord {
+  cropCode: string;
+  year: number;
+  month: number;
+  priceEurT: number;
+}
+
+/** A CAP payment of the farm (`subsidy`). Synthetic. */
+export interface SubsidyRecord {
+  id: number;
+  year: number;
+  scheme: string;
+  amountEur: number;
+}
+
+/** One year of the farm's accounts (`farm_economics`), EUR. Synthetic. */
+export interface FarmEconomicsRecord {
+  year: number;
+  totalOutputEur: number | null;
+  seedsEur: number | null;
+  fertiliserEur: number | null;
+  cropProtectionEur: number | null;
+  energyEur: number | null;
+  contractWorkEur: number | null;
+  wagesEur: number | null;
+  depreciationEur: number | null;
+  totalInputsEur: number | null;
+  farmNetValueAddedEur: number | null;
+}
+
+/** Real averages of the farm's region for a crop group and year (`regional_benchmark`). */
+export interface RegionalBenchmarkRecord {
+  cropGroupCode: string;
+  cropGroupName: string | null;
+  year: number;
+  yieldTHa: number | null;
+  yieldSourceGeography: string | null;
+  yieldValueType: string | null;
+  nKgHa: number | null;
+  p2o5KgHa: number | null;
+  k2oKgHa: number | null;
+  npkReferenceYear: number | null;
+  irrigatedShare: number | null;
+  pesticideTotalKgAiHa: number | null;
+  herbicideKgAiHa: number | null;
+  fungicideKgAiHa: number | null;
+  insecticideKgAiHa: number | null;
+  pesticideReference: string | null;
+}
+
+/** Filters of the business tables; a missing value does not filter. */
+export interface LookupFilter {
+  /** sale: harvest year; other tables: their year. */
+  year?: number;
+  cropCode?: string;
+}
+
 /** New values of a corrected irrigation. `seasonId` is the crop season on the new date. */
 export interface IrrigationChange {
   date: IsoDate;
@@ -314,6 +387,20 @@ export interface FarmData {
    * (`operation_input.product_id` null): the synthetic products of farms outside France.
    */
   listJournalProductNames(): Promise<string[]>;
+  /** Every crop of the reference table (shared by every farm). Fails loudly, never [] on error. */
+  listCropRefs(): Promise<CropRef[]>;
+  /** This farm's grain sales (year = harvest year). Order is not guaranteed. */
+  listSales(filter: LookupFilter): Promise<SaleRecord[]>;
+  /** Monthly reference prices (shared by every farm). Order is not guaranteed. */
+  listMarketPrices(filter: LookupFilter): Promise<MarketPriceRecord[]>;
+  /** This farm's CAP payments. Order is not guaranteed. */
+  listSubsidies(filter: { year?: number }): Promise<SubsidyRecord[]>;
+  /** This farm's yearly accounts. Order is not guaranteed. */
+  listFarmEconomics(filter: { year?: number }): Promise<FarmEconomicsRecord[]>;
+  /** Regional averages of this farm's region (`nuts3_id`). Order is not guaranteed. */
+  listRegionalBenchmarks(
+    filter: { year?: number; cropGroupCode?: string },
+  ): Promise<RegionalBenchmarkRecord[]>;
   /** One irrigation operation by id, or null when missing / not an irrigation. */
   getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;

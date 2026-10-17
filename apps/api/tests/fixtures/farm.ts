@@ -1,4 +1,11 @@
-import type { Product, ProductUse } from "../../src/modules/irrigation/data/farmData";
+import type {
+  FarmEconomicsRecord,
+  MarketPriceRecord,
+  Product,
+  ProductUse,
+  RegionalBenchmarkRecord,
+  SaleRecord,
+} from "../../src/modules/irrigation/data/farmData";
 import type { FarmFixture } from "../../src/modules/irrigation/data/memoryFarmData";
 import { addDays } from "../../src/modules/irrigation/engine/util";
 
@@ -125,6 +132,7 @@ export function makeFarmFixture(): FarmFixture {
     cropRefs: [
       {
         code: "MAIZ",
+        cropGroupCode: "LMAIZ",
         nameFr: "Maïs",
         nameEn: "Maize",
         names: { fr: "Maïs", en: "Maize", es: "Maíz", it: "Mais" },
@@ -135,6 +143,7 @@ export function makeFarmFixture(): FarmFixture {
       },
       {
         code: "COWT",
+        cropGroupCode: "CERE",
         nameFr: "Blé tendre d'hiver",
         nameEn: "Common winter wheat",
         names: { fr: "Blé tendre d'hiver", en: "Common winter wheat" },
@@ -145,6 +154,7 @@ export function makeFarmFixture(): FarmFixture {
       },
       {
         code: "RAPE",
+        cropGroupCode: "LRAPE",
         nameFr: "Colza",
         nameEn: "Rapeseed",
         names: { fr: "Colza", en: "Rapeseed" },
@@ -173,8 +183,119 @@ export function makeFarmFixture(): FarmFixture {
     // Copies: tests may edit a fixture without leaking into the next one.
     products: structuredClone(PRODUCTS),
     productUses: structuredClone(PRODUCT_USES),
+    // Business tables (lookupFarmData). 2024 harvest: wheat 100 t for 22 400 EUR (224 EUR/t),
+    // maize 50 t for 10 500 EUR.
+    sales: [
+      sale(1, "2024-08-20", "COWT", 2024, 60, 240, "COOPERATIVE"),
+      sale(2, "2025-01-06", "COWT", 2024, 40, 200, "FORWARD"),
+      sale(3, "2024-10-14", "MAIZ", 2024, 50, 210, "COOPERATIVE"),
+      sale(4, "2025-08-18", "COWT", 2025, 30, 220, "COOPERATIVE"),
+      sale(5, "2025-07-28", "RAPE", 2025, 20, 450.5, "COOPERATIVE"),
+    ],
+    marketPrices: structuredClone(MARKET_PRICES),
+    subsidies: [
+      { id: 1, year: 2025, scheme: "BISS", amountEur: 11380.12 },
+      { id: 2, year: 2025, scheme: "ECO_SCHEME", amountEur: 5596.06 },
+      { id: 3, year: 2026, scheme: "BISS", amountEur: 10358.6 },
+      { id: 4, year: 2026, scheme: "CRISS", amountEur: 1987.45 },
+    ],
+    farmEconomics: [
+      economics(2025, 106466.67, 54028.12, 78449.9),
+      economics(2026, 99035.7, 42126.93, 84998.63),
+    ],
+    // Region FRB06 (Loiret), real values from the DB.
+    regionalBenchmarks: [
+      benchmark("CERE", "Cereals excluding maize and rice", 2020, 5.13, 144.4),
+      benchmark("LMAIZ", "Maize", 2020, 15.99, 147.53),
+      benchmark("CERE", "Cereals excluding maize and rice", 2019, 7.2, 151.2),
+    ],
   };
 }
+
+const sale = (
+  id: number,
+  date: string,
+  cropCode: string,
+  harvestYear: number,
+  volumeT: number,
+  priceEurT: number,
+  contractType: string,
+): SaleRecord => ({
+  id,
+  date,
+  cropCode,
+  harvestYear,
+  volumeT,
+  priceEurT,
+  buyer: `BUYER-0${id}`,
+  contractType,
+  qualityGrade: "B",
+});
+
+/**
+ * Monthly reference prices (global): wheat every month of 2025 and 2026 (200 + month number,
+ * plus 20 in 2026), maize June to September 2026. 28 rows.
+ */
+export const MARKET_PRICES: MarketPriceRecord[] = [
+  ...[2025, 2026].flatMap((year) =>
+    Array.from({ length: 12 }, (_, i) => ({
+      cropCode: "COWT",
+      year,
+      month: i + 1,
+      priceEurT: 200 + i + 1 + (year === 2026 ? 20 : 0),
+    }))
+  ),
+  ...[6, 7, 8, 9].map((month) => ({
+    cropCode: "MAIZ",
+    year: 2026,
+    month,
+    priceEurT: 184 + month,
+  })),
+];
+
+const economics = (
+  year: number,
+  totalOutputEur: number,
+  totalInputsEur: number,
+  farmNetValueAddedEur: number,
+): FarmEconomicsRecord => ({
+  year,
+  totalOutputEur,
+  seedsEur: 3677.54,
+  fertiliserEur: 11338.07,
+  cropProtectionEur: 3710.3,
+  energyEur: 6800.09,
+  contractWorkEur: 4605.83,
+  wagesEur: 2394.15,
+  depreciationEur: 9600.95,
+  totalInputsEur,
+  farmNetValueAddedEur,
+});
+
+const benchmark = (
+  cropGroupCode: string,
+  cropGroupName: string,
+  year: number,
+  yieldTHa: number,
+  nKgHa: number,
+): RegionalBenchmarkRecord => ({
+  cropGroupCode,
+  cropGroupName,
+  year,
+  yieldTHa,
+  yieldSourceGeography: null,
+  yieldValueType: "regional_proxy",
+  nKgHa,
+  p2o5KgHa: 20,
+  k2oKgHa: 15,
+  npkReferenceYear: year,
+  irrigatedShare: 0.34,
+  pesticideTotalKgAiHa: 0.4,
+  herbicideKgAiHa: 0.24,
+  fungicideKgAiHa: 0.14,
+  insecticideKgAiHa: 0.02,
+  pesticideReference: "2018 median scenario",
+});
 
 const product = (
   id: number,
@@ -550,6 +671,19 @@ export function makeSecondFarmFixture(): FarmFixture {
     // The E-Phy catalogue is global: farm 2 sees the same products as farm 1.
     products: farm1.products,
     productUses: farm1.productUses,
+    // Its own business tables; market prices are global (the same as farm 1's).
+    sales: [
+      sale(101, "2024-10-20", "MAIZ", 2024, 35, 205, "COOPERATIVE"),
+      sale(102, "2024-07-30", "COWT", 2024, 12.5, 230, "SPOT"),
+    ],
+    marketPrices: farm1.marketPrices,
+    subsidies: [
+      { id: 101, year: 2026, scheme: "BISS", amountEur: 8000 },
+      { id: 102, year: 2026, scheme: "COUPLED", amountEur: 1500.5 },
+    ],
+    farmEconomics: [economics(2026, 71766.01, 51118.92, 43264.04)],
+    // Region ES418 (Valladolid).
+    regionalBenchmarks: [benchmark("LMAIZ", "Maize", 2020, 11.2, 180)],
     // Its own journal: N 90 kg/ha and one spray with a synthetic product (no product_id and
     // not in the catalogue, like the DB's farms outside France).
     operations: [

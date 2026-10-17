@@ -7,8 +7,11 @@ import { z } from "zod";
 import { type FieldReport, IsoDateSchema, ScenarioEventSchema } from "@tellia/shared/irrigation";
 import {
   CorrectionActionSchema,
+  type FarmLookup,
+  FarmLookupQuerySchema,
   type JournalEntry,
   JournalTypeSchema,
+  LookupTableSchema,
   type ProductUseRule,
 } from "@tellia/shared/farm";
 import type { FarmScope } from "../irrigation/farmRegistry";
@@ -90,6 +93,49 @@ function voiceUse(u: ProductUseRule): string {
     u.bufferZoneWaterM != null ? `${u.bufferZoneWaterM} m from water` : null,
   ].filter((x) => x != null);
   return `${u.target ?? "any target"}: ${parts.join(", ") || "no limits given"}`;
+}
+
+/** The voice reads every row: at most this many, whatever limit the model asks for. */
+export const VOICE_LOOKUP_ROWS = 10;
+
+/** Lookup rows without codes, ids and long texts the voice does not need. */
+function voiceRows(l: FarmLookup): object[] {
+  switch (l.table) {
+    case "sale":
+      return l.rows.map((r) => ({
+        saleDate: r.saleDate,
+        cropName: r.cropName,
+        harvestYear: r.harvestYear,
+        volumeT: r.volumeT,
+        priceEurT: r.priceEurT,
+        revenueEur: r.revenueEur,
+        contractType: r.contractType,
+      }));
+    case "market_price":
+      return l.rows.map(({ cropCode: _c, ...r }) => r);
+    case "regional_benchmark":
+      return l.rows.map((r) => ({
+        cropGroupName: r.cropGroupName ?? r.cropGroupCode,
+        year: r.year,
+        yieldTHa: r.yieldTHa,
+        nKgHa: r.nKgHa,
+        p2o5KgHa: r.p2o5KgHa,
+        k2oKgHa: r.k2oKgHa,
+        irrigatedShare: r.irrigatedShare,
+        pesticideTotalKgAiHa: r.pesticideTotalKgAiHa,
+      }));
+    default:
+      return l.rows;
+  }
+}
+
+/** The lookup summary without crop codes. */
+function voiceSummary(l: FarmLookup) {
+  if (l.table !== "sale") return l.summary;
+  return {
+    ...l.summary,
+    byCrop: l.summary.byCrop.map(({ cropCode: _c, ...c }) => c),
+  };
 }
 
 const date = IsoDateSchema.optional().describe("Day to evaluate, YYYY-MM-DD. Default: today.");
@@ -268,6 +314,38 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
         daysToHarvest: c.daysToHarvest,
         preHarvestOk: c.preHarvestOk,
         warnings: c.warnings,
+      };
+    },
+  }),
+
+  lookup_farm_data: defineTool({
+    description:
+      "Farm business data, one table at a time: sale (the farm's grain sales: tonnes, price per tonne, revenue), market_price (monthly reference price per crop in euros per tonne; forecast true means a month still to come), subsidy (the farm's CAP payments), farm_economics (the farm's yearly accounts), regional_benchmark (real averages of the region: yield, fertiliser, pesticides). Use summary for totals and averages; never add rows up yourself. Sales, prices, subsidies and accounts are demo data.",
+    parameters: z.object({
+      table: LookupTableSchema.describe("The table to read."),
+      year: FarmLookupQuerySchema.shape.year.describe("Only this year (sale: the harvest year)."),
+      cropCode: FarmLookupQuerySchema.shape.cropCode.describe(
+        "Only this crop: a crop name or code, e.g. wheat or MAIZ. For sale, market_price and regional_benchmark.",
+      ),
+      limit: FarmLookupQuerySchema.shape.limit.describe(
+        `Rows to read, at most ${VOICE_LOOKUP_ROWS}.`,
+      ),
+    }),
+    run: async ({ table, year, cropCode, limit }, { scope }) => {
+      const l = await scope.service.lookupFarmData({
+        table,
+        year,
+        cropCode,
+        limit: Math.min(limit ?? VOICE_LOOKUP_ROWS, VOICE_LOOKUP_ROWS),
+      });
+      return {
+        table: l.table,
+        note: l.note,
+        year: l.year,
+        count: l.count,
+        truncated: l.truncated,
+        summary: voiceSummary(l),
+        rows: voiceRows(l),
       };
     },
   }),

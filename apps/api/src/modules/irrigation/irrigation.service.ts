@@ -38,6 +38,7 @@ import {
 import { buildFieldReport, rankReports, reportBalance, type ReportInput } from "./engine/report";
 import { createFarmInfoService, type FarmInfoService } from "./farmInfo.service";
 import { createProductCheckService, type ProductCheckService } from "./productCheck.service";
+import { createFarmLookupService, type FarmLookupService } from "./farmLookup.service";
 import { applyScenario, compareReports } from "./engine/scenario";
 import {
   DEFAULT_LOAM,
@@ -92,10 +93,10 @@ export interface IrrigationCorrectionPreview {
 }
 
 /**
- * Irrigation use cases, plus field details and the journal (farmInfo.service.ts) and the
- * product check (productCheck.service.ts).
+ * Irrigation use cases, plus field details and the journal (farmInfo.service.ts), the
+ * product check (productCheck.service.ts) and the farm data lookup (farmLookup.service.ts).
  */
-export interface IrrigationService extends FarmInfoService, ProductCheckService {
+export interface IrrigationService extends FarmInfoService, ProductCheckService, FarmLookupService {
   today(): string;
   /** Main contact's member id, or null when the farm has none. */
   defaultMemberId(): Promise<number | null>;
@@ -679,6 +680,7 @@ export function createIrrigationService(
   return {
     ...createFarmInfoService({ data, today: deps.today, language }),
     ...createProductCheckService({ data, today: deps.today, language }),
+    ...createFarmLookupService({ data, today: deps.today, language }),
 
     today: () => deps.today(),
 

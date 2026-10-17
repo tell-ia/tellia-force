@@ -2,7 +2,12 @@ import { assert, assertEquals, assertMatch } from "@std/assert";
 import { Hono } from "hono";
 import { onError } from "../src/core/middleware";
 import { createVapiController, VAPI_SECRET_HEADER } from "../src/modules/vapi/vapi.controller";
-import { VAPI_TOOLS, vapiFunctions, VOICE_JOURNAL_ENTRIES } from "../src/modules/vapi/vapi.tools";
+import {
+  VAPI_TOOLS,
+  vapiFunctions,
+  VOICE_JOURNAL_ENTRIES,
+  VOICE_LOOKUP_ROWS,
+} from "../src/modules/vapi/vapi.tools";
 import { makeTestRegistry, TEST_TODAY } from "./helpers/testApp";
 
 const SECRET = "test-secret-0123456789";
@@ -332,4 +337,57 @@ Deno.test("vapi: correct_irrigation refuses an unknown caller and other farms' i
   assertMatch(nothing.error, /new date or the new mm/);
   assertEquals((await (await registry.forFarm(1)).data.getIrrigation(1))?.mm, 30);
   assertEquals((await (await registry.forFarm(2)).data.getIrrigation(900))?.mm, 25);
+});
+
+Deno.test("vapi: lookup_farm_data: the server's summary, at most 10 short rows", async () => {
+  const { app } = makeVapiApp();
+  const [sold, prices, bad, tooMany] = await call(app, [
+    { name: "lookup_farm_data", arguments: { table: "sale", year: 2024 } },
+    { name: "lookup_farm_data", arguments: { table: "market_price", limit: 50 } },
+    { name: "lookup_farm_data", arguments: { table: "member" } },
+    { name: "lookup_farm_data", arguments: { table: "sale", limit: 51 } },
+  ]);
+  assertEquals([sold.data.summary.volumeT, sold.data.summary.revenueEur], [150, 32900]);
+  assertEquals(sold.data.summary.byCrop[0], {
+    cropName: "Blé tendre d'hiver",
+    volumeT: 100,
+    revenueEur: 22400,
+    averagePriceEurT: 224,
+  });
+  // No codes, buyer ids or grades for the voice.
+  assertEquals(sold.data.rows[0], {
+    saleDate: "2025-01-06",
+    cropName: "Blé tendre d'hiver",
+    harvestYear: 2024,
+    volumeT: 40,
+    priceEurT: 200,
+    revenueEur: 8000,
+    contractType: "FORWARD",
+  });
+  assertMatch(sold.data.note, /Synthetic demo data/);
+  // The voice reads at most 10 rows, whatever limit the model asks for.
+  assertEquals(prices.data.rows.length, VOICE_LOOKUP_ROWS);
+  assertEquals([prices.data.count, prices.data.truncated], [28, true]);
+  assertEquals(prices.data.rows[0], {
+    cropName: "Blé tendre d'hiver",
+    year: 2026,
+    month: 12,
+    priceEurT: 232,
+    forecast: true,
+  });
+  assertMatch(bad.error, /table/);
+  assertMatch(tooMany.error, /limit/);
+});
+
+Deno.test("vapi: lookup_farm_data stays on the caller's farm", async () => {
+  const { app } = makeVapiApp();
+  const [sold, paid] = await call(app, [
+    { name: "lookup_farm_data", arguments: { table: "sale" } },
+    { name: "lookup_farm_data", arguments: { table: "subsidy" } },
+  ], ELENA_PHONE);
+  assertEquals(sold.data.rows.map((r: { saleDate: string }) => r.saleDate), [
+    "2024-10-20",
+    "2024-07-30",
+  ]);
+  assertEquals(paid.data.summary.totalEur, 9500.5);
 });

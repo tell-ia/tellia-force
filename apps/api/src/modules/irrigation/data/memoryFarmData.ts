@@ -10,19 +10,24 @@ import type {
   Farm,
   FarmData,
   FarmDirectory,
+  FarmEconomicsRecord,
   FarmOperation,
   Field,
   IrrigationChange,
   IrrigationOperation,
   IrrigationSystem,
   IsoDate,
+  MarketPriceRecord,
   Member,
   NewIrrigation,
   OperationStatus,
   Product,
   ProductUse,
+  RegionalBenchmarkRecord,
+  SaleRecord,
   SoilAnalysis,
   StoredWeatherDay,
+  SubsidyRecord,
 } from "./farmData";
 import { pickCropPhases } from "./farmData";
 
@@ -56,6 +61,16 @@ export interface FarmFixture {
   products?: Product[];
   /** E-Phy uses of the catalogue products (global, like `products`). */
   productUses?: ProductUse[];
+  /** This farm's grain sales. */
+  sales?: SaleRecord[];
+  /** Monthly reference prices (a global table in the DB: give every farm the same list). */
+  marketPrices?: MarketPriceRecord[];
+  /** This farm's CAP payments. */
+  subsidies?: SubsidyRecord[];
+  /** This farm's yearly accounts. */
+  farmEconomics?: FarmEconomicsRecord[];
+  /** Regional averages of this farm's region only (the DB filters on the farm's nuts3_id). */
+  regionalBenchmarks?: RegionalBenchmarkRecord[];
 }
 
 /** An irrigation as a journal row. */
@@ -134,6 +149,32 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
         ),
       ),
     ],
+    listCropRefs: async () => structuredClone(f.cropRefs),
+    listSales: async ({ year, cropCode }) =>
+      structuredClone(
+        (f.sales ?? []).filter((r) =>
+          (year === undefined || r.harvestYear === year) &&
+          (cropCode === undefined || r.cropCode === cropCode)
+        ),
+      ),
+    listMarketPrices: async ({ year, cropCode }) =>
+      structuredClone(
+        (f.marketPrices ?? []).filter((r) =>
+          (year === undefined || r.year === year) &&
+          (cropCode === undefined || r.cropCode === cropCode)
+        ),
+      ),
+    listSubsidies: async ({ year }) =>
+      structuredClone((f.subsidies ?? []).filter((r) => year === undefined || r.year === year)),
+    listFarmEconomics: async ({ year }) =>
+      structuredClone((f.farmEconomics ?? []).filter((r) => year === undefined || r.year === year)),
+    listRegionalBenchmarks: async ({ year, cropGroupCode }) =>
+      structuredClone(
+        (f.regionalBenchmarks ?? []).filter((r) =>
+          (year === undefined || r.year === year) &&
+          (cropGroupCode === undefined || r.cropGroupCode === cropGroupCode)
+        ),
+      ),
     getIrrigation: async (id) => {
       const op = ops.find((o) => o.operationId === id);
       return op ? { ...op } : null;

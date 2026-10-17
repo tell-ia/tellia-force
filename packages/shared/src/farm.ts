@@ -2,11 +2,12 @@ import { z } from "zod";
 import { IrrigationRecordSchema, IsoDateSchema } from "./irrigation";
 
 // ---------------------------------------------------------------------------
-// Farm contracts beyond irrigation advice: field details, the farm journal, the product check
-// and irrigation corrections.
+// Farm contracts beyond irrigation advice: field details, the farm journal, the product check,
+// irrigation corrections and the farm data lookup.
 // Every number and total is computed by the API (apps/api); the AI only reads them.
 // Names avoid the db.ts / app.ts exports re-exported by index.ts (no `FieldSchema`,
-// `SoilSchema`, `OperationSchema`, `ProductSchema`, `ProductUseSchema` here).
+// `SoilSchema`, `OperationSchema`, `ProductSchema`, `ProductUseSchema`, `SaleSchema`,
+// `SubsidySchema`, `MarketPriceSchema` here).
 // ---------------------------------------------------------------------------
 
 // --- Field details (chat tool getFieldDetails, phone get_field_details) -----
@@ -308,3 +309,195 @@ export const IrrigationConfirmationSchema = z.object({
   record: IrrigationRecordSchema.optional(),
 });
 export type IrrigationConfirmation = z.infer<typeof IrrigationConfirmationSchema>;
+
+// --- Farm data lookup (chat tool lookupFarmData, phone lookup_farm_data) ------
+
+/**
+ * The only tables the lookup reads. sale, subsidy, farm_economics: the caller's farm only;
+ * market_price: global; regional_benchmark: the farm's region.
+ */
+export const LOOKUP_TABLES = [
+  "sale",
+  "market_price",
+  "subsidy",
+  "farm_economics",
+  "regional_benchmark",
+] as const;
+export const LookupTableSchema = z.enum(LOOKUP_TABLES);
+export type LookupTable = z.infer<typeof LookupTableSchema>;
+
+/** Rows shown when no limit is given, and the most a lookup can show. */
+export const LOOKUP_DEFAULT_ROWS = 20;
+export const LOOKUP_MAX_ROWS = 50;
+
+export const FarmLookupQuerySchema = z.object({
+  table: LookupTableSchema,
+  /** sale: harvest year; the other tables: their year. */
+  year: z.number().int().min(1900).max(2100).optional(),
+  /**
+   * A crop code (MAIZ, COWT...) or a crop name in any language. Applies to sale, market_price
+   * and regional_benchmark (the crop's group); ignored by the other tables.
+   */
+  cropCode: z.string().trim().min(1).max(60).optional(),
+  limit: z.number().int().min(1).max(LOOKUP_MAX_ROWS).optional(),
+});
+export type FarmLookupQuery = z.infer<typeof FarmLookupQuerySchema>;
+
+/** One grain sale of the farm. */
+export const SaleRowSchema = z.object({
+  saleDate: IsoDateSchema,
+  cropCode: z.string(),
+  /** In the farm's language. */
+  cropName: z.string(),
+  harvestYear: z.number().int(),
+  volumeT: z.number(),
+  priceEurT: z.number(),
+  /** volumeT x priceEurT, computed by the server. */
+  revenueEur: z.number(),
+  buyer: z.string().nullable(),
+  /** COOPERATIVE, FORWARD, SPOT... */
+  contractType: z.string().nullable(),
+  qualityGrade: z.string().nullable(),
+});
+export type SaleRow = z.infer<typeof SaleRowSchema>;
+
+/** A monthly reference price of a crop, EUR per tonne. */
+export const MarketPriceRowSchema = z.object({
+  cropCode: z.string(),
+  cropName: z.string(),
+  year: z.number().int(),
+  month: z.number().int().min(1).max(12),
+  priceEurT: z.number(),
+  /** True: a month after the current one, so a forecast, not a price seen. */
+  forecast: z.boolean(),
+});
+export type MarketPriceRow = z.infer<typeof MarketPriceRowSchema>;
+
+/** One CAP payment of the farm. */
+export const SubsidyRowSchema = z.object({
+  year: z.number().int(),
+  /** BISS, CRISS, ECO_SCHEME, COUPLED, RURAL_DEV. */
+  scheme: z.string(),
+  amountEur: z.number(),
+});
+export type SubsidyRow = z.infer<typeof SubsidyRowSchema>;
+
+/** One year of the farm's accounts, EUR. */
+export const FarmEconomicsRowSchema = z.object({
+  year: z.number().int(),
+  totalOutputEur: z.number().nullable(),
+  seedsEur: z.number().nullable(),
+  fertiliserEur: z.number().nullable(),
+  cropProtectionEur: z.number().nullable(),
+  energyEur: z.number().nullable(),
+  contractWorkEur: z.number().nullable(),
+  wagesEur: z.number().nullable(),
+  depreciationEur: z.number().nullable(),
+  totalInputsEur: z.number().nullable(),
+  farmNetValueAddedEur: z.number().nullable(),
+});
+export type FarmEconomicsRow = z.infer<typeof FarmEconomicsRowSchema>;
+
+/** Real averages of the farm's region for one crop group and year. */
+export const RegionalBenchmarkRowSchema = z.object({
+  cropGroupCode: z.string(),
+  cropGroupName: z.string().nullable(),
+  year: z.number().int(),
+  yieldTHa: z.number().nullable(),
+  /** Where the yield comes from (a wider region when the farm's has none). */
+  yieldSourceGeography: z.string().nullable(),
+  yieldValueType: z.string().nullable(),
+  nKgHa: z.number().nullable(),
+  p2o5KgHa: z.number().nullable(),
+  k2oKgHa: z.number().nullable(),
+  npkReferenceYear: z.number().int().nullable(),
+  /** Share of the crop group's area that is irrigated (0–1). */
+  irrigatedShare: z.number().nullable(),
+  /** Pesticide use, kg of active ingredient per hectare. */
+  pesticideTotalKgAiHa: z.number().nullable(),
+  herbicideKgAiHa: z.number().nullable(),
+  fungicideKgAiHa: z.number().nullable(),
+  insecticideKgAiHa: z.number().nullable(),
+  pesticideReference: z.string().nullable(),
+});
+export type RegionalBenchmarkRow = z.infer<typeof RegionalBenchmarkRowSchema>;
+
+/** Sales of one crop, summed by the server. */
+export const SaleCropTotalSchema = z.object({
+  cropCode: z.string(),
+  cropName: z.string(),
+  volumeT: z.number(),
+  revenueEur: z.number(),
+  /** revenueEur / volumeT (weighted by volume). Null when nothing was sold. */
+  averagePriceEurT: z.number().nullable(),
+});
+export type SaleCropTotal = z.infer<typeof SaleCropTotalSchema>;
+
+/** Over every matching sale, not only the rows shown. */
+export const SaleSummarySchema = z.object({
+  volumeT: z.number(),
+  revenueEur: z.number(),
+  /** Weighted by volume. Null when the sales cover several crops (see byCrop) or none. */
+  averagePriceEurT: z.number().nullable(),
+  /** One line per crop, largest revenue first. */
+  byCrop: z.array(SaleCropTotalSchema),
+});
+export type SaleSummary = z.infer<typeof SaleSummarySchema>;
+
+/** Over every matching payment, not only the rows shown. */
+export const SubsidySummarySchema = z.object({
+  totalEur: z.number(),
+  /** Newest year first. */
+  byYear: z.array(z.object({ year: z.number().int(), totalEur: z.number() })),
+});
+export type SubsidySummary = z.infer<typeof SubsidySummarySchema>;
+
+const lookupBase = {
+  /** True: synthetic demo data (sales, prices, subsidies, accounts); false: real statistics. */
+  synthetic: z.boolean(),
+  /** Where the data comes from, and what to keep in mind. */
+  note: z.string(),
+  /** Filters applied; null when not given or not applicable to the table. */
+  year: z.number().int().nullable(),
+  /** The crop code used (a crop name is resolved to its code). */
+  cropCode: z.string().nullable(),
+  /** Matching rows, all of them (rows shows at most `limit`). */
+  count: z.number().int(),
+  /** True when there are more matching rows than shown. */
+  truncated: z.boolean(),
+};
+
+/** The lookup result. Rows are newest first; `summary` covers every matching row. */
+export const FarmLookupSchema = z.discriminatedUnion("table", [
+  z.object({
+    table: z.literal("sale"),
+    ...lookupBase,
+    rows: z.array(SaleRowSchema),
+    summary: SaleSummarySchema,
+  }),
+  z.object({
+    table: z.literal("market_price"),
+    ...lookupBase,
+    rows: z.array(MarketPriceRowSchema),
+    summary: z.null(),
+  }),
+  z.object({
+    table: z.literal("subsidy"),
+    ...lookupBase,
+    rows: z.array(SubsidyRowSchema),
+    summary: SubsidySummarySchema,
+  }),
+  z.object({
+    table: z.literal("farm_economics"),
+    ...lookupBase,
+    rows: z.array(FarmEconomicsRowSchema),
+    summary: z.null(),
+  }),
+  z.object({
+    table: z.literal("regional_benchmark"),
+    ...lookupBase,
+    rows: z.array(RegionalBenchmarkRowSchema),
+    summary: z.null(),
+  }),
+]);
+export type FarmLookup = z.infer<typeof FarmLookupSchema>;

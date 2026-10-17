@@ -22,7 +22,8 @@ const RULES = `Rules:
 8. getFieldDetails for facts about one field: crop and variety, sowing and harvest dates, soil analysis, irrigation system.
 9. getFieldJournal for what was done on the fields (sowing, fertiliser, sprays and their products, harvest), like "when did I last spray" or "how much nitrogen this season"; copy its totals.
 10. checkProductUse for "can I (still) spray this product on this field": give its verdict and warnings; if several products match, ask which one; never invent a rule.
-11. When the farmer says a recorded irrigation was wrong (other mm or day) or must be deleted: find its operationId with getIrrigationHistory; call correctIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId.`;
+11. When the farmer says a recorded irrigation was wrong (other mm or day) or must be deleted: find its operationId with getIrrigationHistory; call correctIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId.
+12. lookupFarmData for sales, market prices, subsidies, farm accounts and regional averages, like "how much wheat did I sell in 2024" or "wheat price trend"; copy its summary.`;
 
 export async function buildInstructions(
   registry: FarmRegistry,

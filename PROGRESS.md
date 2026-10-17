@@ -7,6 +7,7 @@
 - 2026-10-17 Task 1: `getFieldDetails` / `getFieldJournal` (phone `get_field_details` / `get_field_journal`), `@tellia/shared/farm`, `FarmData.listOperations` + twin + fixtures, `farmInfo.service.ts`, routing lines, tests. Offline suite: 239 passed.
 - 2026-10-17 Task 2: `checkProductUse` (phone `check_product_use`), `ProductCheck` in `@tellia/shared/farm`, `FarmData.listProducts` / `listProductUses` / `listJournalProductNames` + twin + E-Phy fixtures, `productCheck.service.ts`, routing lines, tests. Offline suite: 261 passed.
 - 2026-10-17 Task 3: `correctIrrigation` (phone `correct_irrigation`), workflow `correct-irrigation`, `confirmIrrigation` resumes record or correction runs (status saved | cancelled | updated | deleted), `IrrigationCorrection` / `IrrigationConfirmation` in `@tellia/shared/farm`, `FarmData.updateIrrigation` + twin, service preview / update / delete, routing lines, tests. Offline suite: 284 passed.
+- 2026-10-17 Task 4: `lookupFarmData` (phone `lookup_farm_data`), `FarmLookup` in `@tellia/shared/farm`, `FarmData.listCropRefs` / `listSales` / `listMarketPrices` / `listSubsidies` / `listFarmEconomics` / `listRegionalBenchmarks` + twin + fixtures for both farms, `farmLookup.service.ts`, routing lines, tests. Offline suite: 301 passed.
 
 ## In progress
 
@@ -45,6 +46,19 @@
   today; the tests correct yesterday's record (the fixture's 21 June record is under stress).
 - Phone result is flat: `status`, `fieldName`, `oldDate`/`oldMm`/`newDate`/`newMm` (update) or
   `date`/`mm` (delete).
+- Lookup (Task 4): `synthetic` is a boolean, not always true: `regional_benchmark` is real
+  regional statistics (`seed/schema.sql`), so it is `false` with its own note. The 4 other tables
+  are `true`.
+- Lookup: `year` filters the harvest year for `sale`. `cropCode` takes a code or a crop name in
+  any language (resolved on `crop_ref`; several or no match is a 400 that lists the codes).
+  `regional_benchmark` filters on the crop's `crop_group_code`. On `subsidy` and `farm_economics`
+  a crop is ignored and the note says so.
+- Lookup: `count` and `summary` cover every matching row, not only the rows shown. The sale
+  summary adds `byCrop` and has no average price over several crops; the subsidy summary adds
+  `byYear`. So the model never adds numbers. Rows are newest first.
+- Lookup data: the Supabase FarmData reads `regional_benchmark` by the farm row's `nuts3_id`
+  (the `Farm` type is unchanged). `listCropRefs` is cached and throws on failure (never "unknown
+  crop" because of a failed read). The phone gets at most 10 rows, without codes or buyer ids.
 
 ## Blockers
 - Needs human review, does not block the plan: the LibSQL native addon (`@libsql/client`

@@ -10,11 +10,13 @@ import type {
   Farm,
   FarmData,
   FarmDirectory,
+  FarmEconomicsRecord,
   FarmOperation,
   Field,
   IrrigationChange,
   IrrigationOperation,
   IrrigationSystem,
+  MarketPriceRecord,
   Member,
   OperationProduct,
   OperationSource,
@@ -22,8 +24,11 @@ import type {
   OperationType,
   Product,
   ProductUse,
+  RegionalBenchmarkRecord,
+  SaleRecord,
   SoilAnalysis,
   StoredWeatherDay,
+  SubsidyRecord,
 } from "./farmData";
 import { pickCropPhases } from "./farmData";
 
@@ -129,6 +134,7 @@ export function mapCropRef(r: Row): CropRef {
   }
   return {
     code: r.crop_code as string,
+    cropGroupCode: str(r.crop_group_code),
     nameFr: r.name_fr as string,
     nameEn: r.name_en as string,
     names,
@@ -316,6 +322,89 @@ export function mapProductUse(r: Row): ProductUse {
   };
 }
 
+// ---- business tables of the farm data lookup ----
+
+export const SALE_SELECT =
+  "id,sale_date,crop_code,harvest_year,volume_t,price_eur_t,buyer,contract_type,quality_grade";
+export const MARKET_PRICE_SELECT = "crop_code,year,month,price_eur_t";
+export const SUBSIDY_SELECT = "id,year,scheme,amount_eur";
+export const FARM_ECONOMICS_SELECT =
+  "year,total_output_eur,seeds_eur,fertiliser_eur,crop_protection_eur,energy_eur," +
+  "contract_work_eur,wages_eur,depreciation_eur,total_inputs_eur,farm_net_value_added_eur";
+export const REGIONAL_BENCHMARK_SELECT =
+  "crop_group_code,crop_group_name,year,yield_t_ha,yield_source_geography,yield_value_type," +
+  "n_kg_ha,p2o5_kg_ha,k2o_kg_ha,npk_reference_year,irrigated_share,pesticide_total_kg_ai_ha," +
+  "herbicide_kg_ai_ha,fungicide_kg_ai_ha,insecticide_kg_ai_ha,pesticide_reference";
+
+export function mapSale(r: Row): SaleRecord {
+  return {
+    id: Number(r.id),
+    date: r.sale_date as string,
+    cropCode: r.crop_code as string,
+    harvestYear: Number(r.harvest_year),
+    volumeT: Number(r.volume_t),
+    priceEurT: Number(r.price_eur_t),
+    buyer: str(r.buyer),
+    contractType: str(r.contract_type),
+    qualityGrade: str(r.quality_grade),
+  };
+}
+
+export function mapMarketPrice(r: Row): MarketPriceRecord {
+  return {
+    cropCode: r.crop_code as string,
+    year: Number(r.year),
+    month: Number(r.month),
+    priceEurT: Number(r.price_eur_t),
+  };
+}
+
+export function mapSubsidy(r: Row): SubsidyRecord {
+  return {
+    id: Number(r.id),
+    year: Number(r.year),
+    scheme: r.scheme as string,
+    amountEur: Number(r.amount_eur),
+  };
+}
+
+export function mapFarmEconomics(r: Row): FarmEconomicsRecord {
+  return {
+    year: Number(r.year),
+    totalOutputEur: num(r.total_output_eur),
+    seedsEur: num(r.seeds_eur),
+    fertiliserEur: num(r.fertiliser_eur),
+    cropProtectionEur: num(r.crop_protection_eur),
+    energyEur: num(r.energy_eur),
+    contractWorkEur: num(r.contract_work_eur),
+    wagesEur: num(r.wages_eur),
+    depreciationEur: num(r.depreciation_eur),
+    totalInputsEur: num(r.total_inputs_eur),
+    farmNetValueAddedEur: num(r.farm_net_value_added_eur),
+  };
+}
+
+export function mapRegionalBenchmark(r: Row): RegionalBenchmarkRecord {
+  return {
+    cropGroupCode: r.crop_group_code as string,
+    cropGroupName: str(r.crop_group_name),
+    year: Number(r.year),
+    yieldTHa: num(r.yield_t_ha),
+    yieldSourceGeography: str(r.yield_source_geography),
+    yieldValueType: str(r.yield_value_type),
+    nKgHa: num(r.n_kg_ha),
+    p2o5KgHa: num(r.p2o5_kg_ha),
+    k2oKgHa: num(r.k2o_kg_ha),
+    npkReferenceYear: num(r.npk_reference_year),
+    irrigatedShare: num(r.irrigated_share),
+    pesticideTotalKgAiHa: num(r.pesticide_total_kg_ai_ha),
+    herbicideKgAiHa: num(r.herbicide_kg_ai_ha),
+    fungicideKgAiHa: num(r.fungicide_kg_ai_ha),
+    insecticideKgAiHa: num(r.insecticide_kg_ai_ha),
+    pesticideReference: str(r.pesticide_reference),
+  };
+}
+
 /** Feb 29 folds into Feb 28 for climatology keys. */
 export function climatologyKey(date: string): string {
   const k = date.slice(5, 10);
@@ -463,6 +552,8 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
   // The catalogue never changes while the API runs. Unlike `reference`, a failure throws:
   // an empty catalogue would wrongly answer "no such product".
   let productsP: Promise<Product[]> | null = null;
+  // Same for the crops: an empty list would wrongly answer "unknown crop".
+  let cropRefsP: Promise<CropRef[]> | null = null;
 
   const irrigationOps = () =>
     db.from("operation").select("*").eq("farm_id", farmId).eq("op_type", "irrigation")
@@ -613,6 +704,61 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
           .is("product_id", null).order("id").range(a, b)
       );
       return [...new Set(r.map((x) => x.product_name as string).filter(Boolean))];
+    },
+    listCropRefs() {
+      if (!cropRefsP) {
+        cropRefsP = rows(db.from("crop_ref").select("*").order("crop_code")).then((r) =>
+          r.map(mapCropRef)
+        );
+        cropRefsP.catch(() => (cropRefsP = null));
+      }
+      return cropRefsP;
+    },
+    async listSales({ year, cropCode }) {
+      const r = await paged((a, b) => {
+        let q = db.from("sale").select(SALE_SELECT).eq("farm_id", farmId);
+        if (year !== undefined) q = q.eq("harvest_year", year);
+        if (cropCode !== undefined) q = q.eq("crop_code", cropCode);
+        return q.order("id").range(a, b);
+      });
+      return r.map(mapSale);
+    },
+    async listMarketPrices({ year, cropCode }) {
+      // Global reference table: no farm filter.
+      const r = await paged((a, b) => {
+        let q = db.from("market_price").select(MARKET_PRICE_SELECT);
+        if (year !== undefined) q = q.eq("year", year);
+        if (cropCode !== undefined) q = q.eq("crop_code", cropCode);
+        return q.order("year").order("month").order("crop_code").range(a, b);
+      });
+      return r.map(mapMarketPrice);
+    },
+    async listSubsidies({ year }) {
+      const r = await paged((a, b) => {
+        let q = db.from("subsidy").select(SUBSIDY_SELECT).eq("farm_id", farmId);
+        if (year !== undefined) q = q.eq("year", year);
+        return q.order("id").range(a, b);
+      });
+      return r.map(mapSubsidy);
+    },
+    async listFarmEconomics({ year }) {
+      const r = await paged((a, b) => {
+        let q = db.from("farm_economics").select(FARM_ECONOMICS_SELECT).eq("farm_id", farmId);
+        if (year !== undefined) q = q.eq("year", year);
+        return q.order("year").range(a, b);
+      });
+      return r.map(mapFarmEconomics);
+    },
+    async listRegionalBenchmarks({ year, cropGroupCode }) {
+      const region = (await farmRow()).nuts3_id;
+      const r = await paged((a, b) => {
+        let q = db.from("regional_benchmark").select(REGIONAL_BENCHMARK_SELECT)
+          .eq("nuts3_id", region);
+        if (year !== undefined) q = q.eq("year", year);
+        if (cropGroupCode !== undefined) q = q.eq("crop_group_code", cropGroupCode);
+        return q.order("year").order("crop_group_code").range(a, b);
+      });
+      return r.map(mapRegionalBenchmark);
     },
     async getIrrigation(operationId) {
       const r = await one(irrigationOps().eq("id", operationId).limit(1));

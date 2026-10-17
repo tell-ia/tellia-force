@@ -15,11 +15,16 @@ import {
 } from "@tellia/shared/irrigation";
 import {
   CorrectionActionSchema,
+  FarmLookupQuerySchema,
+  FarmLookupSchema,
   FieldDetailsSchema,
   FieldJournalSchema,
   IrrigationConfirmationSchema,
   IrrigationCorrectionSchema,
   JournalTypeSchema,
+  LOOKUP_DEFAULT_ROWS,
+  LOOKUP_MAX_ROWS,
+  LookupTableSchema,
   ProductCheckSchema,
 } from "@tellia/shared/farm";
 import type { FarmRegistry } from "../irrigation/farmRegistry";
@@ -344,6 +349,25 @@ export function createAdvisorTools(registry: FarmRegistry) {
       (await serviceOf(ctx)).checkProductUse({ product, fieldId, date }),
   });
 
+  const lookup = FarmLookupQuerySchema.shape;
+  const lookupFarmData = createTool({
+    id: "lookup_farm_data",
+    description:
+      `Business and reference data, one table at a time: sale (this farm's grain sales: date, crop, harvest year, tonnes, price EUR/t, revenue), market_price (monthly reference price per crop, EUR/t, the same for every farm; forecast true = a month after the current one), subsidy (this farm's CAP payments per year and scheme), farm_economics (this farm's yearly accounts: output, input costs, net value added, EUR), regional_benchmark (real averages of the farm's region per crop group: yield t/ha, N, P2O5 and K2O kg/ha, pesticide use). Rows are newest first, at most limit (default ${LOOKUP_DEFAULT_ROWS}); count and summary cover every matching row (sale: tonnes, revenue, average price, per crop; subsidy: total EUR, per year). Copy the summary; never add rows up yourself. note says where the data comes from (synthetic true = demo data).`,
+    inputSchema: z.object({
+      table: LookupTableSchema.describe("The table to read."),
+      year: lookup.year.describe("Only this year (sale: the harvest year)."),
+      cropCode: lookup.cropCode.describe(
+        "Only this crop: a crop code (MAIZ, COWT...) or a crop name in any language. sale, market_price and regional_benchmark only.",
+      ),
+      limit: lookup.limit.describe(
+        `Rows to show, 1 to ${LOOKUP_MAX_ROWS}. Default ${LOOKUP_DEFAULT_ROWS}.`,
+      ),
+    }),
+    outputSchema: FarmLookupSchema,
+    execute: async (query, ctx) => (await serviceOf(ctx)).lookupFarmData(query),
+  });
+
   return {
     resolveField,
     getFieldReport,
@@ -357,5 +381,6 @@ export function createAdvisorTools(registry: FarmRegistry) {
     getFieldJournal,
     checkProductUse,
     correctIrrigation,
+    lookupFarmData,
   };
 }
