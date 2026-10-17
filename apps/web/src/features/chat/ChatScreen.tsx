@@ -51,8 +51,8 @@ function LiveChat() {
       banner={offline ? "Can't reach the advisor — check the connection." : error ? `Error: ${error.message}` : null}
     >
       {messages.length === 0 && !offline && <Empty />}
-      {messages.map((m) => (
-        <MessageBlock key={m.id} message={m} onReply={reply} />
+      {messages.map((m, i) => (
+        <MessageBlock key={m.id} message={m} onReply={reply} answered={i < messages.length - 1} />
       ))}
       {busy && <Typing />}
     </ChatLayout>
@@ -61,7 +61,7 @@ function LiveChat() {
 
 // ---- rendering -----------------------------------------------------------
 
-function MessageBlock({ message, onReply }: { message: UIMessage; onReply: (t: string) => void }) {
+function MessageBlock({ message, onReply, answered }: { message: UIMessage; onReply: (t: string) => void; answered: boolean }) {
   const role = message.role === "user" ? "farmer" : "assistant";
   return (
     <Block role={role}>
@@ -70,7 +70,7 @@ function MessageBlock({ message, onReply }: { message: UIMessage; onReply: (t: s
         if (part.type.startsWith("tool-")) {
           const tp = part as unknown as { type: string; state: ToolState; output?: unknown };
           return (
-            <WidgetRenderer key={i} toolKey={tp.type.slice(5)} state={tp.state} output={tp.output} onReply={onReply} />
+            <WidgetRenderer key={i} toolKey={tp.type.slice(5)} state={tp.state} output={tp.output} onReply={onReply} answered={answered} />
           );
         }
         return null;

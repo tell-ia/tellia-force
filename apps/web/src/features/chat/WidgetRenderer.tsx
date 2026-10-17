@@ -28,7 +28,7 @@ import type {
   SubsidySummary,
 } from "@tellia/shared";
 import type { ParcelReport } from "@tellia/shared";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { getParcelReport } from "../../lib/api";
@@ -47,11 +47,14 @@ export function WidgetRenderer({
   state,
   output,
   onReply,
+  answered = false,
 }: {
   toolKey: string;
   state: ToolState;
   output?: unknown;
   onReply?: (text: string) => void;
+  /** A later message exists: a Oui/Non card is already answered and stays locked. */
+  answered?: boolean;
 }) {
   if (state === "input-streaming" || state === "input-available") return <Skeleton />;
   if (state === "output-error") return <Card tone="error">Couldn't run {label(toolKey)}.</Card>;
@@ -70,10 +73,11 @@ export function WidgetRenderer({
           title="Confirm watering"
           summary={str(o.summary) ?? joinParts([str(o.fieldName), withUnit(o.mm, "mm"), str(o.date)])}
           onReply={onReply}
+          answered={answered}
         />
       );
     case "correctIrrigation":
-      return <CorrectionConfirmCard c={objOf<IrrigationCorrection>(output)} onReply={onReply} />;
+      return <CorrectionConfirmCard c={objOf<IrrigationCorrection>(output)} onReply={onReply} answered={answered} />;
     case "confirmIrrigation":
       return <ConfirmedBadge c={objOf<IrrigationConfirmation>(output)} />;
     case "resolveField":
@@ -178,24 +182,35 @@ function AdviceCard({ reports }: { reports: unknown[] }) {
 }
 
 /** Yes/no question of a write tool: "Oui" / "Non" are sent as the farmer's reply. */
-function ConfirmCard({ title, summary, onReply }: { title: string; summary: string; onReply?: (t: string) => void }) {
+// Oui / Non: one tap, then both buttons lock and the picked one keeps a check. Cards answered
+// earlier in the conversation (a later message exists) are locked too.
+function ConfirmCard({ title, summary, onReply, answered = false }: { title: string; summary: string; onReply?: (t: string) => void; answered?: boolean }) {
+  const [picked, setPicked] = useState<"Oui" | "Non" | null>(null);
+  const locked = picked !== null || answered;
+  const pick = (answer: "Oui" | "Non") => {
+    if (locked) return;
+    setPicked(answer);
+    onReply?.(answer);
+  };
+  const badge = picked === "Oui" ? "Yes sent" : picked === "Non" ? "No sent" : answered ? "Answered" : "Awaiting";
+  const dim = (answer: "Oui" | "Non") => (locked && picked !== answer ? 0.4 : 1);
   return (
-    <Card tone="act">
-      <Head title={title} tone="act" badge="Awaiting" />
+    <Card tone={locked ? undefined : "act"}>
+      <Head title={title} tone={locked ? "ok" : "act"} badge={badge} />
       {summary && <p style={pStyle}>{summary}</p>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <button type="button" onClick={() => onReply?.("Oui")} style={{ ...btn, background: v("brand"), color: v("bg") }}>
-          <Check size={16} strokeWidth={2.5} /> Oui
+        <button type="button" disabled={locked} aria-pressed={picked === "Oui"} onClick={() => pick("Oui")} style={{ ...btn, background: v("brand"), color: v("bg"), opacity: dim("Oui"), cursor: locked ? "default" : "pointer" }}>
+          <Check size={16} strokeWidth={2.5} /> Oui{picked === "Oui" ? " ✓" : ""}
         </button>
-        <button type="button" onClick={() => onReply?.("Non")} style={{ ...btn, background: v("surface"), color: v("ink"), border: `1px solid ${v("line")}` }}>
-          <X size={16} strokeWidth={2.5} /> Non
+        <button type="button" disabled={locked} aria-pressed={picked === "Non"} onClick={() => pick("Non")} style={{ ...btn, background: v("surface"), color: v("ink"), border: `1px solid ${v("line")}`, opacity: dim("Non"), cursor: locked ? "default" : "pointer" }}>
+          <X size={16} strokeWidth={2.5} /> Non{picked === "Non" ? " ✓" : ""}
         </button>
       </div>
     </Card>
   );
 }
 
-function CorrectionConfirmCard({ c, onReply }: { c: Loose<IrrigationCorrection>; onReply?: (t: string) => void }) {
+function CorrectionConfirmCard({ c, onReply, answered }: { c: Loose<IrrigationCorrection>; onReply?: (t: string) => void; answered?: boolean }) {
   const del = str(c.action) === "delete";
   const before = objOf<IrrigationAmount>(c.before);
   const after = objOf<IrrigationAmount>(c.after);
@@ -204,7 +219,7 @@ function CorrectionConfirmCard({ c, onReply }: { c: Loose<IrrigationCorrection>;
   const fallback = del
     ? joinParts([str(c.fieldName), was && `delete ${was}`])
     : joinParts([str(c.fieldName), was && will ? `${was} → ${will}` : was || will]);
-  return <ConfirmCard title={del ? "Confirm deletion" : "Confirm correction"} summary={str(c.summary) ?? fallback} onReply={onReply} />;
+  return <ConfirmCard title={del ? "Confirm deletion" : "Confirm correction"} summary={str(c.summary) ?? fallback} onReply={onReply} answered={answered} />;
 }
 
 const CONFIRMATION_TEXT: Record<IrrigationConfirmation["status"], string> = {
