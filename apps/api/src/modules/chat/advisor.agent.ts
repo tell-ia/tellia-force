@@ -20,7 +20,8 @@ const RULES = `Rules:
 6. If the field is ambiguous, resolve it and ask. Never invent a field. If a tool fails, say so briefly.
 7. Mention any warnings the tools return.
 8. getFieldDetails for facts about one field: crop and variety, sowing and harvest dates, soil analysis, irrigation system.
-9. getFieldJournal for what was done on the fields (sowing, fertiliser, sprays and their products, harvest), like "when did I last spray" or "how much nitrogen this season"; copy its totals.`;
+9. getFieldJournal for what was done on the fields (sowing, fertiliser, sprays and their products, harvest), like "when did I last spray" or "how much nitrogen this season"; copy its totals.
+10. checkProductUse for "can I (still) spray this product on this field": give its verdict and warnings; if several products match, ask which one; never invent a rule.`;
 
 export async function buildInstructions(
   registry: FarmRegistry,

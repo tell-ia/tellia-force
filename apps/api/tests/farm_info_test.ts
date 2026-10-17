@@ -163,7 +163,7 @@ Deno.test("journal: default range is the field's season; newest first; totals; p
   });
   const spray = j.entries.find((e) => e.operationId === 1005)!;
   assertEquals(spray.products, [
-    { productName: "ADENGO", dose: 0.33, doseUnit: "L/ha", target: "Weeds" },
+    { productName: "ELUMIS", dose: 1.25, doseUnit: "L/ha", target: "Weeds" },
     { productName: "CALLISTO", dose: 0.75, doseUnit: "L/ha", target: "Weeds" },
   ]);
   const water = j.entries.find((e) => e.type === "irrigation")!;
@@ -314,7 +314,7 @@ Deno.test("farm scoping: farm 2 cannot read farm 1's field and sees only its own
   assert(j.entries.every((e) => e.fieldId === 15 && e.fieldName === "El Pozo"));
   assertEquals(j.totals.nKgHa, 90);
   assertEquals(j.totals.irrigationMm, 25);
-  assertEquals(j.entries[1].products[0].productName, "Herbicida A");
+  assertEquals(j.entries[1].products[0].productName, "Herbicide AS-HER-07 (synthetic)");
   const d = await farm2.getFieldDetails(15);
   assertEquals([d.crop?.name, d.field.tenure], ["Maíz", null]);
 });

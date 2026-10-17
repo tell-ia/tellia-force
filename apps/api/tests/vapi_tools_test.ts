@@ -213,7 +213,7 @@ Deno.test("vapi: get_field_journal: totals from the server, products as short st
   assertEquals(field.data.totals.irrigationMm, 30);
   assertEquals(field.data.entries[0].planned, true);
   assert(!("operationId" in field.data.entries[0]), "no ids for the voice");
-  assertEquals(sprays.data.entries[1].products, ["ADENGO 0.33 L/ha", "CALLISTO 0.75 L/ha"]);
+  assertEquals(sprays.data.entries[1].products, ["ELUMIS 1.25 L/ha", "CALLISTO 0.75 L/ha"]);
   assert(!("products" in field.data.entries[1]), "no empty product list");
   // 11 entries on the farm: the voice gets 10 and knows there are more.
   assertEquals(farm.data.entries.length, VOICE_JOURNAL_ENTRIES);
@@ -233,4 +233,56 @@ Deno.test("vapi: field details and journal stay on the caller's farm", async () 
   assertMatch(journal.error, /field 10 not found/);
   assert(own.data.entries.every((e: { fieldName: string }) => e.fieldName === "El Pozo"));
   assertEquals(own.data.totals.nKgHa, 90);
+});
+
+Deno.test("vapi: check_product_use gives a short flat answer from the server", async () => {
+  const { app } = makeVapiApp();
+  const [karate, several, late] = await call(app, [
+    { name: "check_product_use", arguments: { product: "karate zeon", fieldId: 10 } },
+    { name: "check_product_use", arguments: { product: "karate", fieldId: 10 } },
+    { name: "check_product_use", arguments: { product: "decis", fieldId: 10, date: "2026-09-18" } },
+  ]);
+  assertEquals(karate.data, {
+    status: "found",
+    product: "KARATE AVEC TECHNOLOGIE ZEON",
+    matches: [],
+    fieldName: "La Vallée",
+    cropName: "Maïs",
+    date: TEST_TODAY,
+    authorised: true,
+    uses: [
+      "Chenilles phytophages: max 0.15 L/ha, 2 applications, 7 days before harvest, 50 m from water",
+      "Pyrale(s) (1): max 0.2 L/ha, 2 applications, 7 days before harvest, 50 m from water",
+    ],
+    timesUsed: 1,
+    lastUsed: "2026-06-25",
+    applicationsLeft: null,
+    daysToHarvest: 104,
+    preHarvestOk: true,
+    warnings: [],
+    today: TEST_TODAY,
+  });
+  for (const [k, v] of Object.entries(karate.data)) {
+    const flat = v === null || typeof v !== "object" ||
+      (Array.isArray(v) && v.every((x) => typeof x === "string"));
+    assert(flat, `${k} is nested`);
+  }
+  assertEquals(several.data.status, "ambiguous");
+  assertEquals(several.data.matches, ["KARATE AVEC TECHNOLOGIE ZEON", "KARATE K"]);
+  assertEquals(several.data.authorised, null);
+  assertEquals([late.data.preHarvestOk, late.data.applicationsLeft], [false, 3]);
+  assertMatch(late.data.warnings[0], /Pre-harvest interval not met/);
+});
+
+Deno.test("vapi: check_product_use stays on the caller's farm", async () => {
+  const { app } = makeVapiApp();
+  const [other, synthetic] = await call(app, [
+    { name: "check_product_use", arguments: { product: "decis", fieldId: 10 } },
+    { name: "check_product_use", arguments: { product: "AS-HER-07", fieldId: 15 } },
+  ], ELENA_PHONE);
+  assertMatch(other.error, /field 10 not found/);
+  assertEquals(synthetic.data.product, "Herbicide AS-HER-07 (synthetic)");
+  assertEquals([synthetic.data.authorised, synthetic.data.uses], [null, []]);
+  assertEquals(synthetic.data.timesUsed, 1);
+  assertMatch(synthetic.data.warnings[0], /E-Phy covers France only/);
 });

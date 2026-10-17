@@ -5,6 +5,7 @@
   Fixed before this plan: irrigation `source` values the DB refused (6d51ae5), tool texts used
   snake_case ids (15a5ffe). Offline suite: 220 passed. Old VAPI plan moved to `plans/`.
 - 2026-10-17 Task 1: `getFieldDetails` / `getFieldJournal` (phone `get_field_details` / `get_field_journal`), `@tellia/shared/farm`, `FarmData.listOperations` + twin + fixtures, `farmInfo.service.ts`, routing lines, tests. Offline suite: 239 passed.
+- 2026-10-17 Task 2: `checkProductUse` (phone `check_product_use`), `ProductCheck` in `@tellia/shared/farm`, `FarmData.listProducts` / `listProductUses` / `listJournalProductNames` + twin + E-Phy fixtures, `productCheck.service.ts`, routing lines, tests. Offline suite: 261 passed.
 
 ## In progress
 
@@ -19,6 +20,16 @@
   an upside-down range is a 400. The phone gets 10 entries, products as short strings.
 - Field details and journal live in `irrigation/farmInfo.service.ts`, merged into
   `IrrigationService` (one service per farm scope, existing wraps keep working).
+- Products (Task 2): in the DB, farms 2 and 3 have no row in `product`; their synthetic products
+  exist only as `operation_input.product_name` with `product_id` null. The check finds them in
+  the caller's journal (`listJournalProductNames`), counts their uses by name, and answers
+  "No authorisation data for this product (E-Phy covers France only)" with no rule.
+- Products: for a farm outside France (`farm.country_code` not FR), E-Phy uses are shown but
+  `authorised`, `applicationsLeft` and `preHarvestOk` stay null, with a warning (French rules
+  are not a verdict there). An exact name beats longer names (AMISTAR, not AMISTAR GOLD).
+  `preHarvestOk` is null when the uses disagree. A failed catalogue read throws (never "not found").
+- Fixtures: farm 1's ADENGO spray became ELUMIS (a real catalogue product) and farm 2's
+  "Herbicida A" became "Herbicide AS-HER-07 (synthetic)", like the DB.
 - `makeTestMastra` (tests) uses Mastra's `InMemoryStore`, not LibSQL: see Blockers.
   `makeTestChatApp` keeps LibSQL like the real server.
 

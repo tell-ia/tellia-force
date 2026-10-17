@@ -18,6 +18,8 @@ import type {
   Member,
   NewIrrigation,
   OperationStatus,
+  Product,
+  ProductUse,
   SoilAnalysis,
   StoredWeatherDay,
 } from "./farmData";
@@ -49,6 +51,10 @@ export interface FarmFixture {
    * join the journal from there. Ids must not overlap with `irrigations`.
    */
   operations?: FarmOperation[];
+  /** E-Phy catalogue (a global table in the DB: give every farm the same list). */
+  products?: Product[];
+  /** E-Phy uses of the catalogue products (global, like `products`). */
+  productUses?: ProductUse[];
 }
 
 /** An irrigation as a journal row. */
@@ -117,6 +123,16 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
           (type === undefined || o.type === type)
         )
         .map((o) => structuredClone(o)),
+    listProducts: async () => structuredClone(f.products ?? []),
+    listProductUses: async (productId) =>
+      structuredClone((f.productUses ?? []).filter((u) => u.productId === productId)),
+    listJournalProductNames: async () => [
+      ...new Set(
+        journal.flatMap((o) => o.products).filter((p) => p.productId == null).map((p) =>
+          p.productName
+        ),
+      ),
+    ],
     getIrrigation: async (id) => {
       const op = ops.find((o) => o.operationId === id);
       return op ? { ...op } : null;

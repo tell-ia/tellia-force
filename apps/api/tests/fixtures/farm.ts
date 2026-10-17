@@ -1,3 +1,4 @@
+import type { Product, ProductUse } from "../../src/modules/irrigation/data/farmData";
 import type { FarmFixture } from "../../src/modules/irrigation/data/memoryFarmData";
 import { addDays } from "../../src/modules/irrigation/engine/util";
 
@@ -42,7 +43,7 @@ function constantClimatology(value: number) {
 /** Realistic farm mirroring the real DB (GAEC des Trois Chênes). */
 export function makeFarmFixture(): FarmFixture {
   return {
-    farm: { id: 1, name: "GAEC des Trois Chênes", lat: 48.046, lon: 1.794 },
+    farm: { id: 1, name: "GAEC des Trois Chênes", lat: 48.046, lon: 1.794, countryCode: "FR" },
     members: [
       { id: 1, name: "Claire Lefèvre", language: "fr", mainContact: true },
       { id: 2, name: "Thomas Lefèvre", language: "fr", mainContact: false },
@@ -169,8 +170,182 @@ export function makeFarmFixture(): FarmFixture {
       memberId: null,
     }],
     operations: farm1Journal(),
+    // Copies: tests may edit a fixture without leaking into the next one.
+    products: structuredClone(PRODUCTS),
+    productUses: structuredClone(PRODUCT_USES),
   };
 }
+
+const product = (
+  id: number,
+  name: string,
+  ammNumber: string,
+  kind: string,
+  activeSubstances: string,
+): Product => ({ id, name, ammNumber, kind, activeSubstances });
+
+/**
+ * E-Phy catalogue (global): real products, AMM numbers and uses copied from the DB, with test
+ * ids (501-507). ELUMIS, CALLISTO and KARATE ZEON are in farm 1's journal on La Vallée.
+ */
+export const PRODUCTS: Product[] = [
+  product(501, "ELUMIS", "2100111", "herbicide", "mésotrione 75.0 g/L | nicosulfuron 30.0 g/L"),
+  product(502, "CALLISTO", "9900047", "herbicide", "mésotrione 100.0 g/L"),
+  product(
+    503,
+    "KARATE AVEC TECHNOLOGIE ZEON",
+    "9800336",
+    "insecticide",
+    "lambda-cyhalothrine 100.0 g/L",
+  ),
+  product(504, "DECIS PROTECH", "2010023", "insecticide", "deltaméthrine 15.0 g/L"),
+  product(505, "AMISTAR", "9600093", "fungicide", "azoxystrobine 250.0 g/L"),
+  product(
+    506,
+    "AMISTAR GOLD",
+    "2160724",
+    "fungicide",
+    "difénoconazole 125.0 g/L | azoxystrobine 125.0 g/L",
+  ),
+  product(
+    507,
+    "KARATE K",
+    "8800395",
+    "insecticide",
+    "pirimicarbe 100.0 g/L | lambda-cyhalothrine 5.0 g/L",
+  ),
+];
+
+const use = (u: Partial<ProductUse> & Pick<ProductUse, "productId" | "cropCode">): ProductUse => ({
+  target: null,
+  maxDose: null,
+  doseUnit: "L/ha",
+  maxApplications: null,
+  preHarvestIntervalDays: null,
+  bbchMin: null,
+  bbchMax: null,
+  bufferZoneWaterM: null,
+  conditions: null,
+  ...u,
+});
+
+/**
+ * E-Phy uses (global). On maize: ELUMIS, CALLISTO and DECIS PROTECH have one use each (DECIS:
+ * 3 applications, 30 days before harvest); KARATE ZEON has two uses (7 days before harvest).
+ * ELUMIS has no rapeseed use: not authorised on Les Longues Raies.
+ */
+export const PRODUCT_USES: ProductUse[] = [
+  use({
+    productId: 501,
+    cropCode: "MAIZ",
+    target: "Désherbage",
+    maxDose: 1.5,
+    maxApplications: 1,
+    bbchMin: 12,
+    bbchMax: 19,
+    bufferZoneWaterM: 5,
+    conditions: "Uniquement sur maïs, millet, miscanthus et moha.",
+  }),
+  use({
+    productId: 502,
+    cropCode: "MAIZ",
+    target: "Désherbage",
+    maxDose: 1.5,
+    maxApplications: 1,
+    bbchMin: 12,
+    bbchMax: 19,
+    bufferZoneWaterM: 5,
+    conditions:
+      "Uniquement sur maïs, millet, miscanthus, moha. Fractionnement possible en 2 applications à la dose maximale de 0,75 L/ha, en respectant un intervalle minimum entre applications de 12 jours.",
+  }),
+  use({
+    productId: 502,
+    cropCode: "RAPE",
+    target: "Désherbage",
+    maxDose: 0.15,
+    maxApplications: 2,
+    bbchMin: 16,
+    bbchMax: 19,
+    bufferZoneWaterM: 5,
+  }),
+  use({
+    productId: 503,
+    cropCode: "MAIZ",
+    target: "Chenilles phytophages",
+    maxDose: 0.15,
+    maxApplications: 2,
+    preHarvestIntervalDays: 7,
+    bufferZoneWaterM: 50,
+    conditions:
+      "F : Emploi autorisé durant la floraison en dehors de la présence d'abeilles pour une application par culture à la dose maximum revendiquée pour l'usage.",
+  }),
+  use({
+    productId: 503,
+    cropCode: "MAIZ",
+    target: "Pyrale(s) (1)",
+    maxDose: 0.2,
+    maxApplications: 2,
+    preHarvestIntervalDays: 7,
+    bufferZoneWaterM: 50,
+  }),
+  use({
+    productId: 503,
+    cropCode: "RAPE",
+    target: "Pucerons",
+    maxDose: 0.075,
+    maxApplications: 3,
+    preHarvestIntervalDays: 35,
+    bufferZoneWaterM: 50,
+  }),
+  use({
+    productId: 504,
+    cropCode: "MAIZ",
+    target: "Pyrale(s) (1)",
+    maxDose: 0.83,
+    maxApplications: 3,
+    preHarvestIntervalDays: 30,
+    bufferZoneWaterM: 20,
+  }),
+  use({
+    productId: 504,
+    cropCode: "RAPE",
+    target: "Pucerons",
+    maxDose: 0.42,
+    maxApplications: 4,
+    preHarvestIntervalDays: 45,
+    bufferZoneWaterM: 20,
+  }),
+  use({
+    productId: 505,
+    cropCode: "MAIZ",
+    target: "Rouille(s)",
+    maxDose: 1,
+    maxApplications: 2,
+    bbchMax: 61,
+    bufferZoneWaterM: 5,
+    conditions: "2 applications par culture pour contrôler l'ensemble des maladies.",
+  }),
+  use({
+    productId: 506,
+    cropCode: "RAPE",
+    target: "Sclérotiniose",
+    maxDose: 1,
+    maxApplications: 2,
+    bbchMin: 14,
+    bbchMax: 69,
+    bufferZoneWaterM: 5,
+    conditions: "Uniquement sur colza et lin d'hiver 2 applications non consécutives par an",
+  }),
+  use({
+    productId: 507,
+    cropCode: "MAIZ",
+    target: "Pucerons",
+    maxDose: 1.25,
+    maxApplications: 2,
+    preHarvestIntervalDays: 80,
+    bufferZoneWaterM: 5,
+  }),
+];
 
 /**
  * Farm 1's journal besides irrigations. La Vallée's maize season (16 Apr – 17 Oct 2026) has
@@ -225,7 +400,7 @@ function farm1Journal(): NonNullable<FarmFixture["operations"]> {
       bbch: 15,
       notes: "weeds after rain",
       products: [
-        { productId: 501, productName: "ADENGO", dose: 0.33, doseUnit: "L/ha", target: "Weeds" },
+        { productId: 501, productName: "ELUMIS", dose: 1.25, doseUnit: "L/ha", target: "Weeds" },
         { productId: 502, productName: "CALLISTO", dose: 0.75, doseUnit: "L/ha", target: "Weeds" },
       ],
     },
@@ -334,7 +509,7 @@ function farm1Journal(): NonNullable<FarmFixture["operations"]> {
 export function makeSecondFarmFixture(): FarmFixture {
   const farm1 = makeFarmFixture();
   return {
-    farm: { id: 2, name: "SAT Los Olmos", lat: 41.6, lon: -4.92 },
+    farm: { id: 2, name: "SAT Los Olmos", lat: 41.6, lon: -4.92, countryCode: "ES" },
     members: [
       { id: 5, name: "Elena Martín", language: "es", mainContact: true },
       { id: 6, name: "Javier Martín", language: "es", mainContact: false },
@@ -372,7 +547,11 @@ export function makeSecondFarmFixture(): FarmFixture {
       source: "import",
       memberId: null,
     }],
-    // Its own journal: N 90 kg/ha and one spray with a synthetic product.
+    // The E-Phy catalogue is global: farm 2 sees the same products as farm 1.
+    products: farm1.products,
+    productUses: farm1.productUses,
+    // Its own journal: N 90 kg/ha and one spray with a synthetic product (no product_id and
+    // not in the catalogue, like the DB's farms outside France).
     operations: [
       {
         operationId: 9001,
@@ -404,7 +583,7 @@ export function makeSecondFarmFixture(): FarmFixture {
         status: "confirmed",
         products: [{
           productId: null,
-          productName: "Herbicida A",
+          productName: "Herbicide AS-HER-07 (synthetic)",
           dose: 1,
           doseUnit: "L/ha",
           target: "Malas hierbas",

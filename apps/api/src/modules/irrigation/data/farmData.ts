@@ -19,6 +19,8 @@ export interface Farm {
   lon: number;
   /** Region mean annual precipitation / mean annual ET0. Below 0.5 = dry region. Null if unknown. */
   aridityIndex?: number | null;
+  /** ISO country ("FR", "ES"...). E-Phy product rules are French. Missing = unknown. */
+  countryCode?: string | null;
 }
 
 export interface Member {
@@ -182,6 +184,32 @@ export interface FarmOperation {
   products: OperationProduct[];
 }
 
+/** A crop protection product of the E-Phy catalogue (`product`, shared by every farm). */
+export interface Product {
+  id: number;
+  name: string;
+  /** French marketing authorisation number (AMM). */
+  ammNumber: string | null;
+  /** herbicide, fungicide, insecticide... */
+  kind: string | null;
+  activeSubstances: string | null;
+}
+
+/** An authorised use of a product on a crop (`product_use`, E-Phy, shared by every farm). */
+export interface ProductUse {
+  productId: number;
+  cropCode: string;
+  target: string | null;
+  maxDose: number | null;
+  doseUnit: string | null;
+  maxApplications: number | null;
+  preHarvestIntervalDays: number | null;
+  bbchMin: number | null;
+  bbchMax: number | null;
+  bufferZoneWaterM: number | null;
+  conditions: string | null;
+}
+
 /** Which journal rows to read. Dates are inclusive. */
 export interface OperationFilter {
   from: IsoDate;
@@ -270,6 +298,15 @@ export interface FarmData {
    * rows are left out), with their products. Order is not guaranteed.
    */
   listOperations(filter: OperationFilter): Promise<FarmOperation[]>;
+  /** The whole E-Phy product catalogue (shared by every farm). Fails loudly, never [] on error. */
+  listProducts(): Promise<Product[]>;
+  /** Every authorised use of one catalogue product, all crops (shared by every farm). */
+  listProductUses(productId: number): Promise<ProductUse[]>;
+  /**
+   * Distinct names of the products in this farm's journal that are not in the catalogue
+   * (`operation_input.product_id` null): the synthetic products of farms outside France.
+   */
+  listJournalProductNames(): Promise<string[]>;
   /** One irrigation operation by id, or null when missing / not an irrigation. */
   getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;

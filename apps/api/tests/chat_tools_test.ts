@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
-import { FieldDetailsSchema, FieldJournalSchema } from "@tellia/shared/farm";
+import { FieldDetailsSchema, FieldJournalSchema, ProductCheckSchema } from "@tellia/shared/farm";
 import { createAdvisorTools } from "../src/modules/chat/tools.ts";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
 import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
@@ -39,6 +39,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
   assertEquals(
     Object.keys(tools).sort(),
     [
+      "checkProductUse",
       "confirmIrrigation",
       "getFarmAdvice",
       "getFieldDetails",
@@ -55,6 +56,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
   assertEquals(tools.getIrrigationHistory.id, "get_irrigation_history");
   assertEquals(tools.getFieldDetails.id, "get_field_details");
   assertEquals(tools.getFieldJournal.id, "get_field_journal");
+  assertEquals(tools.checkProductUse.id, "check_product_use");
 });
 
 Deno.test("tool texts name other tools by key (what the model sees), never by id", opts, async () => {
@@ -285,3 +287,51 @@ Deno.test(
     assertEquals(j.totals.nKgHa, 90);
   },
 );
+
+Deno.test("checkProductUse: verdict, uses and season count from the server", opts, async () => {
+  const { tools, run } = await setup();
+  const c = ProductCheckSchema.parse(
+    await run(tools.checkProductUse, { product: "Karaté Zeon", fieldId: 10 }, 1),
+  );
+  assertEquals([c.status, c.product?.name, c.authorised], [
+    "found",
+    "KARATE AVEC TECHNOLOGIE ZEON",
+    true,
+  ]);
+  assertEquals(c.uses.length, 2);
+  assertEquals([c.usage?.timesUsed, c.daysToHarvest, c.preHarvestOk], [1, 104, true]);
+  const late = await run(
+    tools.checkProductUse,
+    { product: "decis", fieldId: 10, date: "2026-09-18" },
+    1,
+  );
+  assertEquals([late.preHarvestOk, late.applicationsLeft], [false, 3]);
+  const several = await run(tools.checkProductUse, { product: "karate", fieldId: 10 }, 1);
+  assertEquals([several.status, several.authorised, several.matches.length], ["ambiguous", null, 2]);
+  const bad = await run(tools.checkProductUse, { product: "", fieldId: 10 }, 1);
+  assertEquals(bad.error, true);
+  await assertRejects(
+    () => run(tools.checkProductUse, { product: "decis", fieldId: 10 }),
+    Error,
+    "member",
+  );
+});
+
+Deno.test("checkProductUse: a farm 2 member never reads farm 1", opts, async () => {
+  const { tools, run } = await setup();
+  await assertRejects(
+    () => run(tools.checkProductUse, { product: "decis", fieldId: 10 }, 5),
+    Error,
+    "not found",
+  );
+  const c = await run(tools.checkProductUse, { product: "AS-HER-07", fieldId: 15 }, 5);
+  assertEquals([c.status, c.product.synthetic, c.authorised, c.usage.timesUsed], [
+    "found",
+    true,
+    null,
+    1,
+  ]);
+  assert(c.warnings[0].includes("E-Phy covers France only"));
+  const fromFarm1 = await run(tools.checkProductUse, { product: "AS-HER-07", fieldId: 10 }, 1);
+  assertEquals(fromFarm1.status, "not_found");
+});

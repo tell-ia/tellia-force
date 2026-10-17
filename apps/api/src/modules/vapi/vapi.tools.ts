@@ -5,8 +5,9 @@
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { type FieldReport, IsoDateSchema, ScenarioEventSchema } from "@tellia/shared/irrigation";
-import { type JournalEntry, JournalTypeSchema } from "@tellia/shared/farm";
+import { type JournalEntry, JournalTypeSchema, type ProductUseRule } from "@tellia/shared/farm";
 import type { FarmScope } from "../irrigation/farmRegistry";
+import { bbchRange } from "../irrigation/productCheck.service";
 
 export interface VapiCaller {
   memberId: number;
@@ -54,7 +55,7 @@ function brief(r: FieldReport) {
 /** The voice reads every entry: fewer than the chat's 20. */
 export const VOICE_JOURNAL_ENTRIES = 10;
 
-/** One journal entry, flat: products as short strings ("ADENGO 0.33 L/ha"). */
+/** One journal entry, flat: products as short strings ("ELUMIS 1.25 L/ha"). */
 function voiceEntry(e: JournalEntry) {
   const { operationId: _id, fieldId: _f, status: _s, bbch: _b, products, ...rest } = e;
   return {
@@ -67,6 +68,23 @@ function voiceEntry(e: JournalEntry) {
       }
       : {}),
   };
+}
+
+/**
+ * One E-Phy use as a short string: "Pyrale(s): max 0.2 L/ha, 2 applications, 7 days before
+ * harvest, 50 m from water". Conditions are left out (too long to read aloud).
+ */
+function voiceUse(u: ProductUseRule): string {
+  const parts = [
+    u.maxDose != null ? `max ${[u.maxDose, u.doseUnit].filter((x) => x != null).join(" ")}` : null,
+    u.maxApplications != null
+      ? `${u.maxApplications} application${u.maxApplications === 1 ? "" : "s"}`
+      : null,
+    u.preHarvestIntervalDays != null ? `${u.preHarvestIntervalDays} days before harvest` : null,
+    u.bbchMin != null || u.bbchMax != null ? bbchRange(u.bbchMin, u.bbchMax) : null,
+    u.bufferZoneWaterM != null ? `${u.bufferZoneWaterM} m from water` : null,
+  ].filter((x) => x != null);
+  return `${u.target ?? "any target"}: ${parts.join(", ") || "no limits given"}`;
 }
 
 const date = IsoDateSchema.optional().describe("Day to evaluate, YYYY-MM-DD. Default: today.");
@@ -214,6 +232,37 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
         entries,
         totals: j.totals,
         truncated: j.truncated || j.entries.length > entries.length,
+      };
+    },
+  }),
+
+  check_product_use: defineTool({
+    description:
+      "Check a crop protection product for a field's crop on a day: is it authorised (French E-Phy register), how many times it was used this season, how many applications are left, the days to harvest and whether the pre-harvest interval is met. If several products match, ask which one. The crop stage is not checked. Say every warning and never invent a rule.",
+    parameters: z.object({
+      product: z.string().min(1).describe("Product name or AMM number, as the farmer said it."),
+      fieldId,
+      date: IsoDateSchema.optional().describe(
+        "Day of the planned spray, YYYY-MM-DD. Default: today.",
+      ),
+    }),
+    run: async ({ product, fieldId, date }, { scope }) => {
+      const c = await scope.service.checkProductUse({ product, fieldId, date });
+      return {
+        status: c.status,
+        product: c.product?.name ?? null,
+        matches: c.matches.map((m) => m.name),
+        fieldName: c.fieldName,
+        cropName: c.crop?.name ?? null,
+        date: c.date,
+        authorised: c.authorised,
+        uses: c.uses.map(voiceUse),
+        timesUsed: c.usage?.timesUsed ?? null,
+        lastUsed: c.usage?.lastDate ?? null,
+        applicationsLeft: c.applicationsLeft,
+        daysToHarvest: c.daysToHarvest,
+        preHarvestOk: c.preHarvestOk,
+        warnings: c.warnings,
       };
     },
   }),

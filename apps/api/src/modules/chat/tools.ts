@@ -13,7 +13,12 @@ import {
   ScenarioResultSchema,
   WeatherDaySchema,
 } from "@tellia/shared/irrigation";
-import { FieldDetailsSchema, FieldJournalSchema, JournalTypeSchema } from "@tellia/shared/farm";
+import {
+  FieldDetailsSchema,
+  FieldJournalSchema,
+  JournalTypeSchema,
+  ProductCheckSchema,
+} from "@tellia/shared/farm";
 import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "./requestContext";
 
@@ -267,6 +272,22 @@ export function createAdvisorTools(registry: FarmRegistry) {
       (await serviceOf(ctx)).getFieldJournal({ fieldId, type, from, to }),
   });
 
+  const checkProductUse = createTool({
+    id: "check_product_use",
+    description:
+      "Can a crop protection product go on a field's crop on a day? Finds the product by name or AMM number and gives its E-Phy uses for the crop (target, max dose, max applications, pre-harvest interval, BBCH range, buffer zone near water), the times it was used on the field this season, applicationsLeft, daysToHarvest and preHarvestOk. status ambiguous: list the matches and ask which one, give no verdict. status not_found: say so. authorised false: not authorised on this crop; authorised null: no verdict, say why from the warnings. applicationsLeft is null when the crop has several uses. The crop stage is not checked. Copy the numbers, mention every warning and never invent a rule.",
+    inputSchema: z.object({
+      product: z.string().min(1).describe("Product name or AMM number, as the farmer said it."),
+      fieldId,
+      date: IsoDateSchema.optional().describe(
+        "Day of the planned spray, YYYY-MM-DD. Default: today.",
+      ),
+    }),
+    outputSchema: ProductCheckSchema,
+    execute: async ({ product, fieldId, date }, ctx) =>
+      (await serviceOf(ctx)).checkProductUse({ product, fieldId, date }),
+  });
+
   return {
     resolveField,
     getFieldReport,
@@ -278,5 +299,6 @@ export function createAdvisorTools(registry: FarmRegistry) {
     confirmIrrigation,
     getFieldDetails,
     getFieldJournal,
+    checkProductUse,
   };
 }

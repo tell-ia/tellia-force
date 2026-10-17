@@ -19,6 +19,8 @@ import type {
   OperationSource,
   OperationStatus,
   OperationType,
+  Product,
+  ProductUse,
   SoilAnalysis,
   StoredWeatherDay,
 } from "./farmData";
@@ -46,6 +48,7 @@ export function mapFarm(r: Row, region: Row | null = null): Farm {
     lat: r.lat as number,
     lon: r.lon as number,
     aridityIndex: aridityIndex(region),
+    countryCode: str(r.country_code),
   };
 }
 
@@ -279,6 +282,39 @@ export function mapFarmOperation(r: Row): FarmOperation {
   };
 }
 
+/** Columns read from the E-Phy catalogue. */
+export const PRODUCT_SELECT = "id,name,amm_number,product_kind,active_substances";
+/** Columns read from the E-Phy uses. */
+export const PRODUCT_USE_SELECT =
+  "product_id,crop_code,target,max_dose,dose_unit,max_applications,pre_harvest_interval_days," +
+  "bbch_min,bbch_max,buffer_zone_water_m,conditions";
+
+export function mapProduct(r: Row): Product {
+  return {
+    id: Number(r.id),
+    name: r.name as string,
+    ammNumber: str(r.amm_number),
+    kind: str(r.product_kind),
+    activeSubstances: str(r.active_substances),
+  };
+}
+
+export function mapProductUse(r: Row): ProductUse {
+  return {
+    productId: Number(r.product_id),
+    cropCode: r.crop_code as string,
+    target: str(r.target),
+    maxDose: num(r.max_dose),
+    doseUnit: str(r.dose_unit),
+    maxApplications: num(r.max_applications),
+    preHarvestIntervalDays: num(r.pre_harvest_interval_days),
+    bbchMin: num(r.bbch_min),
+    bbchMax: num(r.bbch_max),
+    bufferZoneWaterM: num(r.buffer_zone_water_m),
+    conditions: str(r.conditions),
+  };
+}
+
 /** Feb 29 folds into Feb 28 for climatology keys. */
 export function climatologyKey(date: string): string {
   const k = date.slice(5, 10);
@@ -413,6 +449,10 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
     }
     return farmP;
   }
+  // The catalogue never changes while the API runs. Unlike `reference`, a failure throws:
+  // an empty catalogue would wrongly answer "no such product".
+  let productsP: Promise<Product[]> | null = null;
+
   const irrigationOps = () =>
     db.from("operation").select("*").eq("farm_id", farmId).eq("op_type", "irrigation")
       .not("water_mm", "is", null);
@@ -540,6 +580,28 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
         return q.order("op_date").order("id").range(a, b);
       });
       return r.map(mapFarmOperation);
+    },
+    listProducts() {
+      if (!productsP) {
+        productsP = paged((a, b) =>
+          db.from("product").select(PRODUCT_SELECT).order("id").range(a, b)
+        ).then((r) => r.map(mapProduct));
+        productsP.catch(() => (productsP = null));
+      }
+      return productsP;
+    },
+    async listProductUses(productId) {
+      const r = await rows(
+        db.from("product_use").select(PRODUCT_USE_SELECT).eq("product_id", productId).order("id"),
+      );
+      return r.map(mapProductUse);
+    },
+    async listJournalProductNames() {
+      const r = await paged((a, b) =>
+        db.from("operation_input").select("product_name").eq("farm_id", farmId)
+          .is("product_id", null).order("id").range(a, b)
+      );
+      return [...new Set(r.map((x) => x.product_name as string).filter(Boolean))];
     },
     async getIrrigation(operationId) {
       const r = await one(irrigationOps().eq("id", operationId).limit(1));

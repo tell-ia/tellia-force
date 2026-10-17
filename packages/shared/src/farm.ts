@@ -2,10 +2,10 @@ import { z } from "zod";
 import { IsoDateSchema } from "./irrigation";
 
 // ---------------------------------------------------------------------------
-// Farm contracts beyond irrigation: field details and the farm journal.
+// Farm contracts beyond irrigation: field details, the farm journal and the product check.
 // Every number and total is computed by the API (apps/api); the AI only reads them.
 // Names avoid the db.ts / app.ts exports re-exported by index.ts (no `FieldSchema`,
-// `SoilSchema`, `OperationSchema` here).
+// `SoilSchema`, `OperationSchema`, `ProductSchema`, `ProductUseSchema` here).
 // ---------------------------------------------------------------------------
 
 // --- Field details (chat tool getFieldDetails, phone get_field_details) -----
@@ -169,3 +169,101 @@ export const FieldJournalSchema = z.object({
   truncated: z.boolean(),
 });
 export type FieldJournal = z.infer<typeof FieldJournalSchema>;
+
+// --- Product check (chat tool checkProductUse, phone check_product_use) -----
+
+/** At most this many candidates come back when several products match. */
+export const PRODUCT_MATCHES_MAX = 10;
+
+/** A product the query matched. */
+export const ProductMatchSchema = z.object({
+  /** Null: a product named in the farm's journal but not in the E-Phy catalogue (synthetic). */
+  productId: z.number().int().nullable(),
+  name: z.string(),
+  /** French marketing authorisation number (AMM). */
+  ammNumber: z.string().nullable(),
+  /** herbicide, fungicide, insecticide... Null when unknown. */
+  kind: z.string().nullable(),
+  activeSubstances: z.string().nullable(),
+  /** True: not in the E-Phy catalogue, so there is no authorisation data for it. */
+  synthetic: z.boolean(),
+});
+export type ProductMatch = z.infer<typeof ProductMatchSchema>;
+
+/** One authorised use (E-Phy `product_use`) of the product on the field's crop. */
+export const ProductUseRuleSchema = z.object({
+  target: z.string().nullable(),
+  /** Per hectare, in doseUnit. */
+  maxDose: z.number().nullable(),
+  doseUnit: z.string().nullable(),
+  maxApplications: z.number().int().nullable(),
+  /** Days needed between the spray and the harvest (DAR). */
+  preHarvestIntervalDays: z.number().int().nullable(),
+  /** Allowed crop stages (BBCH). Not checked by the server. */
+  bbchMin: z.number().int().nullable(),
+  bbchMax: z.number().int().nullable(),
+  /** Untreated buffer zone near water (ZNT), m. */
+  bufferZoneWaterM: z.number().nullable(),
+  conditions: z.string().nullable(),
+  /** date + preHarvestIntervalDays <= expected harvest. Null when the use has no interval. */
+  preHarvestOk: z.boolean().nullable(),
+});
+export type ProductUseRule = z.infer<typeof ProductUseRuleSchema>;
+
+/** One past application of the product on the field this season. */
+export const ProductApplicationSchema = z.object({
+  date: IsoDateSchema,
+  dose: z.number().nullable(),
+  doseUnit: z.string().nullable(),
+});
+export type ProductApplication = z.infer<typeof ProductApplicationSchema>;
+
+export const ProductCheckSchema = z.object({
+  /** What the farmer asked for, as given. */
+  query: z.string(),
+  /** Day of the planned spray. */
+  date: IsoDateSchema,
+  fieldId: z.number().int(),
+  fieldName: z.string(),
+  /** The crop on the field on `date`, or null. */
+  crop: z.object({
+    seasonId: z.number().int(),
+    code: z.string(),
+    /** In the farm's language. */
+    name: z.string(),
+    sowingDate: IsoDateSchema,
+    /** Expected harvest unless the crop is harvested. */
+    harvestDate: IsoDateSchema,
+  }).nullable(),
+  /** found: one product; ambiguous: several match and there is no verdict; not_found: none. */
+  status: z.enum(["found", "ambiguous", "not_found"]),
+  /** The product, when found. */
+  product: ProductMatchSchema.nullable(),
+  /** The candidates when ambiguous (at most PRODUCT_MATCHES_MAX); empty otherwise. */
+  matches: z.array(ProductMatchSchema),
+  /**
+   * True: E-Phy lists at least one use of the product on the crop; false: none (not authorised).
+   * Null: no verdict (not exactly one product, no crop on the date, or no E-Phy data).
+   */
+  authorised: z.boolean().nullable(),
+  /** E-Phy uses of the product on the crop. */
+  uses: z.array(ProductUseRuleSchema),
+  /**
+   * From the farm journal: confirmed operations on this field during the crop season, up to
+   * `date`, with the product. Null when no product was found or there is no crop.
+   */
+  usage: z.object({
+    timesUsed: z.number().int(),
+    lastDate: IsoDateSchema.nullable(),
+    /** Newest first. */
+    applications: z.array(ProductApplicationSchema),
+  }).nullable(),
+  /** maxApplications − timesUsed (never below 0), only when the crop has exactly one use. */
+  applicationsLeft: z.number().int().nullable(),
+  /** Expected harvest − date, days. Null without a crop. */
+  daysToHarvest: z.number().int().nullable(),
+  /** Every use with an interval agrees that date + interval <= harvest. Null otherwise. */
+  preHarvestOk: z.boolean().nullable(),
+  warnings: z.array(z.string()),
+});
+export type ProductCheck = z.infer<typeof ProductCheckSchema>;
