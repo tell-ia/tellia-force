@@ -79,11 +79,11 @@
     "cropDays": 72
   },
   "nextDays": [
-    { "day": "Thu 14", "tempMax": 31, "pctNoWater": 61, "pctRain": 0, "pctWatered": 85 },
-    { "day": "Fri 15", "tempMax": 27, "pctNoWater": 56, "pctRain": 0, "pctWatered": 80 },
-    { "day": "Sat 16", "tempMax": 28, "pctNoWater": 50, "pctRain": 0, "pctWatered": 74 },
-    { "day": "Sun 17", "tempMax": 31, "pctNoWater": 45, "pctRain": 0, "pctWatered": 69 },
-    { "day": "Mon 18", "tempMax": 36, "pctNoWater": 38, "pctRain": 0, "pctWatered": 62 }
+    { "day": "Thu 14", "tempMax": 31, "pctNoWater": 61, "pctRain": 0, "rainMm": 0, "pctWatered": 85 },
+    { "day": "Fri 15", "tempMax": 27, "pctNoWater": 56, "pctRain": 0, "rainMm": 0, "pctWatered": 80 },
+    { "day": "Sat 16", "tempMax": 28, "pctNoWater": 50, "pctRain": 0, "rainMm": 0, "pctWatered": 74 },
+    { "day": "Sun 17", "tempMax": 31, "pctNoWater": 45, "pctRain": 0, "rainMm": 0, "pctWatered": 69 },
+    { "day": "Mon 18", "tempMax": 36, "pctNoWater": 38, "pctRain": 0, "rainMm": 0, "pctWatered": 62 }
   ],
   "method": "FAO-56 soil water balance. Weather: Loiret average (AgERA5). Stages from degree-days, base 6. Irrigation as logged by the farmer; gross dose includes reel-gun losses."
 }

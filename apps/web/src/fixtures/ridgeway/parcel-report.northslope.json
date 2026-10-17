@@ -79,11 +79,11 @@
     "cropDays": 54
   },
   "nextDays": [
-    { "day": "Thu 14", "tempMax": 30, "pctNoWater": 60, "pctRain": 7, "pctWatered": 81 },
-    { "day": "Fri 15", "tempMax": 31, "pctNoWater": 55, "pctRain": 0, "pctWatered": 76 },
-    { "day": "Sat 16", "tempMax": 33, "pctNoWater": 49, "pctRain": 0, "pctWatered": 70 },
-    { "day": "Sun 17", "tempMax": 32, "pctNoWater": 44, "pctRain": 0, "pctWatered": 65 },
-    { "day": "Mon 18", "tempMax": 34, "pctNoWater": 38, "pctRain": 0, "pctWatered": 59 }
+    { "day": "Thu 14", "tempMax": 30, "pctNoWater": 60, "pctRain": 7, "rainMm": 8, "pctWatered": 81 },
+    { "day": "Fri 15", "tempMax": 31, "pctNoWater": 55, "pctRain": 0, "rainMm": 0, "pctWatered": 76 },
+    { "day": "Sat 16", "tempMax": 33, "pctNoWater": 49, "pctRain": 0, "rainMm": 0, "pctWatered": 70 },
+    { "day": "Sun 17", "tempMax": 32, "pctNoWater": 44, "pctRain": 0, "rainMm": 0, "pctWatered": 65 },
+    { "day": "Mon 18", "tempMax": 34, "pctNoWater": 38, "pctRain": 0, "rainMm": 0, "pctWatered": 59 }
   ],
   "method": "FAO-56 soil water balance. Weather: Gers average (AgERA5). Stages from degree-days, base 10. Irrigation as logged by the farmer; gross dose includes reel-gun losses."
 }

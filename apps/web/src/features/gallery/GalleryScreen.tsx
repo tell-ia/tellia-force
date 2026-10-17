@@ -62,7 +62,7 @@ export function GalleryScreen() {
           )}
           {data.nextDays && (
             <Wrap name="NextDaysTable">
-              <SectionCard><NextDaysTable days={data.nextDays} /></SectionCard>
+              <SectionCard><NextDaysTable days={data.nextDays} comfortPct={data.reserve.thresholdPct} /></SectionCard>
             </Wrap>
           )}
           {data.soil && <Wrap name="SoilCard"><SectionCard><SoilCard soil={data.soil} /></SectionCard></Wrap>}

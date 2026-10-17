@@ -242,7 +242,7 @@ export function fieldReportToParcelReport(
       const pctWatered =
         planMm != null ? Math.round((planMm / d.taw) * 100) : wateredPct(pctNoWater, r.irrigateMm, cap);
       const pctRain = rainPct(d.rain, d.taw, pctNoWater);
-      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctRain, pctWatered };
+      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctRain, rainMm: round1(d.rain), pctWatered };
     });
   }
 
