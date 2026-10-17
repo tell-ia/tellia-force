@@ -143,3 +143,34 @@ Deno.test("REST: no cross-farm writes", async () => {
   const farm2 = (await registry.forFarm(2)).data;
   assertEquals((await farm2.listIrrigations(15, { includeDrafts: false })).length, 2);
 });
+
+Deno.test("GET /irrigation/operations never lists irrigations after today", async () => {
+  // Today before the fixture's 2026-06-21 watering: it has not happened yet.
+  const early = await makeTestApp({ today: () => "2026-06-20" });
+  const none = await (await early.app.request("/irrigation/operations?fieldId=10")).json();
+  assertEquals(none.data, []);
+  // Asking for a later `to` does not reach past today either.
+  const capped = await (await early.app.request("/irrigation/operations?fieldId=10&to=2026-12-31")).json();
+  assertEquals(capped.data, []);
+
+  const { app } = await makeTestApp();
+  const all = await (await app.request("/irrigation/operations?fieldId=10")).json();
+  assertEquals(all.data.map((r: { date: string }) => r.date), ["2026-06-21"]);
+});
+
+Deno.test("DELETE /irrigation/operations/:id removes a confirmed irrigation of this farm", async () => {
+  const { app } = await makeTestApp();
+  const saved = await (await post(app, "/irrigation/operations", { fieldId: 10, date: "2026-07-04", mm: 20 })).json();
+  const id = saved.data.operationId;
+
+  const del = await app.request(`/irrigation/operations/${id}`, { method: "DELETE" });
+  assertEquals(del.status, 200);
+  assertEquals((await del.json()).data, { operationId: id, fieldId: 10, date: "2026-07-04", mm: 20, status: "confirmed" });
+  const after = await (await app.request("/irrigation/operations?fieldId=10")).json();
+  assertEquals(after.data.some((r: { operationId: number }) => r.operationId === id), false);
+
+  // Gone, another farm's row, or not a number: refused.
+  assertEquals((await app.request(`/irrigation/operations/${id}`, { method: "DELETE" })).status, 404);
+  assertEquals((await app.request("/irrigation/operations/900", { method: "DELETE" })).status, 404);
+  assertEquals((await app.request("/irrigation/operations/abc", { method: "DELETE" })).status, 400);
+});

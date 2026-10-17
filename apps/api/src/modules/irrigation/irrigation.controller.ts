@@ -15,6 +15,7 @@ import { type FarmRegistry, type FarmScope, MEMBER_HEADER } from "./farmRegistry
 // contact of the first farm. Fields of another farm are 404.
 
 const FieldParam = z.object({ fieldId: z.coerce.number().int() });
+const OperationParam = z.object({ operationId: z.coerce.number().int() });
 const OperationsQuery = z.object({
   fieldId: z.coerce.number().int(),
   from: IsoDateSchema.optional(),
@@ -91,6 +92,12 @@ export function createIrrigationController(registry: FarmRegistry) {
       source: "web",
     });
     return c.json({ data: record }, 201);
+  });
+
+  // Undo from the app: same rules as a chat correction (a confirmed irrigation of this farm).
+  app.delete("/operations/:operationId", validate("param", OperationParam), async (c) => {
+    const { operationId } = c.req.valid("param");
+    return c.json({ data: await service(c).deleteIrrigation(operationId) });
   });
 
   return app;
