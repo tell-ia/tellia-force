@@ -5,4 +5,5 @@ export { getFarmToday, getParcelReport } from "./parcels";
 export { recordIrrigation, type RecordIrrigationInput } from "./irrigation";
 export { simulateDose, type DoseSim } from "./simulate";
 export { setMemberPhone } from "./members";
+export { getDemoDate, setDemoDate } from "./settings";
 export { list } from "./data";

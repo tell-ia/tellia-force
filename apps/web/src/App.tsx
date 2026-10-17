@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { FarmProvider } from "./app/FarmContext";
+import { DateProvider } from "./app/DateContext";
 import { AppShell } from "./app/AppShell";
 import { navigate } from "./app/router";
 import { onDeepLink } from "./lib/native";
@@ -11,9 +12,11 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <FarmProvider>
-        <AppShell />
-      </FarmProvider>
+      <DateProvider>
+        <FarmProvider>
+          <AppShell />
+        </FarmProvider>
+      </DateProvider>
     </ThemeProvider>
   );
 }

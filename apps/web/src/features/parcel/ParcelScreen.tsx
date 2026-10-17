@@ -6,7 +6,9 @@ import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
 import { font, v } from "../../theme/tokens";
-import { DateChip, Label, SectionCard } from "../../components/ui/primitives";
+import { Label, SectionCard } from "../../components/ui/primitives";
+import { DateButton } from "../../components/DateSheet";
+import { dayRange } from "../../lib/dates";
 import { Loader } from "../../components/ui/Loader";
 import { RecommendationCard } from "./RecommendationCard";
 import {
@@ -50,7 +52,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
         <button type="button" onClick={() => navigate("today")} aria-label="Back to Today" style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", color: v("ink"), borderRadius: 22, background: v("sunk"), border: 0, cursor: "pointer" }}>
           <ArrowLeft size={22} />
         </button>
-        <DateChip>Wed 13 Jul 2022</DateChip>
+        <DateButton />
       </div>
 
       {loading && <Loader />}
@@ -91,7 +93,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
             <SectionCard id="balance" style={{ gap: 12, boxShadow: highlighted ? "0 0 0 4px var(--tf-waterSoft)" : "none", transition: "box-shadow 0.5s ease" }}>
               <div ref={balanceRef} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <Label>Water balance · {data.series.at(0)?.dayLabel}–{data.series.at(-1)?.dayLabel} Jul</Label>
+                <Label>Water balance · {data.series.length ? dayRange(data.series[0]!.date, data.series.at(-1)!.date) : ""}</Label>
                 <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
               </div>
               <WaterBalanceChart series={data.series} reserve={data.reserve} plan={data.plan} />

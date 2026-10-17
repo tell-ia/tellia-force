@@ -14,6 +14,8 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 import { useFarm } from "../../app/FarmContext";
+import { useDemoDate } from "../../app/DateContext";
+import { addDays } from "../../lib/dates";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
@@ -23,6 +25,7 @@ const WAVE = [10, 18, 30, 22, 14, 26, 38, 30, 20, 12, 22, 34, 42, 28, 18, 10, 16
 
 export function LogScreen() {
   const { farm } = useFarm();
+  const { today: demoToday } = useDemoDate();
   // Log is contextual to the farm's field that needs water today.
   const { data: today } = useAsync<FarmToday | null>(
     () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
@@ -53,7 +56,7 @@ export function LogScreen() {
   const gross = amount ?? advisedGross;
   const net = Math.round(gross * eff); // what actually reaches the soil
   const delta = gross - advisedGross; // vs the advised dose
-  const asOf = data?.asOf ?? "2022-07-14";
+  const asOf = data?.asOf ?? demoToday;
 
   const cap = data?.reserve.capacityMm ?? 144;
   const threshold = data?.reserve.thresholdMm ?? 79;
@@ -83,17 +86,19 @@ export function LogScreen() {
   const shownNet = Math.round(shownGross * eff);
   const drained = shown?.drainedMm ?? 0;
 
-  const winBase = useMemo(() => (data?.series ? data.series.filter((p) => Number(p.dayLabel) >= 9) : []), [data]);
+  // The chart window: 4 days before today to the end of the forecast.
+  const winFrom = addDays(asOf, -4);
+  const winBase = useMemo(() => (data?.series ? data.series.filter((p) => p.date >= winFrom) : []), [data, winFrom]);
   const winWith = useMemo<WinPoint[]>(
-    () => (shown ? shown.series.filter((p) => Number(p.dayLabel) >= 9) : []),
-    [shown],
+    () => (shown ? shown.series.filter((p) => p.date >= winFrom) : []),
+    [shown, winFrom],
   );
 
   const confirm = () => {
     if (!parcelId) return;
     setLogged(true);
     // LIVE: records a confirmed irrigation → counts in the next report/advice.
-    void recordIrrigation({ parcelId, date: data?.asOf ?? "2022-07-14", grossMm: gross, source: "voice" });
+    void recordIrrigation({ parcelId, date: asOf, grossMm: gross, source: "voice" });
   };
 
   if (loading || !data || amount === null) {

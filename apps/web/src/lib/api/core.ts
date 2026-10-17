@@ -53,6 +53,13 @@ export const http = {
       body: JSON.stringify(body),
     }).then((r) => unwrap(r, schema));
   },
+  put<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {
+    return fetch(`${clientEnv.VITE_API_URL}${path}`, {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify(body),
+    }).then((r) => unwrap(r, schema));
+  },
 };
 
 /** Return a fixture as a mocked response: validated, with fake latency. */

@@ -8,9 +8,12 @@ import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { hero } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
+import { useDemoDate } from "../../app/DateContext";
+import { formatDay } from "../../lib/dates";
 
 export function AdminScreen() {
   const { farm, farms, setFarm } = useFarm();
+  const { today } = useDemoDate();
   const [fired, setFired] = useState(false);
   const { data } = useAsync<FarmToday | null>(
     () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
@@ -50,7 +53,7 @@ export function AdminScreen() {
           })}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-          <Field caption="Demo date" value="Wed 13 Jul 2022" />
+          <Field caption="Demo date" value={formatDay(today)} />
           <Field caption="Source" value={farm.code} />
         </div>
       </section>

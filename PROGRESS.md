@@ -7,6 +7,9 @@
 - 2026-10-17 Task 1: `settings/clock.ts` (demo date > DEMO_DATE > real date, kept in
   `data/demo-date.json`), `GET/PUT /settings/date`, `DemoDateState` in `@tellia/shared/app`,
   `registry.today()` reads the clock. 6 tests (advice and phone tools follow the date). Suite: 311 passed.
+- 2026-10-17 Task 2: web `DateProvider` (GET/PUT /settings/date), `DateButton` + `DateSheet`
+  (date input, 3 presets, real date), screens remount on a new date, fixed dates removed (Today,
+  Parcel, Admin, Log; Log's chart window now by date, not `dayLabel >= 9`). Web: 58 passed.
 
 ## In progress
 
