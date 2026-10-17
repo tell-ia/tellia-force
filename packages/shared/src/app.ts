@@ -246,6 +246,22 @@ export type ChatThreadSummary = z.infer<typeof ChatThreadSummarySchema>;
 export const ChatThreadListSchema = z.array(ChatThreadSummarySchema);
 export type ChatThreadList = z.infer<typeof ChatThreadListSchema>;
 
+/** POST /chat/threads/:threadId/truncate: edit a sent message. The server removes that message and
+ *  every later one from the thread's memory, so the resent text starts from there. */
+export const TruncateChatThreadBodySchema = z.object({
+  fromMessageId: z.string().min(1),
+});
+export type TruncateChatThreadBody = z.infer<typeof TruncateChatThreadBodySchema>;
+
+export const TruncateChatThreadResultSchema = z.object({
+  threadId: z.string().min(1),
+  /** Messages removed from memory (the edited one included). */
+  removed: z.number().int().nonnegative(),
+  /** Unanswered irrigation confirmations in the removed messages, cancelled like a "No". */
+  cancelledRuns: z.number().int().nonnegative(),
+});
+export type TruncateChatThreadResult = z.infer<typeof TruncateChatThreadResultSchema>;
+
 // --- Member phone (VAPI persona hack) --------------------------------------
 
 /** Set a member's phone when a persona is selected, so the single VAPI number

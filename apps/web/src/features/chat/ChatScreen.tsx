@@ -3,10 +3,13 @@ import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { Loader2, Mic, PanelLeft, Send, Square, SquarePen } from "lucide-react";
 import { useFarm } from "../../app/FarmContext";
-import { createChatTransport, createThreadId, getChatHistory, listChatThreads } from "../../lib/api/chat";
+import { createChatTransport, createThreadId, getChatHistory, listChatThreads, truncateChatThread } from "../../lib/api/chat";
+import { canCopyMessage, canEditMessage, messageText, messagesAfter } from "../../lib/chatEdit";
 import { useAsync } from "../../lib/useAsync";
 import { font, v } from "../../theme/tokens";
 import { SessionsDrawer } from "./SessionsDrawer";
+import { EditButton, MessageEditor } from "./MessageEditor";
+import { CopyButton } from "./CopyButton";
 import { Label } from "../../components/ui/primitives";
 import { Markdown } from "../../components/Markdown";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
@@ -82,6 +85,8 @@ function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; 
   const transport = useMemo(() => createChatTransport(() => threadRef.current), []);
   const { messages, sendMessage, status, error, setMessages } = useChat({ transport });
   const [offline, setOffline] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -106,17 +111,49 @@ function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; 
     wasBusy.current = busy;
   }, [busy, onReplied]);
   const reply = (text: string) => sendMessage({ text });
+  // Edit a sent message: the server drops it and everything after it, then the new text is sent
+  // under the same id (useChat replaces the message and drops the later ones on screen).
+  const submitEdit = async (messageId: string, text: string) => {
+    setEditError(null);
+    try {
+      await truncateChatThread(threadRef.current ?? "", messageId);
+    } catch (e) {
+      setEditError(`Could not edit the message: ${e instanceof Error ? e.message : "try again"}`);
+      throw e; // the editor keeps the text
+    }
+    setEditingId(null);
+    void sendMessage({ text, messageId });
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditError(null);
+  };
 
   return (
     <ChatLayout
       onSend={reply}
       suggestions={SUGGESTIONS}
       disabled={busy}
-      banner={offline ? "Can't reach the advisor — check the connection." : error ? `Error: ${error.message}` : null}
+      banner={editError ?? (offline ? "Can't reach the advisor — check the connection." : error ? `Error: ${error.message}` : null)}
     >
       {messages.length === 0 && !offline && <Empty />}
       {messages.map((m, i) => (
-        <MessageBlock key={m.id} message={m} onReply={reply} answered={i < messages.length - 1} />
+        <MessageBlock
+          key={m.id}
+          message={m}
+          onReply={reply}
+          answered={i < messages.length - 1}
+          canEdit={canEditMessage(m, busy)}
+          copyable={canCopyMessage(m, busy && i === messages.length - 1)}
+          editing={editingId === m.id}
+          replaced={messagesAfter(messages, m.id)}
+          onEdit={() => {
+            setEditError(null);
+            setEditingId(m.id);
+          }}
+          onSubmitEdit={(t) => submitEdit(m.id, t)}
+          onCancelEdit={cancelEdit}
+        />
       ))}
       {busy && <Typing />}
     </ChatLayout>
@@ -125,11 +162,24 @@ function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; 
 
 // ---- rendering -----------------------------------------------------------
 
-function MessageBlock({ message, onReply, answered }: { message: UIMessage; onReply: (t: string) => void; answered: boolean }) {
+interface EditProps {
+  canEdit: boolean;
+  copyable: boolean;
+  editing: boolean;
+  replaced: number;
+  onEdit: () => void;
+  onSubmitEdit: (text: string) => Promise<void>;
+  onCancelEdit: () => void;
+}
+
+function MessageBlock({ message, onReply, answered, canEdit, copyable, editing, replaced, onEdit, onSubmitEdit, onCancelEdit }: { message: UIMessage; onReply: (t: string) => void; answered: boolean } & EditProps) {
   const role = message.role === "user" ? "farmer" : "assistant";
   return (
     <Block role={role}>
       {message.parts.map((part, i) => {
+        if (part.type === "text" && role === "farmer" && editing) {
+          return <MessageEditor key={i} initial={messageText(message)} replaced={replaced} onSubmit={onSubmitEdit} onCancel={onCancelEdit} />;
+        }
         if (part.type === "text") return <TextBubble key={i} role={role} text={part.text} />;
         if (part.type.startsWith("tool-")) {
           const tp = part as unknown as { type: string; state: ToolState; output?: unknown };
@@ -139,6 +189,8 @@ function MessageBlock({ message, onReply, answered }: { message: UIMessage; onRe
         }
         return null;
       })}
+      {copyable && <CopyButton text={messageText(message)} />}
+      {!editing && canEditMessage(message, false) && <EditButton disabled={!canEdit} onClick={onEdit} />}
     </Block>
   );
 }

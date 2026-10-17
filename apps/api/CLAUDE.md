@@ -47,7 +47,7 @@ apps/api/
                        # weather (DB + Open-Meteo), service, REST /irrigation (no LLM);
                        # farmInfo / productCheck / farmLookup services (journal, E-Phy, sales)
       chat/            # Mastra: advisor agent, 13 tools, 5 workflows, POST /chat,
-                       # GET /chat/history, GET /chat/threads, x-member-id + x-thread-id middleware. See chat/README.md
+                       # GET /chat/history, GET /chat/threads, POST /chat/threads/:id/truncate (edit a message), x-member-id + x-thread-id middleware. See chat/README.md
       vapi/            # phone assistant: POST /vapi/tools, 12 phone tools. See vapi/README.md
       voice/           # chat mic: POST /voice/session mints a short-lived OpenAI Realtime
                        # transcription key (gpt-live-transcribe); the app streams over WebRTC

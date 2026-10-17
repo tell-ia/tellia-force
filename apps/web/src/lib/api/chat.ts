@@ -2,6 +2,8 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   CHAT_THREAD_HEADER,
   ChatThreadListSchema,
+  TruncateChatThreadResultSchema,
+  type TruncateChatThreadResult,
   newThreadId,
   type ChatThreadSummary,
 } from "@tellia/shared";
@@ -11,6 +13,7 @@ import { API_URL, getMemberId, http, memberHeaders } from "./core";
 //   POST /chat          — AI SDK v7 UI message stream (Mastra). useChat transport.
 //   GET  /chat/history  — one conversation for the x-member-id member.
 //   GET  /chat/threads  — the member's past conversations, newest first.
+//   POST /chat/threads/:id/truncate — edit a message: drop it and every later one from memory.
 // The conversation is picked with the x-thread-id header (none = the member's latest).
 // See docs/chat-contract.md.
 
@@ -32,6 +35,12 @@ export async function getChatHistory(threadId: string | null = null): Promise<Ch
 /** The member's conversations, most recently updated first. */
 export function listChatThreads(): Promise<ChatThreadSummary[]> {
   return http.get("/chat/threads", ChatThreadListSchema);
+}
+
+/** Edit a sent message: the server removes it and everything after it from the thread's memory
+ *  (and cancels confirmation cards waiting in them). Resend the new text afterwards. */
+export function truncateChatThread(threadId: string, fromMessageId: string): Promise<TruncateChatThreadResult> {
+  return http.post(`/chat/threads/${encodeURIComponent(threadId)}/truncate`, { fromMessageId }, TruncateChatThreadResultSchema);
 }
 
 /** A fresh thread id for the current member. The thread exists once its first message is sent.
