@@ -58,6 +58,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
       "lookupFarmData",
       "recordIrrigation",
       "resolveField",
+      "showWidget",
       "simulateScenario",
     ],
   );
