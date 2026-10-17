@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// Release signing: credentials live in android/keystore.properties (git-ignored).
+// When that file is absent (fresh clone, CI, debug work) the release build falls
+// back to the debug key so `assembleRelease` still runs locally — but an unsigned
+// build like that must NOT be uploaded to Play.
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace = "com.tellia.force"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +26,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig keystorePropsFile.exists() ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
