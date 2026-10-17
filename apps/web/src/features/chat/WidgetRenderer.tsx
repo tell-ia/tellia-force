@@ -27,8 +27,12 @@ import type {
   SubsidyRow,
   SubsidySummary,
 } from "@tellia/shared";
+import { FieldReportSchema } from "@tellia/shared";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
+import type { ReactNode } from "react";
+import { fieldReportToParcelReport } from "../../lib/mappers/parcel";
+import { BalanceLegend, CropStageTimeline, NextDaysTable, ReserveGauge, SeasonBalanceCard, WaterBalanceChart } from "../parcel/charts";
 
 // Renders one AI SDK tool part as a card. The 13 tool keys are the UI contract
 // (apps/api chat/README.md). Unknown keys / invalid output fall back gracefully
@@ -54,6 +58,8 @@ export function WidgetRenderer({
   switch (toolKey) {
     case "getFieldReport":
       return <FieldReportCard r={o} />;
+    case "showWidget":
+      return <WidgetCard r={o} />;
     case "getFarmAdvice":
       return <AdviceCard reports={asArr(o.reports)} />;
     case "recordIrrigation":
@@ -109,6 +115,37 @@ function FieldReportCard({ r }: { r: Rec }) {
     </Card>
   );
 }
+
+// Render one report chart on demand (show_widget), reusing the parcel components.
+function WidgetCard({ r }: { r: Rec }) {
+  const parsed = FieldReportSchema.safeParse(r);
+  if (!parsed.success) return <FallbackCard toolKey="showWidget" fieldId={num(r.fieldId)} />;
+  const report = parsed.data;
+  const pr = fieldReportToParcelReport(report, { farmId: 0 });
+  const widget = str(r.widget) ?? "waterBalance";
+  const title = WIDGET_TITLE[widget] ?? "Field report";
+  let body: ReactNode = null;
+  if (widget === "reserve") body = <ReserveGauge reserve={pr.reserve} />;
+  else if (widget === "waterBalance" && pr.series) body = <><WaterBalanceChart series={pr.series} reserve={pr.reserve} plan={pr.plan} /><BalanceLegend withPlan={!!pr.plan} /></>;
+  else if (widget === "cropStage" && pr.cropStage) body = <CropStageTimeline cropStage={pr.cropStage} />;
+  else if (widget === "nextDays" && pr.nextDays) body = <NextDaysTable days={pr.nextDays} hasPlan={!!pr.plan} />;
+  else if (widget === "seasonBalance" && pr.seasonBalance) body = <SeasonBalanceCard season={pr.seasonBalance} />;
+  return (
+    <Card>
+      <Head title={`${pr.name} · ${title}`} />
+      {body ?? <p style={pStyle}>No data for this chart.</p>}
+      {pr.id != null && <DeepLink label="Open the full parcel" to={`parcel/${pr.id}#balance`} />}
+    </Card>
+  );
+}
+
+const WIDGET_TITLE: Record<string, string> = {
+  waterBalance: "Water balance",
+  reserve: "Soil water reserve",
+  cropStage: "Crop stage",
+  nextDays: "Next 5 days",
+  seasonBalance: "Season balance",
+};
 
 function AdviceCard({ reports }: { reports: unknown[] }) {
   return (
@@ -824,6 +861,7 @@ const monthText = (y: unknown, m: unknown): string | undefined =>
 
 const LABELS: Record<string, string> = {
   getFieldReport: "Field report",
+  showWidget: "Chart",
   getFarmAdvice: "Farm advice",
   recordIrrigation: "Record watering",
   confirmIrrigation: "Confirmation",
