@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { FieldReport } from "@tellia/shared";
-import { eveLabel, fieldReportToReserve, grossFromNet, rainPct, reservePct, wateredPct } from "./parcel";
+import {
+  eveLabel,
+  fieldReportToReserve,
+  grossFromNet,
+  rainPct,
+  refillPassesNote,
+  refillPlan,
+  reservePct,
+  wateredPct,
+} from "./parcel";
 
 describe("parcel mappers (demo numbers)", () => {
   it("gross from 35 mm net at the reel gun ≈ 44 mm", () => {
@@ -60,5 +69,14 @@ describe("parcel mappers (demo numbers)", () => {
       thresholdLabel: "Fri eve",
       usedByThresholdMm: 18,
     });
+    // Before flowering the engine waters later: the gauge shows its trigger, not RAW.
+    expect(fieldReportToReserve({ ...report, triggerMm: 81 }).thresholdMm).toBe(63);
+  });
+
+  it("counts extra passes up to the refill target, not to field capacity", () => {
+    // 47 mm depleted but only 20 mm to reach the target: one 30 mm pass is enough.
+    expect(refillPlan(47, 30)).not.toBeNull();
+    expect(refillPassesNote({ depletionMm: 47, toTargetMm: 20, irrigateMm: 30 })).toBeNull();
+    expect(refillPassesNote({ depletionMm: 47, irrigateMm: 30 })).not.toBeNull();
   });
 });

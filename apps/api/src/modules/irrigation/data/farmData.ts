@@ -4,6 +4,7 @@
 
 import type { CropParams, CropPhases } from "../engine/cropModel";
 import type { SoilWaterClass } from "../engine/soil";
+import type { CropKy } from "../engine/waterTarget";
 
 export type IsoDate = string;
 export type OperationStatus = "draft" | "planned" | "confirmed";
@@ -363,6 +364,8 @@ export interface FarmData {
   getCropStages(code: string): Promise<CropStage[]>;
   /** FAO-56 values of a crop (degree-day base, Kc, roots, p), or null when a table lacks it. */
   getCropParams(code: string): Promise<CropParams | null>;
+  /** FAO-33 Ky by growth period (fao33_ky), or null when the crop has no FAO value. */
+  getCropKy(code: string): Promise<CropKy | null>;
   /** Phase ends in degree-days: the variety group's row, else the crop's default row, else null. */
   getCropPhases(
     code: string,

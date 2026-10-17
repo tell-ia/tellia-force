@@ -2,6 +2,7 @@ import { HTTPException } from "hono/http-exception";
 import { notFound } from "./supabaseFarmData";
 import type { CropParams } from "../engine/cropModel";
 import type { SoilWaterClass } from "../engine/soil";
+import type { CropKy } from "../engine/waterTarget";
 import type {
   CropPhaseRow,
   CropRef,
@@ -46,6 +47,8 @@ export interface FarmFixture {
   irrigations: IrrigationOperation[];
   /** FAO-56 crop values keyed by crop code. Missing = the crop has none. */
   cropParams?: Record<string, CropParams>;
+  /** FAO-33 Ky keyed by crop code. Missing = no FAO value. */
+  cropKy?: Record<string, CropKy>;
   /** crop_phase_gdd rows; earlinessGroup null = default row of the crop. */
   cropPhases?: CropPhaseRow[];
   /** fao56_soil_water rows. */
@@ -118,6 +121,7 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
     getCropStages: async (code) =>
       [...(f.cropStages[code] ?? [])].sort((a, b) => a.seasonFraction - b.seasonFraction),
     getCropParams: async (code) => f.cropParams?.[code] ?? null,
+    getCropKy: async (code) => f.cropKy?.[code] ?? null,
     getCropPhases: async (code, earlinessGroup) =>
       pickCropPhases(f.cropPhases ?? [], code, earlinessGroup),
     getSoilWaterClasses: async () => f.soilClasses ?? [],

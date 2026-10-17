@@ -3,11 +3,14 @@ import type { DayBalance, Decision, FieldReport } from "@tellia/shared/irrigatio
 import type { Phase } from "./cropModel";
 import { addDays, daysBetween, round1, round2 } from "./util";
 import { type IrrigationInput, runWaterBalance, type WeatherInput } from "./waterBalance";
+import { triggerDepletion, type WaterTarget } from "./waterTarget";
 
 /** The field's irrigation system, as the engine needs it. */
 export interface ReportSystem {
   /** Share of the pumped water that reaches the roots. */
   efficiency: number;
+  /** Smallest gross dose worth a pass, mm. Null or unset = no floor. */
+  doseMinMm?: number | null;
   /** Largest gross dose of one pass, mm. Null = no cap. */
   doseMaxMm: number | null;
   /** Days the system needs to come back to a field. Null = no plan_irrigation. */
@@ -36,6 +39,8 @@ export interface ReportInput {
   startDepletion?: number;
   /** Dry region: the whole profile starts this share empty (see runWaterBalance). */
   dryStart?: { share: number; tawMax: number } | null;
+  /** Trigger and refill target of the stage. Unset = trigger at RAW, refill to field capacity. */
+  target?: WaterTarget | null;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -89,11 +94,25 @@ export function buildFieldReport(input: ReportInput): FieldReport {
       .reduce((s, d) => s + d.rain, 0),
   );
 
+  // Trigger: RAW, or later where the stage tolerates stress (Ks ≥ ksMin). Refill: to the
+  // stage's share of TAW, never to field capacity when a target is set (room for rain).
+  const ksMin = input.target?.ksMin ?? 1;
+  const refillShare = input.target?.refillShare ?? 1;
+  const relaxed = ksMin < 1;
+  const trigger = triggerDepletion(taw, raw, ksMin);
+  const toTarget = (dep: number, tawOf: number) =>
+    Math.max(0, Math.round(dep - (1 - refillShare) * tawOf));
+  const fillPct = Math.round(refillShare * 100);
+  const threshold = relaxed
+    ? `the ${Math.round((trigger / taw) * 100)}% threshold allowed before flowering`
+    : `the ${pPct}% stress threshold`;
+
   let decision: Decision;
   let daysUntil: number | null = null;
   let irrigateBy: string | null = null;
-  const need = Math.round(depletion);
-  /** Net mm to bring back to field capacity, for the decisions that water. */
+  /** Net mm from today's depletion back to the refill target. */
+  const need = toTarget(depletion, taw);
+  /** Net mm to bring back to the refill target, for the decisions that water. */
   let refill = 0;
 
   if (!season || !today || today.kc === null) {
@@ -102,7 +121,7 @@ export function buildFieldReport(input: ReportInput): FieldReport {
     decision = "not_irrigable";
   } else if (input.phase === "late" || input.phase === "mature") {
     decision = "crop_maturing";
-  } else if (reached(depletion, raw)) {
+  } else if (reached(depletion, trigger)) {
     if (frost) {
       decision = "frost_hold";
       refill = need;
@@ -115,34 +134,41 @@ export function buildFieldReport(input: ReportInput): FieldReport {
       irrigateBy = asOf;
     }
   } else {
-    // First day of the next 7 that ends at or above the next day's RAW: stress starts the
+    // First day of the next 7 that ends at or above the next day's trigger: stress starts the
     // morning after. p changes every day, and that morning (like Ks) uses its own RAW.
     const last = addDays(asOf, 6);
+    const triggerOf = (d: DayBalance) => triggerDepletion(d.taw, d.raw, ksMin);
     const hit = series.find((d, i) =>
-      d.date >= asOf && d.date <= last && reached(d.depletion, series[i + 1]?.raw ?? d.raw)
+      d.date >= asOf && d.date <= last && reached(d.depletion, triggerOf(series[i + 1] ?? d))
     );
     daysUntil = hit ? daysBetween(asOf, hit.date) + 1 : null;
     const round = system?.roundDays ?? null;
     if (hit && daysUntil !== null && round !== null && daysUntil <= round) {
       decision = "plan_irrigation";
-      refill = Math.round(hit.depletion);
+      refill = toTarget(hit.depletion, hit.taw);
       irrigateBy = addDays(asOf, daysUntil);
     } else {
       decision = "no_irrigation";
     }
   }
 
-  // Amounts: net = refill; gross = net ÷ efficiency, capped per pass (net = gross × efficiency
-  // after the cap). Without a system: efficiency 1 and the old cap on one application.
+  // Amounts: net = refill; gross = net ÷ efficiency, kept between the system's smallest and
+  // largest pass (net = gross × efficiency after that). Without a system: efficiency 1 and the
+  // old cap on one application.
   let irrigateMm = refill;
   let irrigateGrossMm = refill;
   let capped = false;
+  let raised = false;
   if (refill > 0 && system) {
     irrigateGrossMm = Math.round(refill / efficiency);
     if (system.doseMaxMm !== null && irrigateGrossMm > system.doseMaxMm) {
       irrigateGrossMm = system.doseMaxMm;
       irrigateMm = round1(irrigateGrossMm * efficiency);
       capped = true;
+    } else if (system.doseMinMm != null && irrigateGrossMm < system.doseMinMm) {
+      irrigateGrossMm = system.doseMinMm;
+      irrigateMm = round1(irrigateGrossMm * efficiency);
+      raised = true;
     }
   } else if (refill > 0) {
     const cap = input.maxApplicationMm;
@@ -155,6 +181,14 @@ export function buildFieldReport(input: ReportInput): FieldReport {
   const dose = `${irrigateGrossMm} mm` +
     (irrigateMm !== irrigateGrossMm ? ` (${irrigateMm} mm net)` : "");
   const tmin = today ? round1(today.tmin) : 0;
+  /** " to bring the reserve back to 80 % (a full refill would be 60 mm)", with a target. */
+  const fullMm = system ? Math.round(Math.round(depletion) / efficiency) : Math.round(depletion);
+  const fillNote = refillShare < 1
+    ? ` to bring the reserve back to ${fillPct} % (a full refill would be ${fullMm} mm)`
+    : "";
+  const minNote = raised ? ", the smallest pass of the system" : "";
+  /** "the 44 mm deficit", or "the 44 mm gap to 80 %" with a target. */
+  const gap = (mm: number) => refillShare < 1 ? `${mm} mm gap to ${fillPct} %` : `${mm} mm deficit`;
 
   let reason: string;
   let headline: string;
@@ -178,7 +212,7 @@ export function buildFieldReport(input: ReportInput): FieldReport {
           `Frost is forecast today (min ${tmin} °C): irrigate ${irrigateMm} mm once temperatures are above 0 °C, then re-check (deficit ${need} mm).`;
       } else if (capped) {
         reason =
-          `Frost is forecast today (min ${tmin} °C): irrigate ${dose} once temperatures are above 0 °C, then more passes (deficit ${need} mm).`;
+          `Frost is forecast today (min ${tmin} °C): irrigate ${dose} once temperatures are above 0 °C, then more passes (${gap(need)}).`;
       } else {
         reason =
           `Frost is forecast today (min ${tmin} °C): irrigate ${dose} once temperatures are above 0 °C.`;
@@ -193,14 +227,14 @@ export function buildFieldReport(input: ReportInput): FieldReport {
       break;
     case "irrigate_today": {
       reason =
-        `Root zone is ${pct}% depleted (${depStr} of ${tawStr} mm), above the ${pPct}% stress threshold, and only ${rain3} mm of rain is forecast in the next 3 days.`;
+        `Root zone is ${pct}% depleted (${depStr} of ${tawStr} mm), above ${threshold}, and only ${rain3} mm of rain is forecast in the next 3 days.`;
       const base = reason.replace(/\.$/, "");
       if (!system && capped) {
         reason = base + `; apply ${irrigateMm} mm today and re-check tomorrow`;
       } else if (capped) {
-        reason = base + `; apply ${dose} today, then more passes for the ${need} mm deficit.`;
+        reason = base + `; apply ${dose} today, then more passes for the ${gap(need)}.`;
       } else if (system) {
-        reason = base + `; apply ${dose} today.`;
+        reason = base + `; apply ${dose} today${minNote}${fillNote}.`;
       }
       headline = `${field.name}: irrigate ${irrigateGrossMm} mm today` +
         (!capped ? "." : system ? ", then more passes." : ", then re-check tomorrow.");
@@ -208,15 +242,16 @@ export function buildFieldReport(input: ReportInput): FieldReport {
     }
     case "plan_irrigation":
       reason =
-        `Root zone is ${pct}% depleted (${depStr} of ${tawStr} mm) and will pass the stress threshold in about ${
-          plural(daysUntil!, "day")
-        }: irrigate ${dose} by ${irrigateBy}` +
-        (capped ? `, then more passes for the ${refill} mm deficit.` : ".");
+        `Root zone is ${pct}% depleted (${depStr} of ${tawStr} mm) and will pass ${
+          relaxed ? threshold : "the stress threshold"
+        } in about ${plural(daysUntil!, "day")}: irrigate ${dose} by ${irrigateBy}` +
+        (capped ? `, then more passes for the ${gap(refill)}.` : `${minNote}${fillNote}.`);
       headline = `${field.name}: irrigate ${irrigateGrossMm} mm by ${irrigateBy}.`;
       break;
     case "no_irrigation":
-      reason =
-        `Root zone is only ${pct}% depleted (${depStr} of ${tawStr} mm), below the ${pPct}% stress threshold` +
+      reason = (relaxed && reached(depletion, raw)
+        ? `Root zone is ${pct}% depleted (${depStr} of ${tawStr} mm), past the ${pPct}% comfort threshold but below ${threshold}`
+        : `Root zone is only ${pct}% depleted (${depStr} of ${tawStr} mm), below ${threshold}`) +
         (daysUntil === null ? "." : `; irrigation expected in about ${daysUntil} days.`);
       headline = daysUntil === null
         ? `${field.name}: no irrigation needed this week.`
@@ -238,6 +273,9 @@ export function buildFieldReport(input: ReportInput): FieldReport {
     depletionMm: depStr,
     tawMm: tawStr,
     rawMm: round1(raw),
+    triggerMm: round1(trigger),
+    targetFillPct: fillPct,
+    toTargetMm: refill > 0 ? refill : need,
     depletionPct: pct,
     daysUntilIrrigation: daysUntil,
     rainNext3DaysMm: rain3,

@@ -50,6 +50,7 @@ import {
 } from "./engine/soil";
 import { addDays, daysBetween, round1, round2 } from "./engine/util";
 import type { IrrigationInput, WeatherInput } from "./engine/waterBalance";
+import { kyStageOf, type WaterTarget, waterTarget } from "./engine/waterTarget";
 import type { WeatherService } from "./weather/weatherService";
 
 export interface FieldMatch {
@@ -208,10 +209,34 @@ interface SeasonBase {
   asOf: string;
 }
 
-/** "Reel gun 1: 75 % of the pumped water reaches the roots, at most 40 mm per pass." */
+/** "Reel gun 1: 75 % of the pumped water reaches the roots, 20 to 40 mm per pass." */
 function systemNote(system: IrrigationSystem): string {
+  const { doseMinMm: min, doseMaxMm: max } = system;
+  const pass = max === null
+    ? (min === null ? "." : `, at least ${min} mm per pass.`)
+    : (min === null ? `, at most ${max} mm per pass.` : `, ${min} to ${max} mm per pass.`);
   return `${system.name}: ${Math.round(system.efficiency * 100)} % of the pumped water reaches ` +
-    "the roots" + (system.doseMaxMm === null ? "." : `, at most ${system.doseMaxMm} mm per pass.`);
+    "the roots" + pass;
+}
+
+const KY_STAGE_LABELS: Record<WaterTarget["stage"], string> = {
+  vegetative: "before flowering",
+  flowering: "flowering",
+  yield_formation: "after flowering",
+  ripening: "ripening",
+};
+
+/**
+ * "Stage before flowering (FAO-33 Ky 0.4): water once the crop loses 20 % of its transpiration,
+ * refill to 70 % of the reserve, not to field capacity."
+ */
+function targetNote(t: WaterTarget): string {
+  const ky = t.ky === null ? "no FAO-33 Ky" : `FAO-33 Ky ${t.ky}`;
+  const when = t.ksMin < 1
+    ? `water once the crop loses ${Math.round((1 - t.ksMin) * 100)} % of its transpiration`
+    : "water at the stress threshold";
+  return `Stage ${KY_STAGE_LABELS[t.stage]} (${ky}): ${when}, refill to ` +
+    `${Math.round(t.refillShare * 100)} % of the reserve, not to field capacity.`;
 }
 
 /** Stage name for people: "Flowering" once the flowering degree-days are reached in the window. */
@@ -427,11 +452,12 @@ export function createIrrigationService(
     const { field, season, ref, irrigations, asOf } = base;
     const { phases } = crop;
     const to = addDays(asOf, 7);
-    const [soil, classes, system, farm, series] = await Promise.all([
+    const [soil, classes, system, farm, ky, series] = await Promise.all([
       data.getSoil(field.id),
       memoized(memo, "soilClasses", () => data.getSoilWaterClasses()),
       data.getIrrigationSystem(field.id),
       memoized(memo, "farm", () => data.getFarm()),
+      memoized(memo, `ky:${season.cropCode}`, () => data.getCropKy(season.cropCode)),
       memoized(
         memo,
         `series:${season.sowingDate}:${to}:${params.tBaseC}`,
@@ -488,6 +514,8 @@ export function createIrrigationService(
     // Phase, roots and window of the morning: they drive the decision and the stage.
     const morningDay = cropDay(params, phases, morning);
     const flowered = phases.flowering !== null && morning >= phases.flowering;
+    // FAO-33 Ky of the stage: when to water and how full to refill.
+    const target = waterTarget(kyStageOf(morningDay, flowered, phases.flowering !== null), ky);
 
     // Start date of each growth phase on the degree-day axis. Past/near dates come
     // from the weather series; a phase past the horizon is projected from the mean
@@ -534,6 +562,7 @@ export function createIrrigationService(
       (params.tMaxCapC === null ? "." : `, Tmax capped at ${params.tMaxCapC} °C.`),
       ...(crop.method ? [`Crop stages: ${crop.method}`] : []),
       system ? systemNote(system) : "No irrigation system recorded: pumped water counted in full.",
+      targetNote(target),
     ];
     const firstForecast = series.find((d) => d.source === "open-meteo");
     if (firstForecast) {
@@ -574,12 +603,14 @@ export function createIrrigationService(
         system: system
           ? {
             efficiency: system.efficiency,
+            doseMinMm: system.doseMinMm,
             doseMaxMm: system.doseMaxMm,
             roundDays: system.roundDays,
           }
           : null,
         phase: morningDay.phase,
         dryStart,
+        target,
       },
     };
   }

@@ -71,6 +71,12 @@ export const FieldReportSchema = z.object({
   depletionMm: z.number(),
   tawMm: z.number(),
   rawMm: z.number(),
+  /** Depletion that triggers watering, mm: RAW, or more before flowering (stress tolerated). */
+  triggerMm: z.number().optional(),
+  /** Share of TAW a watering refills to, integer percent (100 = field capacity). */
+  targetFillPct: z.number().int().optional(),
+  /** Net mm from the depletion back to the refill target (before the per-pass cap). */
+  toTargetMm: z.number().optional(),
   /** Integer percent of TAW. */
   depletionPct: z.number().int(),
   daysUntilIrrigation: z.number().int().nullable(),
