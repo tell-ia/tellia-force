@@ -29,6 +29,10 @@
   (Delete? / Delete / Cancel), "Deleting…", a "Couldn't delete" alert to retry; state in the tested
   `lib/rowDelete.ts` reducer. After a delete the field page reloads the log + report, the Log screen the
   log + report + simulation (not while another watering shows as Saved; Undo reloads then). Web: 94.
+- 2026-10-17 Delete review fixes: one change at a time on the Log screen (a log delete vs Confirm/Undo
+  raced), an untouched dose follows the reloaded advice (`formDose`), focus back to a trash after
+  Cancel/error/delete + "Watering deleted." status (`refocusRow`), a failed report reload keeps the
+  page (`useAsync` `keepDataOnError`). Web: 103.
 
 ## In progress
 

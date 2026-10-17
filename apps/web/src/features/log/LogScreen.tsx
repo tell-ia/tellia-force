@@ -39,7 +39,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const parcelId = picked ?? action?.id ?? null;
 
   // Bumped after a watering is deleted from the log: the report and the simulation (they count
-  // past waterings) reload in place, keeping the form as it is.
+  // past waterings) reload in place, keeping the user's edits (an untouched dose follows the advice).
   const [waterVersion, setWaterVersion] = useState(0);
   // A failed reload keeps the screen (the error shows above the form).
   const { data, error } = useAsync<ParcelReport | null>(
