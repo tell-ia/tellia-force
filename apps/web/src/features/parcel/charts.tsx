@@ -202,34 +202,42 @@ export function CropStageTimeline({ cropStage }: { cropStage: CropTimeline }) {
 
 // ---- Next 5 days ----------------------------------------------------------
 
-export function NextDaysTable({ days }: { days: NextDay[] }) {
-  const cols = "54px 34px minmax(0, 1fr) 52px";
+export function NextDaysTable({ days, hasPlan }: { days: NextDay[]; hasPlan?: boolean }) {
+  const cols = "46px minmax(0, 1fr) 88px";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <Label>Next 5 days</Label>
         <span style={{ fontSize: 12, color: v("ink2") }}>% of usable reserve</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, gap: "0 10px", alignItems: "center", fontSize: 11, color: v("ink2"), paddingBottom: 4, borderBottom: `1px solid ${v("line")}` }}>
-        <span>Day</span>
-        <span style={{ textAlign: "right" }}>Max</span>
-        <span>Without water</span>
-        <span style={{ textAlign: "right" }}>+ watered</span>
+      {/* legend — same colours as the water-balance chart */}
+      <div style={{ display: "flex", gap: 14, fontSize: 11, color: v("ink2") }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: v("rain") }} />rain only
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: v("brand") }} />+ {hasPlan ? "the plan" : "watering"}
+        </span>
       </div>
       {days.map((d) => {
-        const low = d.pctNoWater < 55;
+        const low = d.pctWatered < 55;
+        const added = Math.max(0, d.pctWatered - d.pctNoWater);
         return (
           <div key={d.day} style={{ display: "grid", gridTemplateColumns: cols, gap: "0 10px", alignItems: "center", minHeight: 34, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
             <span style={{ fontWeight: 600 }}>{d.day}</span>
-            <span style={{ textAlign: "right", color: v("ink2") }}>{d.tempMax != null ? `${d.tempMax}°` : ""}</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ position: "relative", flex: 1, height: 8, borderRadius: 4, background: v("sunk") }}>
-                <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 4, width: `${d.pctNoWater}%`, background: low ? v("act") : v("water") }} />
-                <span style={{ position: "absolute", left: "55%", top: -3, bottom: -3, width: 2, background: v("ink"), opacity: 0.6 }} />
-              </span>
-              <span style={{ width: 32, textAlign: "right", fontWeight: 600, color: low ? v("act") : v("ink") }}>{d.pctNoWater}%</span>
+            <span style={{ position: "relative", height: 10, borderRadius: 5, background: v("sunk") }}>
+              {/* reserve from rain alone (blue, like the chart's rain) */}
+              <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 5, width: `${d.pctNoWater}%`, background: v("rain") }} />
+              {/* what the recommended irrigation adds (green, like the plan) */}
+              <span style={{ position: "absolute", left: `${d.pctNoWater}%`, top: 0, bottom: 0, width: `${added}%`, background: v("brand") }} />
+              {/* comfort threshold */}
+              <span style={{ position: "absolute", left: "55%", top: -3, bottom: -3, width: 2, background: v("ink"), opacity: 0.6 }} />
             </span>
-            <span style={{ textAlign: "right", fontWeight: 600, color: v("water") }}>{d.pctWatered}%</span>
+            <span style={{ textAlign: "right", fontWeight: 600 }}>
+              <span style={{ color: v("rain") }}>{d.pctNoWater}</span>
+              <span style={{ color: v("ink2") }}>→</span>
+              <span style={{ color: low ? v("act") : v("brand") }}>{d.pctWatered}%</span>
+            </span>
           </div>
         );
       })}

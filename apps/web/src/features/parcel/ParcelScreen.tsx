@@ -106,9 +106,9 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
 
           {data.nextDays && (
             <SectionCard style={{ gap: 10 }}>
-              <NextDaysTable days={data.nextDays} />
+              <NextDaysTable days={data.nextDays} hasPlan={!!data.plan} />
               <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
-                Comfort threshold 55%. Right column: {data.plan ? "following the refill plan (rain included)" : `with the ${data.recommendation.netMm} mm net`}.
+                Each bar: reserve from rain alone, then the recommended {data.plan ? "plan" : "watering"} on top — rain counts in both. Comfort threshold at the tick (55%).
               </div>
             </SectionCard>
           )}
