@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Mic } from "lucide-react";
+import { Check } from "lucide-react";
 import type { FarmToday, ParcelReport } from "@tellia/shared";
 import { getFarmToday, getParcelReport, recordIrrigation, simulateDose, type DoseSim } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
@@ -20,8 +20,6 @@ import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
 import { Loader } from "../../components/ui/Loader";
-
-const WAVE = [10, 18, 30, 22, 14, 26, 38, 30, 20, 12, 22, 34, 42, 28, 18, 10, 16, 26, 36, 24, 14, 20, 30, 18, 10, 14, 8, 6];
 
 export function LogScreen() {
   const { farm } = useFarm();
@@ -98,7 +96,7 @@ export function LogScreen() {
     if (!parcelId) return;
     setLogged(true);
     // LIVE: records a confirmed irrigation → counts in the next report/advice.
-    void recordIrrigation({ parcelId, date: asOf, grossMm: gross, source: "voice" });
+    void recordIrrigation({ parcelId, date: asOf, grossMm: gross, source: "app" });
   };
 
   if (loading || !data || amount === null) {
@@ -106,7 +104,7 @@ export function LogScreen() {
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "12px 16px 20px" }}>
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, padding: "4px 4px 0" }}>
           <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 34 }}>Log watering</span>
-          <span style={{ fontSize: 13, color: v("ink2") }}>Speak it, check it, save it.</span>
+          <span style={{ fontSize: 13, color: v("ink2") }}>Log what you applied — the reserve updates.</span>
         </div>
         <Loader />
       </div>
@@ -126,27 +124,6 @@ export function LogScreen() {
           <span style={{ fontSize: 14, fontWeight: 600 }}>Saved. The reserve is updated.</span>
         </div>
       )}
-
-      {/* Voice capture (recording mocked) */}
-      <section style={{ background: "#234534", color: "#F6F3E8", borderRadius: radius.hero, padding: "18px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button type="button" aria-label="Hold to speak" style={{ width: 64, height: 64, flex: "none", borderRadius: 32, border: 0, background: "#F6F3E8", color: "#234534", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 8px rgba(246, 243, 232, 0.14)", cursor: "pointer" }}>
-            <Mic size={26} />
-          </button>
-          <div aria-hidden="true" style={{ flex: 1, display: "flex", alignItems: "center", gap: 3, height: 44 }}>
-            {WAVE.map((h, i) => (
-              <span key={i} style={{ flex: 1, height: h, borderRadius: 2, background: "#F6F3E8" }} />
-            ))}
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: "#C7D8CC" }}>Heard · 0:05</span>
-          <span style={{ fontFamily: font.display, fontWeight: 500, fontSize: 24, lineHeight: 1.15 }}>
-            “{gross} millimetres on {data.name}, this evening, with the reel gun.”
-          </span>
-          <span style={{ fontSize: 12, color: "#C7D8CC" }}>Read as {gross} mm at the gun ≈ {net} mm reaching the soil.</span>
-        </div>
-      </section>
 
       {/* Parsed details */}
       <section aria-label="Details" style={{ background: v("surface"), border: `1px solid ${v("line")}`, borderRadius: radius.section, padding: "6px 16px", display: "flex", flexDirection: "column" }}>

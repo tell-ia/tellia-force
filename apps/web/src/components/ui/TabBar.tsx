@@ -1,4 +1,4 @@
-import { Home, Mic, MessageCircle } from "lucide-react";
+import { Home, Droplet, MessageCircle } from "lucide-react";
 import type { ComponentType } from "react";
 import { navigate, type RouteName } from "../../app/router";
 import { v } from "../../theme/tokens";
@@ -6,7 +6,7 @@ import { v } from "../../theme/tokens";
 const TABS: { name: RouteName; label: string; Icon: ComponentType<{ size?: number }> }[] = [
   { name: "today", label: "Today", Icon: Home },
   { name: "chat", label: "Chat", Icon: MessageCircle },
-  { name: "log", label: "Log", Icon: Mic },
+  { name: "log", label: "Log", Icon: Droplet },
 ];
 
 export function TabBar({ active }: { active: RouteName }) {

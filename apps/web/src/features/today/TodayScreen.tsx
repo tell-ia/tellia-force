@@ -140,18 +140,24 @@ function ActionCard({ p }: { p: ParcelSummary }) {
 
 function ParcelRow({ p }: { p: ParcelSummary }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={() => navigate(`parcel/${p.id}`)}
       style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         gap: 12,
         minHeight: 64,
+        width: "100%",
+        textAlign: "left",
         boxSizing: "border-box",
+        color: v("ink"),
         background: v("surface"),
         border: `1px solid ${v("line")}`,
         borderRadius: radius.card,
         padding: "12px 16px",
+        cursor: "pointer",
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -159,6 +165,6 @@ function ParcelRow({ p }: { p: ParcelSummary }) {
         <span style={{ fontSize: 13, color: v("ink2") }}>{p.cropName}{p.stageLabel ? ` · ${p.stageLabel}` : ""}</span>
       </div>
       <StatusPill tone={p.status === "ok" ? "watch" : "ok"} label={p.badgeLabel} />
-    </div>
+    </button>
   );
 }

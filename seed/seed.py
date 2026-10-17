@@ -385,9 +385,9 @@ def build_farm(ds, code, farm_pk, today, weather_rows, catalogue, main_phone, pr
     origin = prof['layout_origin'] or region_centroid
     weather = ag.Weather(weather_rows)
     irrigated_years = ds.irrigated_years([p['parcel_id'] for p in parcels])
-    irrigable = {p['parcel_id'] for p in parcels
-                 if p['crop_current'] == 'MAIZ'
-                 or (p['crop_current'] == 'SUNF' and irrigated_years.get(p['parcel_id'], 0) >= IRRIGABLE_SUNF_MIN_YEARS)}
+    # The demo farms are irrigated operations (agronomist call): every field is
+    # irrigable and shares the farm's reel gun. `irrigated_years` kept for the record.
+    irrigable = {p['parcel_id'] for p in parcels}
     out = defaultdict(list)
     tenant = dict(farm_id=farm_pk)
 

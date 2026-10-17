@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Mic } from "lucide-react";
+import { ArrowRight, Clock } from "lucide-react";
 import type { Recommendation } from "@tellia/shared";
 import { navigate } from "../../app/router";
 import { font, hero, radius } from "../../theme/tokens";
@@ -35,15 +35,9 @@ export function RecommendationCard({ rec }: { rec: Recommendation }) {
             <span>{rec.secondPass}</span>
           </div>
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-          <button type="button" onClick={() => navigate("log")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 12, border: 0, background: hero.ink, color: HERO_INK, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
-            <Mic size={18} />
-            Log watering
-          </button>
-          <button type="button" onClick={() => navigate("chat")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 12, border: `1.5px solid ${hero.line}`, background: "transparent", color: hero.ink, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
-            Why?
-          </button>
-        </div>
+        <button type="button" onClick={() => navigate("chat")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 12, border: `1.5px solid ${hero.line}`, background: "transparent", color: hero.ink, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+          Why?
+        </button>
       </div>
     </section>
   );
