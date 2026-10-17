@@ -93,8 +93,8 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
                 <Label>Water balance · {data.series.at(0)?.dayLabel}–{data.series.at(-1)?.dayLabel} Jul</Label>
                 <span style={{ fontSize: 12, color: v("ink2") }}>mm</span>
               </div>
-              <WaterBalanceChart series={data.series} reserve={data.reserve} />
-              <BalanceLegend />
+              <WaterBalanceChart series={data.series} reserve={data.reserve} plan={data.plan} />
+              <BalanceLegend withPlan={!!data.plan} />
             </SectionCard>
           )}
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown } from "lucide-react";
-import type { BalancePoint, CropTimeline, NextDay, Reserve, SeasonBalance, Soil } from "@tellia/shared";
+import type { BalancePoint, CropTimeline, NextDay, RefillPlanSeries, Reserve, SeasonBalance, Soil } from "@tellia/shared";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, StatTile } from "../../components/ui/primitives";
 
@@ -50,7 +50,7 @@ export function ReserveGauge({ reserve }: { reserve: Reserve }) {
 
 // ---- Water balance chart --------------------------------------------------
 
-export function WaterBalanceChart({ series, reserve }: { series: BalancePoint[]; reserve: Reserve }) {
+export function WaterBalanceChart({ series, reserve, plan }: { series: BalancePoint[]; reserve: Reserve; plan?: RefillPlanSeries }) {
   const N = series.length;
   const cap = reserve.capacityMm;
   const dx = (312 - 30) / Math.max(1, N - 1);
@@ -68,6 +68,19 @@ export function WaterBalanceChart({ series, reserve }: { series: BalancePoint[];
   const areaPts = `${xAt(0).toFixed(1)},196 ${series.map((_, i) => resPt(i)).join(" ")} ${xAt(N - 1).toFixed(1)},196`;
 
   const today = series[todayIndex]!;
+
+  // Plan overlay: the reserve climbing back with the scheduled passes.
+  const planByDate = plan ? new Map(plan.series.map((p) => [p.date, p.reserveMm])) : null;
+  const planPts = planByDate
+    ? series
+        .map((p, i) =>
+          i >= todayIndex
+            ? `${xAt(i).toFixed(1)},${yRes(planByDate.get(p.date) ?? p.reserveMm).toFixed(1)}`
+            : null,
+        )
+        .filter(Boolean)
+        .join(" ")
+    : "";
 
   return (
     <svg viewBox="0 0 326 226" width="100%" role="img" aria-label={`Daily water in and out with the soil reserve line; reserve falls from ${reserve.availableMm} mm today, crossing the ${reserve.thresholdMm} mm threshold ${reserve.thresholdLabel}`} style={{ display: "block", marginLeft: -4, fontFamily: font.body }}>
@@ -107,6 +120,18 @@ export function WaterBalanceChart({ series, reserve }: { series: BalancePoint[];
       <circle cx={xAt(todayIndex)} cy={yRes(today.reserveMm)} r="5" fill={v("water")} stroke={v("surface")} strokeWidth={2.5} />
       <text x={xAt(todayIndex) - 6} y={yRes(today.reserveMm) - 6} textAnchor="end" fill={v("ink")} fontSize="11" fontWeight={600}>{Math.round(today.reserveMm)}</text>
 
+      {plan && (
+        <>
+          {plan.passes.map((pass, k) => {
+            const i = series.findIndex((d) => d.date === pass.date);
+            if (i < 0) return null;
+            const h = pass.grossMm * 1.1;
+            return <rect key={`plan${k}`} x={xAt(i) - 4.5} y={50 - h} width="9" height={h} rx="2" fill={v("brand")} opacity={0.85} />;
+          })}
+          <polyline points={planPts} fill="none" stroke={v("brand")} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        </>
+      )}
+
       {series.map((p, i) =>
         i % 2 === 0 ? (
           <text key={`lab${i}`} x={xAt(i)} y="220" textAnchor="middle" fill={i === todayIndex ? v("ink") : v("ink2")} fontSize={i === todayIndex ? 11 : 10} fontWeight={i === todayIndex ? 700 : 400}>{p.dayLabel}</text>
@@ -116,16 +141,18 @@ export function WaterBalanceChart({ series, reserve }: { series: BalancePoint[];
   );
 }
 
-export function BalanceLegend() {
+export function BalanceLegend({ withPlan }: { withPlan?: boolean }) {
   const item = (swatch: React.ReactNode, label: string) => (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{swatch}{label}</span>
   );
   const sq = (c: string) => <span style={{ width: 10, height: 10, borderRadius: 2, background: c, display: "inline-block" }} />;
+  const line = (c: string) => <span style={{ width: 16, height: 3, borderRadius: 2, background: c, display: "inline-block" }} />;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 12, color: v("ink2") }}>
       {item(sq(v("water")), "Irrigation")}
       {item(sq(v("cons")), "Crop use")}
-      {item(<span style={{ width: 16, height: 3, borderRadius: 2, background: v("water"), display: "inline-block" }} />, "Reserve")}
+      {item(line(v("water")), withPlan ? "Reserve, no water" : "Reserve")}
+      {withPlan && item(line(v("brand")), "With the plan")}
       {item(<span style={{ width: 16, height: 0, borderTop: `2px dashed ${v("act")}`, display: "inline-block" }} />, "Comfort threshold")}
     </div>
   );

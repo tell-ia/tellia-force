@@ -104,7 +104,7 @@ const round1 = (n: number): number => Math.round(n * 10) / 10;
 const dayOfMonth = (iso: string): string => String(Number(iso.split("-")[2] ?? 0));
 
 /** Engine DayBalance → chart BalancePoint. reserve = TAW − depletion. */
-function toBalancePoint(d: DayBalance, asOf: string): BalancePoint {
+export function toBalancePoint(d: DayBalance, asOf: string): BalancePoint {
   return {
     date: d.date,
     dayLabel: dayOfMonth(d.date),

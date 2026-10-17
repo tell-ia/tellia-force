@@ -102,6 +102,17 @@ export const BalancePointSchema = z.object({
   forecast: z.boolean(),
 });
 
+/** The engine-computed refill plan: each pass + the resulting reserve curve. */
+export const RefillPassSchema = z.object({
+  date: IsoDateSchema,
+  grossMm: z.number(),
+});
+export const RefillPlanSchema = z.object({
+  series: z.array(BalancePointSchema),
+  passes: z.array(RefillPassSchema),
+});
+export type RefillPlanSeries = z.infer<typeof RefillPlanSchema>;
+
 export const CropStageStepSchema = z.object({
   label: z.string(), // "Flowering"
   weight: z.number(), // flex weight on the timeline
@@ -165,6 +176,8 @@ export const ParcelReportSchema = z.object({
   // lightweight live path (from FieldReport) until that endpoint ships. The UI
   // renders each only when present.
   series: z.array(BalancePointSchema).optional(),
+  /** Multi-pass refill plan (engine-simulated), when the field needs several passes. */
+  plan: RefillPlanSchema.optional(),
   cropStage: CropTimelineSchema.optional(),
   soil: SoilSchema.optional(),
   seasonBalance: SeasonBalanceSchema.optional(),
