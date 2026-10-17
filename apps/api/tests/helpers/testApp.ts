@@ -128,6 +128,7 @@ export async function makeTestMastra(
       "farm-advice": workflows.farmAdvice,
       "simulate-scenario": workflows.simulateScenario,
       "record-irrigation": workflows.recordIrrigation,
+      "correct-irrigation": workflows.correctIrrigation,
       "morning-warmup": workflows.morningWarmup,
     },
     ...(opts.model

@@ -12,6 +12,7 @@ import type {
   FarmDirectory,
   FarmOperation,
   Field,
+  IrrigationChange,
   IrrigationOperation,
   IrrigationSystem,
   Member,
@@ -362,6 +363,16 @@ export function toOperationInsert(
   };
 }
 
+/** Columns a correction changes on an irrigation row, with its `updated_at`. */
+export function toOperationUpdate(change: IrrigationChange, now: Date): Row {
+  return {
+    op_date: change.date,
+    water_mm: change.mm,
+    crop_season_id: change.seasonId,
+    updated_at: now.toISOString(),
+  };
+}
+
 type Result = { data: unknown; error: { message: string } | null };
 
 const fail = (message: string): never => {
@@ -624,6 +635,14 @@ export function createSupabaseFarmData(db: SupabaseClient, farmId: number): Farm
     async setIrrigationStatus(operationId, status) {
       const r = await one(
         db.from("operation").update({ status, updated_at: new Date().toISOString() })
+          .eq("id", operationId).eq("farm_id", farmId).eq("op_type", "irrigation").select("*"),
+      );
+      if (!r) throw notFound(operationId);
+      return mapOperation(r);
+    },
+    async updateIrrigation(operationId, change) {
+      const r = await one(
+        db.from("operation").update(toOperationUpdate(change, new Date()))
           .eq("id", operationId).eq("farm_id", farmId).eq("op_type", "irrigation").select("*"),
       );
       if (!r) throw notFound(operationId);

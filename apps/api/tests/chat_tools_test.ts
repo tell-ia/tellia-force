@@ -1,7 +1,13 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
-import { FieldDetailsSchema, FieldJournalSchema, ProductCheckSchema } from "@tellia/shared/farm";
+import {
+  FieldDetailsSchema,
+  FieldJournalSchema,
+  IrrigationConfirmationSchema,
+  IrrigationCorrectionSchema,
+  ProductCheckSchema,
+} from "@tellia/shared/farm";
 import { createAdvisorTools } from "../src/modules/chat/tools.ts";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
 import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
@@ -41,6 +47,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
     [
       "checkProductUse",
       "confirmIrrigation",
+      "correctIrrigation",
       "getFarmAdvice",
       "getFieldDetails",
       "getFieldJournal",
@@ -57,6 +64,7 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
   assertEquals(tools.getFieldDetails.id, "get_field_details");
   assertEquals(tools.getFieldJournal.id, "get_field_journal");
   assertEquals(tools.checkProductUse.id, "check_product_use");
+  assertEquals(tools.correctIrrigation.id, "correct_irrigation");
 });
 
 Deno.test("tool texts name other tools by key (what the model sees), never by id", opts, async () => {
@@ -334,4 +342,156 @@ Deno.test("checkProductUse: a farm 2 member never reads farm 1", opts, async () 
   assert(c.warnings[0].includes("E-Phy covers France only"));
   const fromFarm1 = await run(tools.checkProductUse, { product: "AS-HER-07", fieldId: 10 }, 1);
   assertEquals(fromFarm1.status, "not_found");
+});
+
+// --- correctIrrigation + confirmIrrigation ---------------------------------------
+
+Deno.test(
+  "correctIrrigation then confirmIrrigation updates; depletion moves by the mm difference",
+  opts,
+  async () => {
+    const { data, service, tools, run } = await setup();
+    // Yesterday's 30 mm: no water stress in between, so the balance moves by exactly 10 mm.
+    const { operationId } = await service.recordIrrigation({
+      fieldId: 10,
+      date: "2026-07-04",
+      mm: 30,
+      memberId: 1,
+      source: "web",
+    });
+    const before = await service.getFieldReport(10);
+    const asked = IrrigationCorrectionSchema.parse(
+      await run(tools.correctIrrigation, { operationId, action: "update", mm: 20 }, 1),
+    );
+    assertEquals(asked.status, "awaiting_confirmation");
+    assertEquals(asked.fieldName, "La Vallée");
+    assertEquals(asked.action, "update");
+    assertEquals(asked.before, { date: "2026-07-04", mm: 30 });
+    assertEquals(asked.after, { date: "2026-07-04", mm: 20 });
+    assertEquals(
+      asked.summary,
+      "Change the irrigation on La Vallée from 30 mm on 2026-07-04 to 20 mm on 2026-07-04?",
+    );
+    assertEquals((await data.getIrrigation(operationId))?.mm, 30, "nothing changes before yes");
+    const done = IrrigationConfirmationSchema.parse(
+      await run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 1),
+    );
+    assertEquals(done.status, "updated");
+    assertEquals([done.record?.operationId, done.record?.mm], [operationId, 20]);
+    const after = await service.getFieldReport(10);
+    assertEquals(after.depletionMm, Math.round((before.depletionMm + 10) * 10) / 10);
+  },
+);
+
+Deno.test("correctIrrigation delete then confirmIrrigation deletes", opts, async () => {
+  const { data, tools, run } = await setup();
+  const asked = await run(tools.correctIrrigation, { operationId: 1, action: "delete" }, 1);
+  assertEquals(asked.after, null);
+  assertEquals(asked.summary, "Delete the irrigation of 30 mm on La Vallée on 2026-06-21?");
+  const done = await run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 1);
+  assertEquals(done, { status: "deleted" });
+  assertEquals(await data.getIrrigation(1), null);
+  const history = await run(tools.getIrrigationHistory, { fieldId: 10 }, 1);
+  assertEquals(history.records, []);
+});
+
+Deno.test("confirmIrrigation false on a correction changes nothing", opts, async () => {
+  const { data, tools, run } = await setup();
+  const asked = await run(tools.correctIrrigation, { operationId: 1, action: "update", mm: 25 }, 1);
+  const done = await run(tools.confirmIrrigation, { runId: asked.runId, confirmed: false }, 1);
+  assertEquals(done, { status: "cancelled" });
+  const op = await data.getIrrigation(1);
+  assertEquals([op?.date, op?.mm, op?.status], ["2026-06-21", 30, "confirmed"]);
+  // The run is finished: answering again is refused.
+  await assertRejects(
+    () => run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 1),
+    Error,
+    "no longer pending",
+  );
+  assertEquals((await data.getIrrigation(1))?.mm, 30);
+});
+
+Deno.test(
+  "confirmIrrigation on a correction: a foreign member is refused, the owner still answers",
+  opts,
+  async () => {
+    const { data, tools, run } = await setup();
+    const asked = await run(tools.correctIrrigation, { operationId: 1, action: "delete" }, 1);
+    // Thomas (same farm), then Claire's id claimed with farm 2 in the context.
+    await assertRejects(
+      () => run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 2),
+      Error,
+      "another member",
+    );
+    await assertRejects(
+      () => run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 1, 2),
+      Error,
+      "another member",
+    );
+    assertEquals((await data.getIrrigation(1))?.mm, 30);
+    const done = await run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 1);
+    assertEquals(done.status, "deleted");
+  },
+);
+
+Deno.test(
+  "correctIrrigation: a farm 2 member never touches farm 1's irrigation",
+  opts,
+  async () => {
+    const { registry, data, tools, run } = await setup();
+    await assertRejects(
+      () => run(tools.correctIrrigation, { operationId: 1, action: "delete" }, 5),
+      Error,
+      "not found",
+    );
+    await assertRejects(
+      () => run(tools.correctIrrigation, { operationId: 900, action: "update", mm: 20 }, 1),
+      Error,
+      "not found",
+    );
+    assertEquals((await data.getIrrigation(1))?.mm, 30);
+    // Elena corrects her own farm's record.
+    const asked = await run(
+      tools.correctIrrigation,
+      { operationId: 900, action: "update", mm: 20 },
+      5,
+    );
+    assertEquals(asked.fieldName, "El Pozo");
+    await run(tools.confirmIrrigation, { runId: asked.runId, confirmed: true }, 5);
+    assertEquals((await (await registry.forFarm(2)).data.getIrrigation(900))?.mm, 20);
+  },
+);
+
+Deno.test("correctIrrigation refuses a draft, a non-irrigation and bad input", opts, async () => {
+  const { service, tools, run } = await setup();
+  const draft = await service.createDraftIrrigation({
+    fieldId: 10,
+    date: "2026-07-04",
+    mm: 10,
+    memberId: 1,
+  });
+  await assertRejects(
+    () => run(tools.correctIrrigation, { operationId: draft.operationId, action: "delete" }, 1),
+    Error,
+    "only confirmed irrigations",
+  );
+  await assertRejects(
+    () => run(tools.correctIrrigation, { operationId: 1003, action: "delete" }, 1),
+    Error,
+    "not found",
+  );
+  await assertRejects(
+    () => run(tools.correctIrrigation, { operationId: 1, action: "update", date: "2026-07-06" }, 1),
+    Error,
+    "future",
+  );
+  const zero = await run(tools.correctIrrigation, { operationId: 1, action: "update", mm: 0 }, 1);
+  assertEquals(zero.error, true);
+  const verb = await run(tools.correctIrrigation, { operationId: 1, action: "move" }, 1);
+  assertEquals(verb.error, true);
+  await assertRejects(
+    () => run(tools.correctIrrigation, { operationId: 1, action: "delete" }),
+    Error,
+    "member",
+  );
 });

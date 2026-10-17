@@ -22,6 +22,7 @@ import {
   mapSoilWaterClass,
   mapWeatherDay,
   toOperationInsert,
+  toOperationUpdate,
 } from "../src/modules/irrigation/data/supabaseFarmData";
 import { makeFarmFixture, makeSecondFarmFixture } from "./fixtures/farm.ts";
 import { MAIZE_EARLY_PHASES, MAIZE_PARAMS, REEL_GUN, SOIL_CLASSES } from "./fixtures/fao.ts";
@@ -157,6 +158,37 @@ Deno.test("toOperationInsert builds the snake_case row", () => {
   );
 });
 
+Deno.test("memory twin: updateIrrigation changes date, mm and season only", async () => {
+  const d = createMemoryFarmData(makeFarmFixture());
+  const op = await d.updateIrrigation(1, { date: "2026-06-22", mm: 25, seasonId: 109 });
+  assertEquals(op, {
+    operationId: 1,
+    fieldId: 10,
+    seasonId: 109,
+    date: "2026-06-22",
+    mm: 25,
+    status: "confirmed",
+    source: "import",
+    memberId: null,
+  });
+  assertEquals(await d.getIrrigation(1), op);
+});
+
+Deno.test("toOperationUpdate: the new date, mm and season, with updated_at", () => {
+  assertEquals(
+    toOperationUpdate(
+      { date: "2026-06-22", mm: 25, seasonId: 109 },
+      new Date("2026-07-05T08:00:00Z"),
+    ),
+    {
+      op_date: "2026-06-22",
+      water_mm: 25,
+      crop_season_id: 109,
+      updated_at: "2026-07-05T08:00:00.000Z",
+    },
+  );
+});
+
 Deno.test("toOperationInsert: origin is app for the REST source, assistant otherwise", () => {
   const base = {
     fieldId: 10,
@@ -192,10 +224,14 @@ Deno.test("averageByDay averages per MM-DD and folds Feb 29 into Feb 28", () => 
   assertEquals(m.has("03-01"), false);
 });
 
-Deno.test("memory twin: missing id is a 404 on status and delete", async () => {
+Deno.test("memory twin: missing id is a 404 on status, update and delete", async () => {
   const d = createMemoryFarmData(makeFarmFixture());
   for (
-    const call of [() => d.setIrrigationStatus(9999, "confirmed"), () => d.deleteIrrigation(9999)]
+    const call of [
+      () => d.setIrrigationStatus(9999, "confirmed"),
+      () => d.updateIrrigation(9999, { date: "2026-07-01", mm: 10, seasonId: 109 }),
+      () => d.deleteIrrigation(9999),
+    ]
   ) {
     const e = await assertRejects(call, HTTPException);
     assertEquals(e.status, 404);
@@ -229,7 +265,13 @@ Deno.test("supabase update/delete are scoped to the farm and op_type=irrigation,
   };
   // deno-lint-ignore no-explicit-any
   const d = createSupabaseFarmData({ from: () => qb } as any, 1);
-  for (const call of [() => d.setIrrigationStatus(5, "confirmed"), () => d.deleteIrrigation(5)]) {
+  for (
+    const call of [
+      () => d.setIrrigationStatus(5, "confirmed"),
+      () => d.updateIrrigation(5, { date: "2026-07-01", mm: 10, seasonId: 109 }),
+      () => d.deleteIrrigation(5),
+    ]
+  ) {
     calls.length = 0;
     const e = await assertRejects(call, HTTPException);
     assertEquals(e.status, 404);

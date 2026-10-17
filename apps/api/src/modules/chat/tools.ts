@@ -14,13 +14,22 @@ import {
   WeatherDaySchema,
 } from "@tellia/shared/irrigation";
 import {
+  CorrectionActionSchema,
   FieldDetailsSchema,
   FieldJournalSchema,
+  IrrigationConfirmationSchema,
+  IrrigationCorrectionSchema,
   JournalTypeSchema,
   ProductCheckSchema,
 } from "@tellia/shared/farm";
 import type { FarmRegistry } from "../irrigation/farmRegistry";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "./requestContext";
+
+/** Workflows that wait for the farmer's yes/no (confirmIrrigation), and the step that waits. */
+const CONFIRMABLE = [
+  { workflowId: "record-irrigation", step: "confirm" },
+  { workflowId: "correct-irrigation", step: "confirm-correction" },
+] as const;
 
 /** The calling member's id from the request context; throws when absent. */
 export function memberIdFrom(ctx: { requestContext?: RequestContext<any> }): number {
@@ -179,11 +188,6 @@ export function createAdvisorTools(registry: FarmRegistry) {
     date: IsoDateSchema,
     mm: z.number(),
   });
-  const ConfirmOutput = z.object({
-    status: z.enum(["saved", "cancelled"]),
-    record: IrrigationRecordSchema.optional(),
-  });
-
   const recordIrrigation = createTool({
     id: "record_irrigation",
     description:
@@ -215,34 +219,86 @@ export function createAdvisorTools(registry: FarmRegistry) {
     },
   });
 
+  const correctIrrigation = createTool({
+    id: "correct_irrigation",
+    description:
+      "Change the day or the mm of an irrigation already recorded, or delete it, when the farmer says it was wrong. Find its operationId with getIrrigationHistory first. Nothing changes yet: it returns a summary; ask the farmer this summary as a yes/no question, then call confirmIrrigation with their answer.",
+    inputSchema: z.object({
+      operationId: z.number().int().describe(
+        "operationId of the irrigation to correct, from getIrrigationHistory.",
+      ),
+      action: CorrectionActionSchema.describe(
+        "update: change its day and/or mm; delete: remove it.",
+      ),
+      date: IsoDateSchema.optional().describe(
+        "update only: the right day, YYYY-MM-DD. Leave it out to keep the day.",
+      ),
+      mm: z.number().positive().max(200).optional().describe(
+        "update only: the right water applied, in mm. Leave it out to keep the mm.",
+      ),
+    }),
+    outputSchema: IrrigationCorrectionSchema,
+    execute: async ({ operationId, action, date, mm }, ctx) => {
+      const memberId = memberIdFrom(ctx);
+      if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
+      const run = await ctx.mastra.getWorkflow("correct-irrigation").createRun();
+      const result = await run.start({
+        inputData: { farmId: farmIdFrom(ctx), memberId, operationId, action, date, mm },
+        requestContext: ctx.requestContext,
+      });
+      if (result.status !== "suspended") throw new Error(failureMessage(result));
+      const p = result.suspendPayload?.["confirm-correction"] ?? result.suspendPayload;
+      return IrrigationCorrectionSchema.parse({
+        runId: run.runId,
+        status: "awaiting_confirmation",
+        summary: p.summary,
+        fieldName: p.fieldName,
+        action: p.action,
+        before: p.before,
+        after: p.after,
+      });
+    },
+  });
+
   const confirmIrrigation = createTool({
     id: "confirm_irrigation",
     description:
-      "Finish a recordIrrigation run, only with the farmer's explicit answer to its yes/no question: confirmed true saves the irrigation, false discards it. Never call it on your own initiative.",
+      "Finish a recordIrrigation or correctIrrigation run, only with the farmer's explicit answer to its yes/no question. confirmed true: saves the new irrigation (status saved) or applies the correction (updated or deleted); false: changes nothing (cancelled). Never call it on your own initiative.",
     inputSchema: z.object({
-      runId: z.string().describe("runId returned by recordIrrigation."),
+      runId: z.string().describe("runId returned by recordIrrigation or correctIrrigation."),
       confirmed: z.boolean(),
     }),
-    outputSchema: ConfirmOutput,
+    outputSchema: IrrigationConfirmationSchema,
     execute: async ({ runId, confirmed }, ctx) => {
       const memberId = memberIdFrom(ctx);
+      const farmId = farmIdFrom(ctx);
       if (!ctx.mastra) throw new Error("Mastra is not available to this tool");
-      const workflow = ctx.mastra.getWorkflow("record-irrigation");
+      // Mastra's run lookup filters on the workflow: only the workflow that owns the runId
+      // finds it.
+      let found;
+      for (const c of CONFIRMABLE) {
+        const workflow = ctx.mastra.getWorkflow(c.workflowId);
+        const state = await workflow.getWorkflowRunById(runId);
+        if (state) {
+          found = { workflow, state, step: c.step };
+          break;
+        }
+      }
+      if (!found) throw new Error("unknown confirmation");
+      const { workflow, state, step } = found;
       // Refuse before resuming, so a foreign attempt leaves the run suspended for its owner.
-      const state = await workflow.getWorkflowRunById(runId);
-      if (!state) throw new Error("unknown confirmation");
-      if (state.payload?.memberId !== memberId || state.payload?.farmId !== farmIdFrom(ctx)) {
+      if (state.payload?.memberId !== memberId || state.payload?.farmId !== farmId) {
         throw new Error("this confirmation belongs to another member");
       }
       if (state.status !== "suspended") throw new Error("this confirmation is no longer pending");
       const run = await workflow.createRun({ runId });
       const result = await run.resume({
-        step: "confirm",
+        step,
         resumeData: { confirmed },
         requestContext: ctx.requestContext,
       });
       if (result.status !== "success") throw new Error(failureMessage(result));
-      return ConfirmOutput.parse(result.result);
+      return IrrigationConfirmationSchema.parse(result.result);
     },
   });
 
@@ -300,5 +356,6 @@ export function createAdvisorTools(registry: FarmRegistry) {
     getFieldDetails,
     getFieldJournal,
     checkProductUse,
+    correctIrrigation,
   };
 }

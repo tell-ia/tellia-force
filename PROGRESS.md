@@ -6,6 +6,7 @@
   snake_case ids (15a5ffe). Offline suite: 220 passed. Old VAPI plan moved to `plans/`.
 - 2026-10-17 Task 1: `getFieldDetails` / `getFieldJournal` (phone `get_field_details` / `get_field_journal`), `@tellia/shared/farm`, `FarmData.listOperations` + twin + fixtures, `farmInfo.service.ts`, routing lines, tests. Offline suite: 239 passed.
 - 2026-10-17 Task 2: `checkProductUse` (phone `check_product_use`), `ProductCheck` in `@tellia/shared/farm`, `FarmData.listProducts` / `listProductUses` / `listJournalProductNames` + twin + E-Phy fixtures, `productCheck.service.ts`, routing lines, tests. Offline suite: 261 passed.
+- 2026-10-17 Task 3: `correctIrrigation` (phone `correct_irrigation`), workflow `correct-irrigation`, `confirmIrrigation` resumes record or correction runs (status saved | cancelled | updated | deleted), `IrrigationCorrection` / `IrrigationConfirmation` in `@tellia/shared/farm`, `FarmData.updateIrrigation` + twin, service preview / update / delete, routing lines, tests. Offline suite: 284 passed.
 
 ## In progress
 
@@ -32,6 +33,18 @@
   "Herbicida A" became "Herbicide AS-HER-07 (synthetic)", like the DB.
 - `makeTestMastra` (tests) uses Mastra's `InMemoryStore`, not LibSQL: see Blockers.
   `makeTestChatApp` keeps LibSQL like the real server.
+- Corrections (Task 3): `confirmIrrigation` asks each confirmable workflow for the runId with
+  `getWorkflowRunById`. In Mastra 1.78 the storage lookup (LibSQL and in-memory) filters on the
+  workflow name, so only the owner finds the run; the owner checks run before any resume.
+- Only confirmed irrigations can be corrected: a draft or planned row is a 409; a missing id,
+  another farm's id or a journal row that is not an irrigation is a 404. An update must change
+  something and moves the record to the crop season of its new date.
+- The workflow applies a "yes" only if the record still has the values of the question
+  (otherwise it fails and changes nothing). "No" changes nothing.
+- Depletion moves by exactly the mm difference only without water stress between the record and
+  today; the tests correct yesterday's record (the fixture's 21 June record is under stress).
+- Phone result is flat: `status`, `fieldName`, `oldDate`/`oldMm`/`newDate`/`newMm` (update) or
+  `date`/`mm` (delete).
 
 ## Blockers
 - Needs human review, does not block the plan: the LibSQL native addon (`@libsql/client`

@@ -12,6 +12,7 @@ import type {
   FarmDirectory,
   FarmOperation,
   Field,
+  IrrigationChange,
   IrrigationOperation,
   IrrigationSystem,
   IsoDate,
@@ -145,6 +146,11 @@ export function createMemoryFarmData(fixture: FarmFixture): FarmData {
     setIrrigationStatus: async (id: number, status: OperationStatus) => {
       const op = find(id);
       op.status = status;
+      return { ...op };
+    },
+    updateIrrigation: async (id: number, { date, mm, seasonId }: IrrigationChange) => {
+      const op = find(id);
+      Object.assign(op, { date, mm, seasonId });
       return { ...op };
     },
     deleteIrrigation: async (id) => {

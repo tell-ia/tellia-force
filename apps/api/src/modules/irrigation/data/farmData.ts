@@ -228,6 +228,13 @@ export interface NewIrrigation {
   memberId: number | null;
 }
 
+/** New values of a corrected irrigation. `seasonId` is the crop season on the new date. */
+export interface IrrigationChange {
+  date: IsoDate;
+  mm: number;
+  seasonId: number;
+}
+
 /** The crop name in a language ("fr", "es", "it-IT"...), falling back to English. */
 export function cropNameIn(ref: CropRef, language: string): string {
   return ref.names[language.slice(0, 2).toLowerCase()] ?? ref.nameEn;
@@ -311,5 +318,7 @@ export interface FarmData {
   getIrrigation(operationId: number): Promise<IrrigationOperation | null>;
   createIrrigation(input: NewIrrigation): Promise<IrrigationOperation>;
   setIrrigationStatus(operationId: number, status: OperationStatus): Promise<IrrigationOperation>;
+  /** New date, mm and crop season of an irrigation of this farm; 404 when there is none. */
+  updateIrrigation(operationId: number, change: IrrigationChange): Promise<IrrigationOperation>;
   deleteIrrigation(operationId: number): Promise<void>;
 }

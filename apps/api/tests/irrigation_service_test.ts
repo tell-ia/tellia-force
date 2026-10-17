@@ -265,3 +265,121 @@ Deno.test("operation lookup uses getIrrigation (404 for unknown id)", async () =
   assertEquals((await status(service.confirmIrrigation(4242))).status, 404);
   assertEquals((await service.confirmIrrigation(1)).status, "confirmed");
 });
+
+// --- Irrigation corrections (Task 3) ------------------------------------------
+
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+Deno.test("correction preview: update and delete summaries; nothing changes", async () => {
+  const { data, service } = setup();
+  const up = await service.previewIrrigationCorrection({
+    operationId: 1,
+    action: "update",
+    mm: 25,
+  });
+  assertEquals(up, {
+    operationId: 1,
+    fieldId: 10,
+    fieldName: "La Vallée",
+    action: "update",
+    before: { date: "2026-06-21", mm: 30 },
+    after: { date: "2026-06-21", mm: 25 },
+    summary: "Change the irrigation on La Vallée from 30 mm on 2026-06-21 to 25 mm on 2026-06-21?",
+  });
+  const del = await service.previewIrrigationCorrection({ operationId: 1, action: "delete" });
+  assertEquals(del.after, null);
+  assertEquals(del.summary, "Delete the irrigation of 30 mm on La Vallée on 2026-06-21?");
+  const op = await data.getIrrigation(1);
+  assertEquals([op?.date, op?.mm], ["2026-06-21", 30]);
+});
+
+Deno.test("correction update: the water balance moves by the mm difference", async () => {
+  const { data, service } = setup();
+  // Yesterday's record, as in "confirmed irrigation lowers depletion by exactly its mm".
+  const { operationId } = await service.recordIrrigation({
+    fieldId: 10,
+    date: "2026-07-04",
+    mm: 30,
+    memberId: 1,
+    source: "web",
+  });
+  const before = await service.getFieldReport(10);
+  const rec = await service.updateIrrigation(operationId, { mm: 20 });
+  assertEquals(rec, { operationId, fieldId: 10, date: "2026-07-04", mm: 20, status: "confirmed" });
+  // 10 mm less water: 10 mm more depletion today.
+  assertEquals((await service.getFieldReport(10)).depletionMm, round1(before.depletionMm + 10));
+  // A date alone keeps the mm; the record stays one record.
+  const moved = await service.updateIrrigation(operationId, { date: "2026-07-03" });
+  assertEquals([moved.date, moved.mm], ["2026-07-03", 20]);
+  assertEquals((await data.getIrrigation(operationId))?.seasonId, 109);
+  assertEquals((await service.listIrrigations(10)).length, 2);
+});
+
+Deno.test("correction update: a new date in another crop season moves the record there", async () => {
+  const fx = makeFarmFixture();
+  fx.seasons[10].push({
+    id: 108,
+    cropCode: "COWT",
+    sowingDate: "2025-10-01",
+    harvestDate: "2026-04-10",
+    status: "harvested",
+  });
+  const data = createMemoryFarmData(fx);
+  const weather = createWeatherService({ data, fetch: () => Promise.reject(new Error("offline")) });
+  const service = createIrrigationService({ data, weather, today: () => "2026-07-05" });
+  await service.updateIrrigation(1, { date: "2026-04-05" });
+  assertEquals((await data.getIrrigation(1))?.seasonId, 108);
+});
+
+Deno.test("correction validation: same checks as a new record, confirmed irrigations only", async () => {
+  const { data, service } = setup();
+  const up = (operationId: number, change: { date?: string; mm?: number }) =>
+    status(service.updateIrrigation(operationId, change));
+  assertEquals((await up(1, { mm: 0 })).status, 400);
+  assertEquals((await up(1, { mm: 250 })).status, 400);
+  const future = await up(1, { date: "2026-07-06" });
+  assertEquals(future.status, 400);
+  assertStringIncludes(future.message, "future");
+  const noSeason = await up(1, { date: "2026-03-01" });
+  assertEquals(noSeason.status, 400);
+  assertStringIncludes(noSeason.message, "no crop is growing");
+  assertStringIncludes((await up(1, {})).message, "new date or the new mm");
+  assertStringIncludes((await up(1, { mm: 30 })).message, "nothing to change");
+  // A journal row that is not an irrigation, and an unknown id: 404.
+  assertEquals((await up(1003, { mm: 20 })).status, 404);
+  assertEquals((await status(service.deleteIrrigation(1003))).status, 404);
+  assertEquals((await status(service.deleteIrrigation(4242))).status, 404);
+  // A draft is not a record yet: 409.
+  const draft = await service.createDraftIrrigation({
+    fieldId: 10,
+    date: "2026-07-04",
+    mm: 10,
+    memberId: 1,
+  });
+  assertEquals((await up(draft.operationId, { mm: 20 })).status, 409);
+  assertEquals((await status(service.deleteIrrigation(draft.operationId))).status, 409);
+  const preview = service.previewIrrigationCorrection({
+    operationId: draft.operationId,
+    action: "delete",
+  });
+  assertStringIncludes((await status(preview)).message, "only confirmed irrigations");
+  // The refusals changed nothing.
+  assertEquals((await data.getIrrigation(1))?.mm, 30);
+  assertEquals((await data.getIrrigation(draft.operationId))?.status, "draft");
+});
+
+Deno.test("correction delete: removes the record and returns it as it was", async () => {
+  const { data, service } = setup();
+  const before = await service.getFieldReport(10);
+  const rec = await service.deleteIrrigation(1);
+  assertEquals(rec, {
+    operationId: 1,
+    fieldId: 10,
+    date: "2026-06-21",
+    mm: 30,
+    status: "confirmed",
+  });
+  assertEquals(await data.getIrrigation(1), null);
+  assertEquals(await service.listIrrigations(10), []);
+  assert((await service.getFieldReport(10)).depletionMm > before.depletionMm);
+});

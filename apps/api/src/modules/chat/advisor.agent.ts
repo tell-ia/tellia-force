@@ -21,7 +21,8 @@ const RULES = `Rules:
 7. Mention any warnings the tools return.
 8. getFieldDetails for facts about one field: crop and variety, sowing and harvest dates, soil analysis, irrigation system.
 9. getFieldJournal for what was done on the fields (sowing, fertiliser, sprays and their products, harvest), like "when did I last spray" or "how much nitrogen this season"; copy its totals.
-10. checkProductUse for "can I (still) spray this product on this field": give its verdict and warnings; if several products match, ask which one; never invent a rule.`;
+10. checkProductUse for "can I (still) spray this product on this field": give its verdict and warnings; if several products match, ask which one; never invent a rule.
+11. When the farmer says a recorded irrigation was wrong (other mm or day) or must be deleted: find its operationId with getIrrigationHistory; call correctIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId.`;
 
 export async function buildInstructions(
   registry: FarmRegistry,

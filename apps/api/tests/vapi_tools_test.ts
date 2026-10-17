@@ -286,3 +286,50 @@ Deno.test("vapi: check_product_use stays on the caller's farm", async () => {
   assertEquals(synthetic.data.timesUsed, 1);
   assertMatch(synthetic.data.warnings[0], /E-Phy covers France only/);
 });
+
+Deno.test("vapi: correct_irrigation updates and deletes for a member, short flat answers", async () => {
+  const { app, registry } = makeVapiApp();
+  const farm2 = (await registry.forFarm(2)).data;
+  const [updated] = await call(app, [
+    { name: "correct_irrigation", arguments: { operationId: 900, action: "update", mm: 20 } },
+  ], ELENA_PHONE);
+  assertEquals(updated.data, {
+    status: "updated",
+    fieldName: "El Pozo",
+    oldDate: "2026-06-20",
+    oldMm: 25,
+    newDate: "2026-06-20",
+    newMm: 20,
+    today: TEST_TODAY,
+  });
+  assertEquals((await farm2.getIrrigation(900))?.mm, 20);
+  const [deleted, again] = await call(app, [
+    { name: "correct_irrigation", arguments: { operationId: 900, action: "delete" } },
+    { name: "correct_irrigation", arguments: { operationId: 900, action: "delete" } },
+  ], ELENA_PHONE);
+  assertEquals(deleted.data.status, "deleted");
+  assertEquals([deleted.data.date, deleted.data.mm], ["2026-06-20", 20]);
+  assertEquals(await farm2.getIrrigation(900), null);
+  assertMatch(again.error, /not found/);
+});
+
+Deno.test("vapi: correct_irrigation refuses an unknown caller and other farms' irrigations", async () => {
+  const { app, registry } = makeVapiApp();
+  const [unknown] = await call(app, [
+    { name: "correct_irrigation", arguments: { operationId: 1, action: "delete" } },
+  ]);
+  assertMatch(unknown.error, /not a farm member/);
+  const [otherFarm, future, nothing] = await call(app, [
+    { name: "correct_irrigation", arguments: { operationId: 1, action: "delete" } },
+    {
+      name: "correct_irrigation",
+      arguments: { operationId: 900, action: "update", date: "2026-07-06" },
+    },
+    { name: "correct_irrigation", arguments: { operationId: 900, action: "update" } },
+  ], ELENA_PHONE);
+  assertMatch(otherFarm.error, /irrigation operation 1 not found/);
+  assertMatch(future.error, /future/);
+  assertMatch(nothing.error, /new date or the new mm/);
+  assertEquals((await (await registry.forFarm(1)).data.getIrrigation(1))?.mm, 30);
+  assertEquals((await (await registry.forFarm(2)).data.getIrrigation(900))?.mm, 25);
+});

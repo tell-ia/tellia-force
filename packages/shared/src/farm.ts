@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { IsoDateSchema } from "./irrigation";
+import { IrrigationRecordSchema, IsoDateSchema } from "./irrigation";
 
 // ---------------------------------------------------------------------------
-// Farm contracts beyond irrigation: field details, the farm journal and the product check.
+// Farm contracts beyond irrigation advice: field details, the farm journal, the product check
+// and irrigation corrections.
 // Every number and total is computed by the API (apps/api); the AI only reads them.
 // Names avoid the db.ts / app.ts exports re-exported by index.ts (no `FieldSchema`,
 // `SoilSchema`, `OperationSchema`, `ProductSchema`, `ProductUseSchema` here).
@@ -267,3 +268,43 @@ export const ProductCheckSchema = z.object({
   warnings: z.array(z.string()),
 });
 export type ProductCheck = z.infer<typeof ProductCheckSchema>;
+
+// --- Irrigation corrections (chat tools correctIrrigation + confirmIrrigation) ---
+
+export const CORRECTION_ACTIONS = ["update", "delete"] as const;
+/** update: change the day and/or the mm of a recorded irrigation; delete: remove it. */
+export const CorrectionActionSchema = z.enum(CORRECTION_ACTIONS);
+export type CorrectionAction = z.infer<typeof CorrectionActionSchema>;
+
+/** One irrigation's day and gross mm, before or after a correction. */
+export const IrrigationAmountSchema = z.object({
+  date: IsoDateSchema,
+  mm: z.number(),
+});
+export type IrrigationAmount = z.infer<typeof IrrigationAmountSchema>;
+
+/** correctIrrigation: nothing is changed yet; the farmer answers the summary with yes or no. */
+export const IrrigationCorrectionSchema = z.object({
+  runId: z.string(),
+  status: z.literal("awaiting_confirmation"),
+  /** "Change the irrigation on La Vallée from 30 mm on 2026-06-21 to 25 mm on 2026-06-21?" */
+  summary: z.string(),
+  fieldName: z.string(),
+  action: CorrectionActionSchema,
+  before: IrrigationAmountSchema,
+  /** Null for a delete. */
+  after: IrrigationAmountSchema.nullable(),
+});
+export type IrrigationCorrection = z.infer<typeof IrrigationCorrectionSchema>;
+
+export const CONFIRMATION_STATUSES = ["saved", "cancelled", "updated", "deleted"] as const;
+/**
+ * confirmIrrigation, for recordIrrigation and correctIrrigation runs: saved (new irrigation),
+ * updated, deleted, or cancelled (the farmer said no: nothing changed). `record` is the saved
+ * or updated irrigation.
+ */
+export const IrrigationConfirmationSchema = z.object({
+  status: z.enum(CONFIRMATION_STATUSES),
+  record: IrrigationRecordSchema.optional(),
+});
+export type IrrigationConfirmation = z.infer<typeof IrrigationConfirmationSchema>;

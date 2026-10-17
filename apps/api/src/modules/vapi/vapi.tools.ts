@@ -5,7 +5,12 @@
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { type FieldReport, IsoDateSchema, ScenarioEventSchema } from "@tellia/shared/irrigation";
-import { type JournalEntry, JournalTypeSchema, type ProductUseRule } from "@tellia/shared/farm";
+import {
+  CorrectionActionSchema,
+  type JournalEntry,
+  JournalTypeSchema,
+  type ProductUseRule,
+} from "@tellia/shared/farm";
 import type { FarmScope } from "../irrigation/farmRegistry";
 import { bbchRange } from "../irrigation/productCheck.service";
 
@@ -289,6 +294,51 @@ export const VAPI_TOOLS: Record<string, VapiTool> = {
         source: "phone_call",
       });
       return { saved: true, record };
+    },
+  }),
+
+  correct_irrigation: defineTool({
+    description:
+      "Change the day or the millimetres of an irrigation already recorded, or delete it. Find it with get_irrigation_history (its operationId). Only call it after you read back the change and the farmer clearly said yes.",
+    parameters: z.object({
+      operationId: z.number().int().describe(
+        "operationId of the irrigation, from get_irrigation_history.",
+      ),
+      action: CorrectionActionSchema.describe(
+        "update: change its day and/or millimetres; delete: remove it.",
+      ),
+      date: IsoDateSchema.optional().describe(
+        "update only: the right day, YYYY-MM-DD. Leave it out to keep the day.",
+      ),
+      mm: z.number().positive().max(200).optional().describe(
+        "update only: the right water applied, in mm. Leave it out to keep the mm.",
+      ),
+    }),
+    run: async ({ operationId, action, date, mm }, { scope, known }) => {
+      if (!known) {
+        throw new HTTPException(403, {
+          message: "this phone number is not a farm member, so it cannot change irrigations",
+        });
+      }
+      const { fieldName, before } = await scope.service.previewIrrigationCorrection({
+        operationId,
+        action,
+        date,
+        mm,
+      });
+      if (action === "delete") {
+        await scope.service.deleteIrrigation(operationId);
+        return { status: "deleted", fieldName, date: before.date, mm: before.mm };
+      }
+      const record = await scope.service.updateIrrigation(operationId, { date, mm });
+      return {
+        status: "updated",
+        fieldName,
+        oldDate: before.date,
+        oldMm: before.mm,
+        newDate: record.date,
+        newMm: record.mm,
+      };
     },
   }),
 };
