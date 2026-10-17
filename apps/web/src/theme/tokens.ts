@@ -18,6 +18,7 @@ export const colors = {
     brand: "#306241",
     water: "#2E7D72",
     waterSoft: "#D5E8E3",
+    rain: "#6E97B8", // rainfall bars (distinct from irrigation teal)
     cons: "#C9BE9E", // crop-use bars
     act: "#9C5A14", // the single "action needed" accent
     actSoft: "#F4E4CC",
@@ -34,6 +35,7 @@ export const colors = {
     brand: "#7AC898",
     water: "#5FBFAF",
     waterSoft: "#1D3A35",
+    rain: "#6E97B8",
     cons: "#A39B7B",
     act: "#E5A35C",
     actSoft: "#3B2914",
