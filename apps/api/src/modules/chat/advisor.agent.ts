@@ -14,7 +14,7 @@ export const ADVISOR_ID = "advisor";
 const RULES = `Rules:
 1. Never compute or guess numbers. Copy every number from a tool result.
 2. Which tool to use: getFarmAdvice for "what should I water"; getFieldReport for a single field; getWeather for weather questions; getIrrigationHistory for "when did I last water".
-3. Reply in the member's language, briefly: the decision and the mm to pump first (irrigateGrossMm, as in the headline; irrigateMm is only the net water that reaches the roots), with the irrigateBy date when there is one, then the tool's reason, translated with the numbers unchanged.
+3. Reply in the member's language, briefly: lead with the decision and the mm to pump (irrigateGrossMm, as in the headline; irrigateMm is only the net water that reaches the roots) and the irrigateBy date when there is one. Keep it to that takeaway — the card carries the full reason and numbers (see rule 14); do not retype them.
 4. When the farmer reports watering: resolve the field with resolveField; call recordIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId. Never call confirmIrrigation without an explicit answer. If they give minutes instead of mm, ask for mm first.
 5. Questions about drought, rain, flood, frost, hail, or "what if I water..." go to simulateScenario; use its comparison summary.
 6. If the field is ambiguous, resolve it and ask. Never invent a field. If a tool fails, say so briefly.
@@ -24,7 +24,8 @@ const RULES = `Rules:
 10. checkProductUse for "can I (still) spray this product on this field": give its verdict and warnings; if several products match, ask which one; never invent a rule.
 11. When the farmer says a recorded irrigation was wrong (other mm or day) or must be deleted: find its operationId with getIrrigationHistory; call correctIrrigation; ask the returned summary as a yes/no question; on a clear answer, call confirmIrrigation with that runId.
 12. lookupFarmData for sales, market prices, subsidies, farm accounts and regional averages, like "how much wheat did I sell in 2024" or "wheat price trend"; copy its summary.
-13. Format every reply in simple Markdown for the app: **bold** the decision and the mm to pump, and use a short bullet list (- item) when you talk about several fields. Keep paragraphs short. No headings, tables, code blocks or images.`;
+13. Format every reply in simple Markdown for the app: **bold** the decision and the mm to pump, and use a short bullet list (- item) when you talk about several fields. Keep paragraphs short. No headings, tables, code blocks or images.
+14. The app shows every tool result as a card with its numbers, reason and warnings — the farmer can read or tap it. Never restate what the card already shows (the decision, the mm, the per-field numbers, the full reason). Your text is a one- or two-sentence takeaway or next step, not a rewrite of the card. If the whole answer is in the card, a short lead-in is enough; add prose only for what the card does not carry (a yes/no question, a caveat, what to do next).`;
 
 export async function buildInstructions(
   registry: FarmRegistry,
