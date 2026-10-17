@@ -34,6 +34,13 @@ describe("IrrigationLog", () => {
     expect(html).not.toContain("Mon 6 Jul 2026");
   });
 
+  it("on the Log screen: no Log watering button, the watering just saved highlighted", () => {
+    const html = renderToString(<IrrigationLog records={[rec(2, "2026-07-14", 30), rec(1, "2026-06-21", 25)]} loading={false} error={null} highlightId={2} />);
+    expect(html).not.toContain("Log watering");
+    expect(html).toMatch(/<li aria-current="true"[^>]*>.*?Tue 14 Jul 2026/);
+    expect(html.match(/aria-current/g)?.length).toBe(1);
+  });
+
   it("says when nothing is logged, and shows load errors", () => {
     expect(renderToString(<IrrigationLog records={[]} loading={false} error={null} onLog={() => {}} />))
       .toContain("No watering logged on this field yet.");

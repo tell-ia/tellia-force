@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import type { FarmToday, IrrigationRecord, ParcelReport, ParcelSummary } from "@tellia/shared";
-import { deleteIrrigation, getFarmToday, getParcelReport, recordIrrigation, simulateDose, type DoseSim } from "../../lib/api";
+import { deleteIrrigation, getFarmToday, getParcelReport, listIrrigations, recordIrrigation, simulateDose, type DoseSim } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 
 /** Debounce a fast-changing value (the dose stepper) before firing the engine call. */
@@ -18,7 +18,8 @@ import { useDemoDate } from "../../app/DateContext";
 import { addDays, formatDay, shortDay, weekday } from "../../lib/dates";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
-import { Label } from "../../components/ui/primitives";
+import { Label, SectionCard } from "../../components/ui/primitives";
+import { IrrigationLog } from "../parcel/IrrigationLog";
 import { Loader } from "../../components/ui/Loader";
 import { DateField } from "../../components/ui/DateField";
 
@@ -48,6 +49,13 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const [amount, setAmount] = useState<number | null>(null);
   // The saved irrigation (real row in the DB), or null. Undo deletes it.
   const [saved, setSaved] = useState<IrrigationRecord | null>(null);
+  // The field's past waterings under the form; reloaded after each save or undo.
+  const [logVersion, setLogVersion] = useState(0);
+  const history = useAsync<IrrigationRecord[]>(
+    () => (parcelId ? listIrrigations(parcelId) : Promise.resolve([])),
+    [parcelId, logVersion],
+  );
+  const logRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   // The day of the watering: today by default, or a past day of this crop season.
@@ -113,6 +121,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
     setSaveError(null);
     try {
       setSaved(await recordIrrigation({ parcelId, date: logDay, grossMm: gross }));
+      setLogVersion((n) => n + 1);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -126,6 +135,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
     try {
       await deleteIrrigation(saved.operationId);
       setSaved(null);
+      setLogVersion((n) => n + 1);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -160,7 +170,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
         <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, background: v("brand"), color: v("bg"), borderRadius: radius.card, padding: "8px 8px 8px 14px" }}>
           <Check size={20} strokeWidth={2.5} />
           <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Saved: {saved.mm} mm on {data.name}, {formatDay(saved.date)}.</span>
-          <button type="button" onClick={() => navigate(`parcel/${saved.fieldId}#log`)} style={{ height: 44, flex: "none", padding: "0 12px", borderRadius: 22, border: 0, background: v("bg"), color: v("brand"), fontWeight: 600, cursor: "pointer" }}>See the log</button>
+          <button type="button" onClick={() => logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ height: 44, flex: "none", padding: "0 12px", borderRadius: 22, border: 0, background: v("bg"), color: v("brand"), fontWeight: 600, cursor: "pointer" }}>See the log</button>
         </div>
       )}
       {saveError && (
@@ -250,6 +260,11 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
           {logged ? "Saved" : saving ? "Saving…" : pending || !shown ? "Simulating…" : `Confirm ${gross} mm`}
         </button>
       </div>
+
+      <SectionCard id="log" style={{ gap: 10 }}>
+        <div ref={logRef} />
+        <IrrigationLog records={history.data} loading={history.loading} error={history.error} highlightId={saved?.operationId} />
+      </SectionCard>
     </div>
   );
 }

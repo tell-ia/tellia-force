@@ -18,6 +18,9 @@
   date field + popup month calendar (`components/ui/DateField.tsx`, Vincent's choice: classic,
   not the season calendar). Save and simulation use that day (`simulateDose` takes the day and
   today apart). The effect tiles use real dates (were fixed to the 15th/18th of 13 Jul 2022). Web: 76.
+- 2026-10-17 Log screen: the field's "Irrigation log" card under the form (same component as
+  the field page, no Log watering button there), reloaded after save / undo, the saved row
+  highlighted; "See the log" scrolls to it. Web: 77.
 
 ## In progress
 

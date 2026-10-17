@@ -11,11 +11,14 @@ const FIRST = 5;
  * The field's saved irrigations, newest first (the API sorts them and stops at today): logged in
  * the app, told to the chat or the phone, or imported with the farm. `mm` is what was pumped.
  */
-export function IrrigationLog({ records, loading, error, onLog }: {
+export function IrrigationLog({ records, loading, error, onLog, highlightId }: {
   records: IrrigationRecord[] | null;
   loading: boolean;
   error: string | null;
-  onLog: () => void;
+  /** The "Log watering" button; left out on the Log screen itself. */
+  onLog?: () => void;
+  /** A row to highlight (the watering just saved). */
+  highlightId?: number;
 }) {
   const [all, setAll] = useState(false);
   const list = records ?? [];
@@ -34,7 +37,7 @@ export function IrrigationLog({ records, loading, error, onLog }: {
       {shown.length > 0 && (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
           {shown.map((r) => (
-            <li key={r.operationId} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, borderBottom: `1px solid ${v("line")}` }}>
+            <li key={r.operationId} aria-current={r.operationId === highlightId || undefined} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, borderBottom: `1px solid ${v("line")}`, ...(r.operationId === highlightId ? { background: v("okSoft"), margin: "0 -8px", padding: "0 8px", borderRadius: radius.tile } : {}) }}>
               <Droplet size={16} color={v("water")} aria-hidden="true" />
               <span style={{ flex: 1, fontSize: 14 }}>{formatDay(r.date)}</span>
               <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{r.mm} mm</span>
@@ -47,9 +50,11 @@ export function IrrigationLog({ records, loading, error, onLog }: {
           {all ? "Show less" : `Show all (${list.length})`}
         </button>
       )}
-      <button type="button" onClick={onLog} style={{ height: 50, borderRadius: radius.card, border: 0, background: v("brand"), color: v("bg"), fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
-        Log watering
-      </button>
+      {onLog && (
+        <button type="button" onClick={onLog} style={{ height: 50, borderRadius: radius.card, border: 0, background: v("brand"), color: v("bg"), fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+          Log watering
+        </button>
+      )}
     </>
   );
 }
