@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import type { ParcelReport } from "@tellia/shared";
-import { getParcelReport } from "../../lib/api";
+import type { IrrigationRecord, ParcelReport } from "@tellia/shared";
+import { getParcelReport, listIrrigations } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { useFarm } from "../../app/FarmContext";
 import { navigate } from "../../app/router";
@@ -11,6 +11,7 @@ import { DateButton } from "../../components/DateSheet";
 import { dayRange } from "../../lib/dates";
 import { Loader } from "../../components/ui/Loader";
 import { RecommendationCard } from "./RecommendationCard";
+import { IrrigationLog } from "./IrrigationLog";
 import {
   BalanceLegend,
   CropStageTimeline,
@@ -40,6 +41,16 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
   const balanceRef = useRef<HTMLDivElement>(null);
   const [highlighted, setHighlighted] = useState(false);
   const { data, loading, error } = useAsync<ParcelReport>(() => getParcelReport(parcelId), [parcelId]);
+  const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId]);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // "See the log" (#/parcel/:id#log) lands on the irrigation log.
+  useEffect(() => {
+    if (data && anchor === "log") {
+      const scroll = setTimeout(() => logRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+      return () => clearTimeout(scroll);
+    }
+  }, [data, anchor]);
 
   useEffect(() => {
     if (data && anchor === "balance") {
@@ -111,6 +122,11 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
               <BalanceLegend withPlan={!!data.plan} />
             </SectionCard>
           )}
+
+          <SectionCard id="log" style={{ gap: 10 }}>
+            <div ref={logRef} />
+            <IrrigationLog records={log.data} loading={log.loading} error={log.error} onLog={() => navigate(`log/${parcelId}`)} />
+          </SectionCard>
 
           {data.cropStage && (
             <SectionCard style={{ gap: 14, position: "relative" }}>

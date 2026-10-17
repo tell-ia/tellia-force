@@ -10,7 +10,16 @@ import {
   refillPlan,
   reservePct,
   wateredPct,
+  cropLine,
 } from "./parcel";
+
+describe("crop line", () => {
+  it("crop and stage, crop alone, or no crop", () => {
+    expect(cropLine("Maïs grain", "Flowering")).toBe("Maïs grain · Flowering");
+    expect(cropLine("Maïs grain", null)).toBe("Maïs grain");
+    expect(cropLine("—", null)).toBe("No crop growing");
+  });
+});
 
 describe("parcel mappers (demo numbers)", () => {
   it("gross from 35 mm net at the reel gun ≈ 44 mm", () => {

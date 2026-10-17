@@ -930,11 +930,11 @@ export function createIrrigationService(
 
     async listIrrigations(fieldId, range = {}) {
       const field = await getField(fieldId);
-      const { from, to } = range;
+      const { from } = range;
+      // Never after today: with a demo date in the past, later rows have not happened yet.
+      const to = range.to && range.to < deps.today() ? range.to : deps.today();
       return (await data.listIrrigations(field.id, { includeDrafts: false }))
-        .filter((o) =>
-          o.status === "confirmed" && (!from || o.date >= from) && (!to || o.date <= to)
-        )
+        .filter((o) => o.status === "confirmed" && (!from || o.date >= from) && o.date <= to)
         .sort((a, b) => b.date.localeCompare(a.date) || b.operationId - a.operationId)
         .map(toRecord);
     },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dayRange, formatDay, localToday } from "./dates";
+import { addDays, dayRange, formatDay, localToday, shortDay, weekday } from "./dates";
 
 describe("dates", () => {
   it("formats a day with and without the year", () => {
@@ -16,6 +16,11 @@ describe("dates", () => {
   it("writes a day range in one or two months", () => {
     expect(dayRange("2026-07-05", "2026-07-20")).toBe("5–20 Jul");
     expect(dayRange("2026-07-28", "2026-08-08")).toBe("28 Jul–8 Aug");
+  });
+
+  it("short labels: weekday, and weekday + day", () => {
+    expect(weekday("2026-07-15")).toBe("Wed");
+    expect(shortDay("2026-07-19")).toBe("Sun 19");
   });
 
   it("gives the device date as YYYY-MM-DD", () => {

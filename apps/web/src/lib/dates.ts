@@ -15,6 +15,12 @@ export function formatDay(iso: string, opts: { year?: boolean } = {}): string {
   return `${weekday} ${day}${opts.year === false ? "" : ` ${d.getUTCFullYear()}`}`;
 }
 
+/** "Sun" */
+export const weekday = (iso: string): string => utc(iso).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
+
+/** "Sun 19": weekday and day of the month, for tight labels. */
+export const shortDay = (iso: string): string => `${weekday(iso)} ${utc(iso).getUTCDate()}`;
+
 /** "5–20 Jul", or "28 Jul–8 Aug" across two months. */
 export function dayRange(from: string, to: string): string {
   const month = (iso: string) => utc(iso).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" });

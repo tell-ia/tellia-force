@@ -53,6 +53,11 @@ export const http = {
       body: JSON.stringify(body),
     }).then((r) => unwrap(r, schema));
   },
+  del<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+    return fetch(`${clientEnv.VITE_API_URL}${path}`, { method: "DELETE", headers: headers() }).then((r) =>
+      unwrap(r, schema),
+    );
+  },
   put<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {
     return fetch(`${clientEnv.VITE_API_URL}${path}`, {
       method: "PUT",

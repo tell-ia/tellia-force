@@ -1,34 +1,34 @@
-# PROGRESS — demo date for the whole app
+# PROGRESS — irrigation log in the app
 
 ## Done
-- 2026-10-17 Branch `feat/demo-date` from origin/main bbfa0fd. Chat-tools plan moved to `plans/`.
-  Checked: everything in the API reads `registry.today()`; the engine works on past dates
-  (15 Jul 2026: 3 fields to irrigate; 15 Jul 2021: none). The web dates were hard-coded text.
-- 2026-10-17 Task 1: `settings/clock.ts` (demo date > DEMO_DATE > real date, kept in
-  `data/demo-date.json`), `GET/PUT /settings/date`, `DemoDateState` in `@tellia/shared/app`,
-  `registry.today()` reads the clock. 6 tests (advice and phone tools follow the date). Suite: 311 passed.
-- 2026-10-17 Task 2: web `DateProvider` (GET/PUT /settings/date), `DateButton` + `DateSheet`
-  (date input, 3 presets, real date), screens remount on a new date, fixed dates removed (Today,
-  Parcel, Admin, Log; Log's chart window now by date, not `dayLabel >= 9`). Web: 58 passed.
-- 2026-10-17 Task 3: Jean's prompt takes today from the tool results (never the real date);
-  `vapi:setup` closes open SMS conversations on Jean's numbers. Docs: api CLAUDE.md, chat and vapi
-  READMEs, .env.example. `vapi:setup` run by the agent (approved): Jean updated, 1 SMS conversation closed.
-- 2026-10-17 Task 4 check found a bug: with no date in its prompt, Jean invented one
-  (`get_farm_advice {date: 2024-06-13}`). Fix: the phone tools' `date` says "leave it out for today",
-  the prompt says "never guess a date". Pushed; 3/3 VAPI chat runs call with no date and answer right.
-- 2026-10-17 Task 4: end to end on the running API: PUT 2026-07-15 → advice asOf 2026-07-15
-  (3 fields to irrigate), chat thread `member-1-2026-07-15`, tunnel OK, future date 400; VAPI
-  chat API: Jean says 15 July and the 3 fields. Android rebuilt: chip "Wed 15 Jul 2026", sheet
-  opens, "Wet summer" switches the app to 15 Jul 2021 (nothing urgent). Date reset to real.
-  API 311 passed, web 58, shared OK.
-- 2026-10-17 Bug from Vincent's SMS test: in the same SMS conversation Jean answered "what is
-  today" from memory (old day), no tool call. Fix: a date change closes the open VAPI SMS
-  conversations (`vapi/vapiSessions.ts`, `onDateChange` hook). Live: 1 closed, then 0 open. Suite: 313.
+- 2026-10-17 Branch `feat/irrigation-log` from origin/main a4179c6. Found: the Log screen never saved
+  (`LIVE_WRITE = false`, fake success, from f4be07a), had no field picker, and no screen listed logs.
+  Demo-date plan moved to `plans/`.
+- 2026-10-17 Task 1: history never lists irrigations after today (REST, chat, phone share
+  `service.listIrrigations`); `DELETE /irrigation/operations/:id` (confirmed, own farm). 2 REST tests.
+  Also fixed main's tool-keys test (missing `showWidget`, b6d5710). API: 327 passed.
+- 2026-10-17 Task 2: web saves for real (POST, errors shown, Undo = DELETE), `listIrrigations`;
+  Log screen field chips + `#/log/:id` + real date + "See the log"; field page "Irrigation log"
+  section + "Log watering" button + `#log` anchor. Web: 73 passed.
+- 2026-10-17 Task 3 (emulator): field chips were squeezed to 0 height in the scrolling column
+  (fixed: `flex: none`). Checked: chips switch the field, field page "Irrigation log" (20 rows, stops at
+  today), "Log watering" opens the Log screen on that field. The real save is left to Vincent
+  (agents never write the shared DB).
+- 2026-10-17 Log screen: the watering's day can be changed (sowing to today) with a simple
+  date field + popup month calendar (`components/ui/DateField.tsx`, Vincent's choice: classic,
+  not the season calendar). Save and simulation use that day (`simulateDose` takes the day and
+  today apart). The effect tiles use real dates (were fixed to the 15th/18th of 13 Jul 2022). Web: 76.
+- 2026-10-17 Log screen: the field's "Irrigation log" card under the form (same component as
+  the field page, no Log watering button there), reloaded after save / undo, the saved row
+  highlighted; "See the log" scrolls to it. Web: 77.
+- 2026-10-17 Log screen: a "Crop" row (crop growing today and its stage, "No crop growing"
+  otherwise), via tested `cropLine` mapper. Web: 78.
+- 2026-10-17 Chat Oui/Non card locks after an answer (and when already answered). Vincent tested the
+  branch live; PR opened.
 
 ## In progress
 
 ## Key decisions
-- One server-side date for everyone (VAPI calls do not come from the app, so the app cannot send it).
-- Saving irrigations on a past demo date is allowed.
+- Real saving from the Log screen is on (Vincent, 2026-10-17). It writes the shared DB.
 
 ## Blockers

@@ -12,20 +12,21 @@ export interface DoseSim {
 }
 
 // LIVE: POST /irrigation/fields/:id/simulate — one engine pass with the dose as a
-// gross irrigation event on `date`. Returns the real FAO-56 series + the drainage
-// the dose caused (vs. the no-dose baseline). Null on error → caller falls back.
-export async function simulateDose(fieldId: number, date: string, grossMm: number): Promise<DoseSim | null> {
+// gross irrigation event on `day` (today or a past day), the balance seen from `asOf`
+// (today). Returns the real FAO-56 series + the drainage the dose caused (vs. the
+// no-dose baseline). Null on error → caller falls back.
+export async function simulateDose(fieldId: number, asOf: string, day: string, grossMm: number): Promise<DoseSim | null> {
   if (grossMm <= 0) return null;
   try {
     const res = await http.post(
       `/irrigation/fields/${fieldId}/simulate`,
-      { events: [{ type: "irrigation", date, mm: grossMm }], date },
+      { events: [{ type: "irrigation", date: day, mm: grossMm }], date: asOf },
       ScenarioResultSchema,
     );
     const from = (arr: { date: string; drainage: number }[]) =>
-      arr.filter((d) => d.date >= date).reduce((s, d) => s + d.drainage, 0);
+      arr.filter((d) => d.date >= day).reduce((s, d) => s + d.drainage, 0);
     const drainedMm = Math.max(0, Math.round(from(res.series) - from(res.baseline.series ?? [])));
-    return { grossMm, series: res.series.map((d) => toBalancePoint(d, date)), drainedMm };
+    return { grossMm, series: res.series.map((d) => toBalancePoint(d, asOf)), drainedMm };
   } catch {
     return null;
   }

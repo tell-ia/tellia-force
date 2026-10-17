@@ -19,6 +19,10 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export const cropLabel = (_code: string | null | undefined, name: string | null | undefined): string =>
   name || "—";
 
+/** The crop growing today and its stage, e.g. "Maïs grain · Flowering"; says so when none grows. */
+export const cropLine = (cropName: string, stageLabel: string | null | undefined): string =>
+  cropName === "—" || !cropName ? "No crop growing" : stageLabel ? `${cropName} · ${stageLabel}` : cropName;
+
 /** Gross dose at the gun from the net dose (reel gun ≈ 0.8 efficiency). */
 export const grossFromNet = (netMm: number, efficiency = 0.8): number =>
   Math.round(netMm / efficiency);
