@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+import type { ScrollMetrics } from "../lib/scrollThumb";
 
 /**
  * Sideways scrolling for a row that overflows. Touch already scrolls natively; this adds the
- * mouse (vertical wheel → sideways, click-and-drag) and says which edges hide more content.
+ * mouse (vertical wheel → sideways, click-and-drag), says which edges hide more content and
+ * reports the scroll metrics for a drawn scrollbar (components/ui/ScrollTrack).
  * A drag swallows the click that ends it, so dragging across a button doesn't press it.
  *
- * const { ref, edges } = useDragScroll<HTMLDivElement>();  // <div ref={ref} style={{ overflowX: "auto" }}>
+ * const { ref, edges, metrics } = useDragScroll<HTMLDivElement>();  // <div ref={ref} style={{ overflowX: "auto" }}>
  */
 export function useDragScroll<T extends HTMLElement>() {
   const ref = useRef<T>(null);
-  const [edges, setEdges] = useState({ start: false, end: false });
+  const [metrics, setMetrics] = useState<ScrollMetrics>({ left: 0, client: 0, scroll: 0 });
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const update = () => {
-      const start = el.scrollLeft > 1;
-      const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-      setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+      const next = { left: el.scrollLeft, client: el.clientWidth, scroll: el.scrollWidth };
+      setMetrics((m) => (m.left === next.left && m.client === next.client && m.scroll === next.scroll ? m : next));
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -66,5 +67,6 @@ export function useDragScroll<T extends HTMLElement>() {
     };
   }, []);
 
-  return { ref, edges };
+  const edges = { start: metrics.left > 1, end: metrics.left + metrics.client < metrics.scroll - 1 };
+  return { ref, edges, metrics };
 }
