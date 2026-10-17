@@ -23,6 +23,8 @@
   highlighted; "See the log" scrolls to it. Web: 77.
 - 2026-10-17 Log screen: a "Crop" row (crop growing today and its stage, "No crop growing"
   otherwise), via tested `cropLine` mapper. Web: 78.
+- 2026-10-17 Chat Oui/Non card locks after an answer (and when already answered). Vincent tested the
+  branch live; PR opened.
 
 ## In progress
 

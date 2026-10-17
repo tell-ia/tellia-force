@@ -23,4 +23,4 @@ Approved by Vincent on 2026-10-17: turn on real saving from the Log screen (writ
 ## Tasks
 - [x] 1. API: history capped at today + `DELETE /irrigation/operations/:id` + tests.
 - [x] 2. Web: real save + Undo + list API; Log screen field chips + `#/log/:id`; field page log section; tests.
-- [ ] 3. Check on the emulator; PR.
+- [x] 3. Check on the emulator; PR.
