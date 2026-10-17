@@ -4,10 +4,11 @@
 //
 // Blocks: paragraph, bullet list (- * •), numbered list (1. or 1)), heading (# to ###). An
 // item indented by 2+ spaces under another item starts a nested list.
-// Inline: **bold** / __bold__, *italic* / _italic_ (underscore only at word boundaries),
-// `code`, [text](url) with http/https/mailto/tel only, \-escapes. A single newline is a
-// line break, a blank line splits paragraphs. Streaming safe: a marker that is not closed
-// yet ("**La Val") stays literal text.
+// Inline: **bold** / __bold__, *italic* / _italic_ (underscore only at word boundaries, a
+// star between two digits stays a multiplication), `code`, [text](url) with
+// http/https/mailto/tel only, \-escapes. A single newline is a line break, a blank line
+// splits paragraphs. Streaming safe: a marker that is not closed yet ("**La Val") stays
+// literal text.
 
 export type MdInline =
   | { type: "text"; text: string }
@@ -148,6 +149,7 @@ type Span = { nodes: MdInline[]; end: number };
 
 const SPACE = /\s/;
 const WORD = /[\p{L}\p{N}]/u;
+const DIGIT = /[0-9]/;
 const ESCAPABLE = /[!-/:-@[-`{-~]/; // ASCII punctuation
 const MAX_DEPTH = 20;
 
@@ -166,11 +168,14 @@ function inlineParser(s: string, links: boolean): MdInline[] {
   };
   const isSpace = (ch: string | undefined) => ch === undefined || SPACE.test(ch);
   const isWord = (ch: string | undefined) => ch !== undefined && WORD.test(ch);
-  // "_" never opens or closes inside a word, so field_10 and Le_Puits stay plain.
+  const isDigit = (ch: string | undefined) => ch !== undefined && DIGIT.test(ch);
+  // "_" never opens or closes inside a word, so field_10 and Le_Puits stay plain. "*"
+  // between two digits is a multiplication, so 2*15 mm keeps its numbers as written.
+  const timesSign = (i: number, n: number) => isDigit(s[i - 1]) && isDigit(s[i + n]);
   const canOpen = (i: number, n: number, mark: Mark) =>
-    !isSpace(s[i + n]) && !(mark === "_" && isWord(s[i - 1]));
+    !isSpace(s[i + n]) && !(mark === "_" ? isWord(s[i - 1]) : timesSign(i, n));
   const canClose = (i: number, n: number, mark: Mark) =>
-    !isSpace(s[i - 1]) && !(mark === "_" && isWord(s[i + n]));
+    !isSpace(s[i - 1]) && !(mark === "_" ? isWord(s[i + n]) : timesSign(i, n));
 
   /** Parses from `from` up to the closing marker of `delim` (or the end of the text). */
   function span(from: number, delim: Delim | null, depth: number): Span | null {

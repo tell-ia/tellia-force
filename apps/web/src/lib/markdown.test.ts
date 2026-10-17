@@ -181,6 +181,14 @@ describe("markdown: inline", () => {
     }
   });
 
+  it("a * between two digits is a multiplication, not italics", () => {
+    for (const s of ["2*15 mm puis 3*10 mm", "2*3*4", "2**3**4"]) {
+      expect(parseInline(s)).toEqual([text(s)]);
+    }
+    expect(parseInline("**2*15 mm**")).toEqual([strong("2*15 mm")]);
+    expect(parseInline("*30* mm")).toEqual([{ type: "em", children: [text("30")] }, text(" mm")]);
+  });
+
   it("backslash escapes a marker", () => {
     expect(parseInline("\\*pas italique\\*")).toEqual([text("*pas italique*")]);
   });
