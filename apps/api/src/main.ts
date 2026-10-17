@@ -12,7 +12,8 @@ import { createIrrigationController } from "./modules/irrigation/irrigation.cont
 import { createClock, fileDemoDateStore } from "./modules/settings/clock";
 import { createSettingsController } from "./modules/settings/settings.controller";
 import { createVapiController, memberByPhoneIn } from "./modules/vapi/vapi.controller";
-import { closeOpenSmsConversations, sessionCustomerNumber } from "./modules/vapi/vapiSessions";
+import { closeOpenSmsConversations, sessionCustomerNumber, vapiSmsSender } from "./modules/vapi/vapiSessions";
+import { createNotifyController } from "./modules/notify/notify.controller";
 import { db } from "./supabase";
 
 const app = new Hono();
@@ -66,6 +67,17 @@ const registry = createFarmRegistry({
   today: () => clock.today(),
 });
 app.route("/irrigation", createIrrigationController(registry));
+
+// Today's brief by SMS (farm panel button), sent through VAPI from the farm number.
+app.route(
+  "/notify",
+  createNotifyController({
+    registry,
+    sendSms: vapiKey
+      ? vapiSmsSender({ privateKey: vapiKey, fromNumber: config.VAPI_PHONE_NUMBER, assistantName: "Jean" })
+      : undefined,
+  }),
+);
 
 // VAPI phone assistant: tool calls during a call. The caller's farm comes from their phone number.
 app.route(

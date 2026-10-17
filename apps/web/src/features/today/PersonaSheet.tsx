@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import { useState } from "react";
 import type { FarmSummary } from "@tellia/shared";
 import { farmAccent, useFarm } from "../../app/FarmContext";
-import { setMemberPhone } from "../../lib/api";
+import { sendBriefSms, setMemberPhone } from "../../lib/api";
 import { PHONE_PRESETS } from "../../lib/phones";
 import { font, v, type ColorToken } from "../../theme/tokens";
 
@@ -19,6 +19,16 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
   // Choosing a number saves it at once on the current farm's member (the server removes it from
   // every other member), so calls and texts from that number reach this farm.
   const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null);
+  // Today's brief by SMS to the chosen number (same advice as the Today screen).
+  const [sms, setSms] = useState<{ ok: boolean; text: string } | null>(null);
+  const sendBrief = () => {
+    if (!phone || sms?.text === "Sending…") return;
+    setSms({ ok: true, text: "Sending…" });
+    sendBriefSms(phone).then(
+      (r) => setSms({ ok: true, text: `Sent to ${r.to}.` }),
+      (e: unknown) => setSms({ ok: false, text: `Not sent: ${e instanceof Error ? e.message : String(e)}` }),
+    );
+  };
   const pickPhone = (n: string) => {
     setPhone(n);
     try {
@@ -84,6 +94,10 @@ export function PersonaSheet({ onClose }: { onClose: () => void }) {
             })}
           </div>
           {saved && <span role="status" style={{ fontSize: 12, color: saved.ok ? v("ink2") : v("act") }}>{saved.text}</span>}
+          <button type="button" onClick={sendBrief} disabled={!phone || sms?.text === "Sending…"} style={{ height: 44, borderRadius: 12, border: `1px solid ${v("brand")}`, background: v("surface"), color: v("brand"), fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            Send today's brief by SMS
+          </button>
+          {sms && <span role="status" style={{ fontSize: 12, color: sms.ok ? v("ink2") : v("act") }}>{sms.text}</span>}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

@@ -230,6 +230,18 @@ export const MemberPhoneSchema = z.object({
 });
 export type MemberPhone = z.infer<typeof MemberPhoneSchema>;
 
+/** POST /notify/brief-sms: today's brief (the Today screen's advice) sent by SMS through VAPI. */
+export const SendBriefSmsBodySchema = z.object({
+  phone: z.string().trim().min(3).max(24),
+});
+export type SendBriefSmsBody = z.infer<typeof SendBriefSmsBodySchema>;
+
+export const BriefSmsSchema = z.object({
+  to: z.string(),
+  text: z.string(),
+});
+export type BriefSms = z.infer<typeof BriefSmsSchema>;
+
 // --- Demo date -----------------------------------------------------------
 
 /** First day with weather in the DB: the earliest demo date. */
