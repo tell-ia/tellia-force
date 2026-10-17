@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rowDelete, rowDeleteIdle, rowDeleteView, withoutDeleted, type RowDeleteAction, type RowDeleteState } from "./rowDelete";
+import { refocusRow, rowDelete, rowDeleteIdle, rowDeleteStatus, rowDeleteView, withoutDeleted, type RowDeleteAction, type RowDeleteState } from "./rowDelete";
 
 const run = (...actions: RowDeleteAction[]): RowDeleteState => actions.reduce(rowDelete, rowDeleteIdle);
 
@@ -16,8 +16,8 @@ describe("row delete (irrigation log)", () => {
 
   it("Cancel puts the row back", () => {
     const s = run({ type: "ask", id: 7 }, { type: "cancel" });
-    expect(s).toEqual(rowDeleteIdle);
-    expect(rowDeleteView(s, 7).mode).toBe("idle");
+    expect(s).toEqual({ step: "idle", back: 7 });
+    expect(rowDeleteView(s, 7)).toEqual({ mode: "idle", error: null, locked: false });
   });
 
   it("only one row confirms at a time: another trash moves the confirm", () => {
@@ -58,6 +58,29 @@ describe("row delete (irrigation log)", () => {
     const confirming = run({ type: "ask", id: 7 });
     expect(rowDeleteView(confirming, 7, true)).toEqual({ mode: "confirming", error: null, locked: true });
     expect(rowDeleteView(confirming, 7, false).locked).toBe(false);
+  });
+
+  it("focus comes back to a trash: the same row after Cancel or an error, a neighbour after a delete", () => {
+    const ids = [8, 7, 6];
+    expect(refocusRow(run({ type: "ask", id: 7 }, { type: "cancel" }), ids)).toBe(7);
+    expect(refocusRow(run({ type: "ask", id: 7 }, { type: "confirm" }, { type: "failed", message: "x" }), ids)).toBe(7);
+    const deleted = (id: number) => run({ type: "ask", id }, { type: "confirm" }, { type: "done" });
+    expect(refocusRow(deleted(7), ids)).toBe(6); // the next row
+    expect(refocusRow(deleted(6), ids)).toBe(7); // the last row: the one before
+    expect(refocusRow(deleted(7), [7])).toBeNull(); // nothing left
+    expect(refocusRow(deleted(7), [8, 6])).toBeNull(); // the list already reloaded
+    // Nothing to give back while a row is open or at rest.
+    expect(refocusRow(rowDeleteIdle, ids)).toBeNull();
+    expect(refocusRow(run({ type: "ask", id: 7 }), ids)).toBeNull();
+    expect(refocusRow(run({ type: "ask", id: 7 }, { type: "confirm" }), ids)).toBeNull();
+    // Another trash after Cancel: that row's Cancel takes the focus, not the cancelled row.
+    expect(refocusRow(run({ type: "ask", id: 7 }, { type: "cancel" }, { type: "ask", id: 8 }), ids)).toBeNull();
+  });
+
+  it("a screen reader hears when the watering is deleted", () => {
+    expect(rowDeleteStatus(run({ type: "ask", id: 7 }, { type: "confirm" }, { type: "done" }))).toBe("Watering deleted.");
+    expect(rowDeleteStatus(run({ type: "ask", id: 7 }, { type: "confirm" }))).toBe("");
+    expect(rowDeleteStatus(rowDeleteIdle)).toBe("");
   });
 
   it("Delete, done and failed do nothing unless a row is in the right step", () => {

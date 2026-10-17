@@ -56,11 +56,14 @@ describe("IrrigationLog", () => {
     expect(html).toMatch(/<button type="button" aria-label="Delete the watering of Tue 14 Jul 2026"/);
     expect(html).toContain('aria-label="Delete the watering of Sun 21 Jun 2026"');
     expect(html).not.toContain("Delete?");
+    // A polite status, empty until a watering is deleted (then a screen reader hears it).
+    expect(html).toMatch(/<div role="status"[^>]*><\/div>/);
   });
 
   it("without onDelete: no delete buttons", () => {
     const html = renderToString(<IrrigationLog records={[rec(2, "2026-07-14", 30)]} loading={false} error={null} onLog={() => {}} />);
     expect(html).not.toContain("Delete");
+    expect(html).not.toContain('role="status"');
   });
 });
 

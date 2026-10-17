@@ -3,7 +3,7 @@
 // reloads), or error (the row is back to normal with a message, so the user can retry).
 
 export type RowDeleteState =
-  | { step: "idle" }
+  | { step: "idle"; back?: number } // back: the row just cancelled (its trash takes the focus back)
   | { step: "confirming"; id: number }
   | { step: "deleting"; id: number }
   | { step: "deleted"; id: number }
@@ -24,7 +24,7 @@ export function rowDelete(state: RowDeleteState, action: RowDeleteAction): RowDe
     case "ask":
       return state.step === "deleting" ? state : { step: "confirming", id: action.id };
     case "cancel":
-      return state.step === "confirming" ? rowDeleteIdle : state;
+      return state.step === "confirming" ? { step: "idle", back: state.id } : state;
     case "confirm":
       return state.step === "confirming" ? { step: "deleting", id: state.id } : state;
     case "done":
@@ -53,6 +53,24 @@ export function rowDeleteView(state: RowDeleteState, id: number, paused = false)
     error: mine && state.step === "error" ? state.message : null,
     locked: paused || (state.step === "deleting" && !mine),
   };
+}
+
+/**
+ * The row whose trash takes the focus back, so a keyboard or screen-reader user keeps their place
+ * (the focused Cancel / Delete button is gone): the same row after Cancel or an error; after a
+ * delete, the next row, else the one before. `ids`: every row in list order, the deleted one too.
+ */
+export function refocusRow(state: RowDeleteState, ids: number[]): number | null {
+  if (state.step === "idle") return state.back ?? null;
+  if (state.step === "error") return state.id;
+  if (state.step !== "deleted") return null;
+  const i = ids.indexOf(state.id);
+  return i < 0 ? null : ids[i + 1] ?? ids[i - 1] ?? null;
+}
+
+/** What a screen reader hears (a polite status): the row is gone once deleted. */
+export function rowDeleteStatus(state: RowDeleteState): string {
+  return state.step === "deleted" ? "Watering deleted." : "";
 }
 
 /** The rows to show: the one just deleted is hidden while the list reloads. */
