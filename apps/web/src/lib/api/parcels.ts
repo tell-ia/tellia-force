@@ -48,15 +48,14 @@ export async function getParcelReport(parcelId: number): Promise<ParcelReport> {
     const field = fields.data.find((f) => f.id === parcelId);
     const gddBase = crops.data.find((c) => c.crop_code === report.cropCode)?.gdd_base_c;
     const soil = soils.data.find((s) => s.field_id === parcelId) ?? null;
-    const parcel = fieldReportToParcelReport(report, {
+    const plan = await buildRefillPlan(parcelId, report).catch(() => null);
+    return fieldReportToParcelReport(report, {
       farmId: field?.farm_id ?? 0,
       areaHa: field?.area_ha,
       gddBase: gddBase ?? undefined,
       soil,
+      plan,
     });
-    const plan = await buildRefillPlan(parcelId, report).catch(() => null);
-    if (plan) parcel.plan = plan;
-    return parcel;
   } catch {
     const fixture = REPORT_BY_PARCEL[parcelId];
     if (!fixture) throw new Error(`No data for parcel ${parcelId}`);

@@ -108,7 +108,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
             <SectionCard style={{ gap: 10 }}>
               <NextDaysTable days={data.nextDays} />
               <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
-                Comfort threshold 55%. Right column: with the {data.recommendation.netMm} mm net planned Thursday evening.
+                Comfort threshold 55%. Right column: {data.plan ? "following the refill plan (rain included)" : `with the ${data.recommendation.netMm} mm net`}.
               </div>
             </SectionCard>
           )}

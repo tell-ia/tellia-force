@@ -1,4 +1,4 @@
-import type { BalancePoint, CropPhase, DayBalance, FieldReport, ParcelReport, Reserve } from "@tellia/shared";
+import type { BalancePoint, CropPhase, DayBalance, FieldReport, ParcelReport, RefillPlanSeries, Reserve } from "@tellia/shared";
 
 /** A soil_analysis row's texture + OM, joined by field in the api layer. */
 export interface SoilSample {
@@ -151,7 +151,7 @@ function stageNote(stage: { sensitive: boolean; floweringDate: string | null }):
  */
 export function fieldReportToParcelReport(
   r: FieldReport,
-  opts: { farmId: number; areaHa?: number; gddBase?: number; soil?: SoilSample | null },
+  opts: { farmId: number; areaHa?: number; gddBase?: number; soil?: SoilSample | null; plan?: RefillPlanSeries | null },
 ): ParcelReport {
   const efficiency =
     r.irrigateMm > 0 && r.irrigateGrossMm > 0
@@ -180,6 +180,7 @@ export function fieldReportToParcelReport(
   };
 
   if (r.series?.length) report.series = r.series.map((d) => toBalancePoint(d, r.asOf));
+  if (opts.plan) report.plan = opts.plan;
 
   if (r.season) {
     report.seasonBalance = {
@@ -229,13 +230,14 @@ export function fieldReportToParcelReport(
   const forecast = (r.series ?? []).filter((d) => d.date > r.asOf).slice(0, 5);
   if (forecast.length) {
     const cap = report.reserve.capacityMm;
+    // "+ watered" follows the real plan (reserve climbing back) when we have one.
+    const planRes = opts.plan ? new Map(opts.plan.series.map((p) => [p.date, p.reserveMm])) : null;
     report.nextDays = forecast.map((d) => {
       const pctNoWater = Math.round(((d.taw - d.depletion) / d.taw) * 100);
-      return {
-        day: `${weekday(d.date)} ${dayOfMonth(d.date)}`,
-        pctNoWater,
-        pctWatered: wateredPct(pctNoWater, r.irrigateMm, cap),
-      };
+      const planMm = planRes?.get(d.date);
+      const pctWatered =
+        planMm != null ? Math.round((planMm / d.taw) * 100) : wateredPct(pctNoWater, r.irrigateMm, cap);
+      return { day: `${weekday(d.date)} ${dayOfMonth(d.date)}`, pctNoWater, pctWatered };
     });
   }
 
