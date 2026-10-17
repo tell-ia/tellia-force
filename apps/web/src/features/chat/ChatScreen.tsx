@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { Loader2, Mic, Send, Square } from "lucide-react";
+import { Loader2, Mic, PanelLeft, Send, Square, SquarePen } from "lucide-react";
 import { useFarm } from "../../app/FarmContext";
-import { createChatTransport, getChatHistory } from "../../lib/api/chat";
+import { createChatTransport, createThreadId, getChatHistory, listChatThreads } from "../../lib/api/chat";
+import { useAsync } from "../../lib/useAsync";
 import { font, v } from "../../theme/tokens";
+import { SessionsDrawer } from "./SessionsDrawer";
 import { Label } from "../../components/ui/primitives";
 import { Markdown } from "../../components/Markdown";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
@@ -22,35 +24,87 @@ const SUGGESTIONS = [
 
 export function ChatScreen() {
   const { farm } = useFarm();
+  // A persona switch remounts the sessions state: back to that member's latest thread.
+  return <ChatSessions key={farm?.memberId ?? "none"} />;
+}
+
+function ChatSessions() {
+  // `selected`: the thread the farmer picked (null = the member's latest, the server decides).
+  // `current`: the thread on screen, reported by LiveChat, to highlight it in the drawer.
+  const [selected, setSelected] = useState<string | null>(null);
+  const [current, setCurrent] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [reload, setReload] = useState(0);
+  const threads = useAsync(listChatThreads, [reload, open], { keepDataOnError: true });
+  const close = useCallback(() => setOpen(false), []);
+  const refresh = useCallback(() => setReload((n) => n + 1), []);
+
+  const startNew = () => {
+    const id = createThreadId();
+    setSelected(id);
+    setCurrent(id);
+    setOpen(false);
+  };
+  const choose = (id: string) => {
+    if (id !== current) {
+      setSelected(id);
+      setCurrent(id);
+    }
+    setOpen(false);
+  };
+
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px 10px", display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-        <Label>Assistant</Label>
-        <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 30 }}>Chat</span>
+    <div style={{ position: "relative", overflow: "hidden", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "12px 12px 10px 8px", display: "flex", alignItems: "center", gap: 4 }}>
+        <button type="button" aria-label="Chat history" aria-expanded={open} onClick={() => setOpen(true)} style={headerBtn}>
+          <PanelLeft size={22} aria-hidden />
+        </button>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", lineHeight: 1.1, paddingLeft: 4 }}>
+          <Label>Assistant</Label>
+          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 30 }}>Chat</span>
+        </div>
+        <button type="button" aria-label="New chat" onClick={startNew} style={headerBtn}>
+          <SquarePen size={22} aria-hidden />
+        </button>
       </div>
-      <LiveChat key={farm?.memberId ?? "none"} />
+      <LiveChat key={selected ?? "latest"} threadId={selected} onThread={setCurrent} onReplied={refresh} />
+      {open && <SessionsDrawer threads={threads} currentId={current} onSelect={choose} onNew={startNew} onClose={close} onRetry={refresh} />}
     </div>
   );
 }
 
 // ---- Live chat (Imad's backend) ------------------------------------------
 
-function LiveChat() {
-  const transport = useMemo(() => createChatTransport(), []);
+function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; onThread: (id: string) => void; onReplied: () => void }) {
+  // The transport reads the thread on every request; the server's answer (the member's latest)
+  // replaces a null choice once the history is in.
+  const threadRef = useRef(threadId);
+  const transport = useMemo(() => createChatTransport(() => threadRef.current), []);
   const { messages, sendMessage, status, error, setMessages } = useChat({ transport });
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    getChatHistory()
-      .then((h) => alive && setMessages(h.messages))
+    getChatHistory(threadId)
+      .then((h) => {
+        if (!alive) return;
+        threadRef.current = h.threadId;
+        onThread(h.threadId);
+        setMessages(h.messages);
+      })
       .catch(() => alive && setOffline(true));
     return () => {
       alive = false;
     };
-  }, [setMessages]);
+  }, [threadId, onThread, setMessages]);
 
   const busy = status === "submitted" || status === "streaming";
+  // A finished reply: the thread now exists (or has a newer date), so refresh the drawer list.
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (wasBusy.current && !busy) onReplied();
+    wasBusy.current = busy;
+  }, [busy, onReplied]);
   const reply = (text: string) => sendMessage({ text });
 
   return (
@@ -279,4 +333,5 @@ function Empty() {
 }
 
 const chip: React.CSSProperties = { flex: "none", minHeight: 44, borderRadius: 22, border: `1px solid ${v("line")}`, background: v("bg"), color: v("ink"), padding: "0 14px", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" };
+const headerBtn: React.CSSProperties = { width: 44, height: 44, flex: "none", borderRadius: 22, border: 0, background: "transparent", color: v("ink"), display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" };
 const iconBtn: React.CSSProperties = { width: 44, height: 44, flex: "none", borderRadius: 22, border: 0, background: v("brand"), color: v("bg"), display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" };
