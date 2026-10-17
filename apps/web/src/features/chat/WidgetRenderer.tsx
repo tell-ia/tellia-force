@@ -31,8 +31,9 @@ import type { ParcelReport } from "@tellia/shared";
 import { useState, type ReactNode } from "react";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
-import { getParcelReport } from "../../lib/api";
-import { useAsync } from "../../lib/useAsync";
+import { parcelReportQuery } from "../../lib/api";
+import { useQuery } from "../../lib/useQuery";
+import { useDemoDate } from "../../app/DateContext";
 import { Loader } from "../../components/ui/Loader";
 import { irrigateByLabel } from "../../lib/mappers/parcel";
 import { BalanceLegend, CropStageTimeline, NextDaysTable, ReserveGauge, SeasonBalanceCard, SoilCard, WaterBalanceChart } from "../parcel/charts";
@@ -129,9 +130,9 @@ function FieldReportCard({ r }: { r: Rec }) {
 function WidgetCard({ r }: { r: Rec }) {
   const fieldId = num(r.fieldId);
   const widget = str(r.widget) ?? "waterBalance";
-  const { data: pr, loading } = useAsync<ParcelReport | null>(
-    () => (fieldId != null ? getParcelReport(fieldId) : Promise.resolve(null)),
-    [fieldId],
+  const { today } = useDemoDate();
+  const { data: pr, loading } = useQuery<ParcelReport>(
+    fieldId != null ? parcelReportQuery(fieldId, today) : null,
   );
   const title = WIDGET_TITLE[widget] ?? "Field report";
   if (loading || !pr) {

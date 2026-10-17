@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { FarmToday } from "@tellia/shared";
-import { getFarmToday, getSeasonHeatmap, mergeHeatDays, type HeatDay } from "../../lib/api";
-import { useAsync } from "../../lib/useAsync";
+import { farmTodayQuery, getSeasonHeatmap, mergeHeatDays, type HeatDay } from "../../lib/api";
+import { useQuery } from "../../lib/useQuery";
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
 import { formatDay } from "../../lib/dates";
@@ -43,9 +43,8 @@ export function DatePickerSheet({ onClose }: { onClose: () => void }) {
   const todayMonth = Number(today.slice(5, 7)) - 1;
 
   // The heatmap colors the farm's most urgent field today.
-  const { data: todayData, loading: todayLoading } = useAsync<FarmToday | null>(
-    () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
-    [farm?.id, today],
+  const { data: todayData, loading: todayLoading } = useQuery<FarmToday>(
+    farm ? farmTodayQuery(farm, today) : null,
   );
   const action = todayData?.parcels.find((p) => p.status === "action") ?? todayData?.parcels[0];
   const fieldId = action?.id ?? null;

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { FarmSummary } from "@tellia/shared";
-import { listFarms, setMemberId } from "../lib/api";
+import { farmsQuery, fetchQuery, peek, setMemberId } from "../lib/api";
 import type { ColorToken } from "../theme/tokens";
 
 /** Avatar accent for a farm: the first farm is brand green, the rest water teal. */
@@ -24,23 +24,35 @@ interface FarmCtx {
 
 const Ctx = createContext<FarmCtx | null>(null);
 
+const defaultFarm = (list: FarmSummary[]): FarmSummary | null =>
+  list.find((f) => f.featured) ?? list[0] ?? null;
+
 // The persona switch lives here: selecting a farm re-scopes the whole app and
 // sets the `x-member-id` the live API uses to scope irrigation + chat.
+// The list paints from the last launch's copy, then refreshes in the background.
 export function FarmProvider({ children }: { children: ReactNode }) {
-  const [farms, setFarms] = useState<FarmSummary[]>([]);
-  const [farm, setFarmState] = useState<FarmSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [farms, setFarms] = useState<FarmSummary[]>(() => peek(farmsQuery) ?? []);
+  const [farm, setFarmState] = useState<FarmSummary | null>(() => {
+    const first = defaultFarm(farms);
+    // Before any child renders: their first calls already carry the member.
+    if (first) setMemberId(first.memberId);
+    return first;
+  });
+  const [loading, setLoading] = useState(farm === null);
 
   useEffect(() => {
     let alive = true;
-    listFarms().then((list) => {
+    fetchQuery(farmsQuery).then((list) => {
       if (!alive) return;
       setFarms(list);
-      const first = list.find((f) => f.featured) ?? list[0] ?? null;
-      setFarmState(first);
-      if (first) setMemberId(first.memberId);
+      // Keep the chosen farm when it is still there (fresh copy), else the default one.
+      setFarmState((current) => {
+        const next = list.find((f) => f.id === current?.id) ?? defaultFarm(list);
+        if (next) setMemberId(next.memberId);
+        return next;
+      });
       setLoading(false);
-    });
+    }, () => alive && setLoading(false));
     return () => {
       alive = false;
     };

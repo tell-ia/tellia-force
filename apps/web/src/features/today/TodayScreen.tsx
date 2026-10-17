@@ -1,9 +1,10 @@
 import { CalendarRange, ChevronDown, ChevronRight, Droplet, Sun } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FarmFieldOutcome, FarmToday, ParcelSummary } from "@tellia/shared";
-import { getFarmToday } from "../../lib/api";
-import { useAsync } from "../../lib/useAsync";
+import { farmTodayQuery, parcelReportQuery, prefetch } from "../../lib/api";
+import { useQuery } from "../../lib/useQuery";
 import { farmAccent, useFarm } from "../../app/FarmContext";
+import { useDemoDate } from "../../app/DateContext";
 import { useFarmPlan } from "../../app/FarmPlanContext";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
@@ -12,14 +13,31 @@ import { DateButton } from "../../components/DateSheet";
 import { Loader } from "../../components/ui/Loader";
 import { PersonaSheet } from "./PersonaSheet";
 
+const MAX_PREFETCH = 3;
+
 export function TodayScreen() {
   const { farm, farms } = useFarm();
+  const { today } = useDemoDate();
   const { plan } = useFarmPlan();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { data, loading } = useAsync<FarmToday | null>(
-    () => (farm ? getFarmToday(farm) : Promise.resolve(null)),
-    [farm?.id],
-  );
+  const { data, loading } = useQuery<FarmToday>(farm ? farmTodayQuery(farm, today) : null);
+
+  // The fields to water are the ones the farmer opens next (and Log opens the first): load
+  // their reports now, one after the other so the API serves this screen first.
+  const actionIds = data?.parcels.filter((p) => p.status === "action").map((p) => p.id).join(",") ?? "";
+  useEffect(() => {
+    if (!actionIds) return;
+    let alive = true;
+    (async () => {
+      for (const id of actionIds.split(",").slice(0, MAX_PREFETCH)) {
+        if (!alive) return;
+        await prefetch(parcelReportQuery(Number(id), today));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [actionIds, today]);
 
   if (!farm) return null;
   const accent = farmAccent(farm, farms);
@@ -178,10 +196,18 @@ function fmtShortDay(iso: string): string {
 }
 const fmtHour = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:00`;
 
+/** Start loading a parcel's report on touch-down: the tap's release is ~100 ms later. */
+function useWarmParcel(id: number): () => void {
+  const { today } = useDemoDate();
+  return () => void prefetch(parcelReportQuery(id, today));
+}
+
 function ActionCard({ p, outcome }: { p: ParcelSummary; outcome: FarmFieldOutcome | null }) {
+  const warm = useWarmParcel(p.id);
   return (
     <button
       type="button"
+      onPointerDown={warm}
       onClick={() => navigate(`parcel/${p.id}`)}
       style={{
         display: "flex",
@@ -243,9 +269,11 @@ function ActionCard({ p, outcome }: { p: ParcelSummary; outcome: FarmFieldOutcom
 }
 
 function ParcelRow({ p }: { p: ParcelSummary }) {
+  const warm = useWarmParcel(p.id);
   return (
     <button
       type="button"
+      onPointerDown={warm}
       onClick={() => navigate(`parcel/${p.id}`)}
       style={{
         display: "flex",

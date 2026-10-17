@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { FarmSummarySchema, type FarmSummary } from "@tellia/shared";
 import { mock } from "./core";
+import type { Query } from "./cache";
 import { list } from "./data";
-import farmsFixture from "../../fixtures/farms.json";
+import farmsFixtureJson from "../../fixtures/farms.json";
 
 const FarmListSchema = z.array(FarmSummarySchema);
 
@@ -30,34 +31,52 @@ const firstName = (full: string): string => full.split(/\s+/)[0] ?? full;
 // Source of truth: GET /data/farm + /data/member + /data/field.
 export async function listFarms(): Promise<FarmSummary[]> {
   try {
-    const [farms, members, fields] = await Promise.all([
-      list("farm", { limit: 100 }),
-      list("member", { limit: 100 }),
-      list("field", { limit: 100 }),
-    ]);
-    const built = [...farms.data]
-      .sort((a, b) => a.id - b.id)
-      .map((f) => {
-        const holder =
-          members.data.find((m) => m.farm_id === f.id && m.main_contact) ??
-          members.data.find((m) => m.farm_id === f.id);
-        const parcelCount = fields.data.filter((fl) => fl.farm_id === f.id).length;
-        return FarmSummarySchema.parse({
-          id: f.id,
-          code: f.source_holding_id ?? `FARM-${f.id}`,
-          name: f.name,
-          region: (f.nuts3_id && REGION[f.nuts3_id]) || f.nuts3_id || "",
-          initials: initials(f.name),
-          parcelCount,
-          featured: true,
-          live: true,
-          farmerName: holder ? firstName(holder.full_name) : "",
-          memberId: holder ? holder.id : f.id,
-        });
-      });
-    if (built.length > 0) return built;
-    throw new Error("no farms from API");
+    return await fetchFarms();
   } catch {
-    return mock(FarmListSchema, farmsFixture);
+    return farmsFixture();
   }
+}
+
+/** The persona list, kept across launches so a cold start paints at once. */
+export const farmsQuery: Query<FarmSummary[]> = {
+  key: "farms",
+  load: fetchFarms,
+  schema: FarmListSchema,
+  fallback: farmsFixture,
+  persist: true,
+  freshMs: 5 * 60_000,
+};
+
+function farmsFixture(): Promise<FarmSummary[]> {
+  return mock(FarmListSchema, farmsFixtureJson);
+}
+
+async function fetchFarms(): Promise<FarmSummary[]> {
+  const [farms, members, fields] = await Promise.all([
+    list("farm", { limit: 100 }),
+    list("member", { limit: 100 }),
+    list("field", { limit: 100 }),
+  ]);
+  const built = [...farms.data]
+    .sort((a, b) => a.id - b.id)
+    .map((f) => {
+      const holder =
+        members.data.find((m) => m.farm_id === f.id && m.main_contact) ??
+        members.data.find((m) => m.farm_id === f.id);
+      const parcelCount = fields.data.filter((fl) => fl.farm_id === f.id).length;
+      return FarmSummarySchema.parse({
+        id: f.id,
+        code: f.source_holding_id ?? `FARM-${f.id}`,
+        name: f.name,
+        region: (f.nuts3_id && REGION[f.nuts3_id]) || f.nuts3_id || "",
+        initials: initials(f.name),
+        parcelCount,
+        featured: true,
+        live: true,
+        farmerName: holder ? firstName(holder.full_name) : "",
+        memberId: holder ? holder.id : f.id,
+      });
+    });
+  if (built.length > 0) return built;
+  throw new Error("no farms from API");
 }
