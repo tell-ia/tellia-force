@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { RequestContext } from "@mastra/core/request-context";
+import { z } from "zod";
 import { createAdvisorTools } from "../src/modules/chat/tools.ts";
 import { FARM_ID_KEY, MEMBER_ID_KEY } from "../src/modules/chat/requestContext.ts";
 import { makeTestMastra, makeTestRegistry } from "./helpers/testApp.ts";
@@ -49,6 +50,16 @@ Deno.test("tool keys are exactly the UI contract", opts, async () => {
   );
   assertEquals(tools.recordIrrigation.id, "record_irrigation");
   assertEquals(tools.getIrrigationHistory.id, "get_irrigation_history");
+});
+
+Deno.test("tool texts name other tools by key (what the model sees), never by id", opts, async () => {
+  const { tools } = await setup();
+  const ids = Object.values(tools).map((t) => t.id);
+  for (const [key, tool] of Object.entries(tools)) {
+    const text = tool.description +
+      JSON.stringify(z.toJSONSchema(tool.inputSchema as unknown as z.ZodType));
+    for (const id of ids) assert(!text.includes(id), `${key} mentions the tool id ${id}`);
+  }
 });
 
 Deno.test("getIrrigationHistory: the fixture's 30 mm record on 2026-06-21", opts, async () => {

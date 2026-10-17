@@ -109,7 +109,7 @@ questions.
 
 ## Unanswered drafts
 
-When the farmer never answers a `record_irrigation` confirmation, the draft stays as a `draft`
+When the farmer never answers a `recordIrrigation` confirmation, the draft stays as a `draft`
 operation row. Drafts never count toward the water balance. Cleaning them up is backlog.
 
 ## Mastra `/api/*`

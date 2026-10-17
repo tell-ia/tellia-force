@@ -68,7 +68,7 @@ export function createAdvisorTools(registry: FarmRegistry) {
   };
 
   const date = IsoDateSchema.optional().describe("Day to evaluate, YYYY-MM-DD. Default: today.");
-  const fieldId = z.number().int().describe("Field id, from resolve_field.");
+  const fieldId = z.number().int().describe("Field id, from resolveField.");
 
   const resolveField = createTool({
     id: "resolve_field",
@@ -181,7 +181,7 @@ export function createAdvisorTools(registry: FarmRegistry) {
   const recordIrrigation = createTool({
     id: "record_irrigation",
     description:
-      "Start recording an irrigation the farmer says they did. Nothing is saved yet: it returns a summary; ask the farmer this summary as a yes/no question, then call confirm_irrigation with their answer.",
+      "Start recording an irrigation the farmer says they did. Nothing is saved yet: it returns a summary; ask the farmer this summary as a yes/no question, then call confirmIrrigation with their answer.",
     inputSchema: z.object({
       fieldId,
       date: IsoDateSchema.describe("Day the irrigation happened, YYYY-MM-DD."),
@@ -212,9 +212,9 @@ export function createAdvisorTools(registry: FarmRegistry) {
   const confirmIrrigation = createTool({
     id: "confirm_irrigation",
     description:
-      "Finish a record_irrigation run, only with the farmer's explicit answer to its yes/no question: confirmed true saves the irrigation, false discards it. Never call it on your own initiative.",
+      "Finish a recordIrrigation run, only with the farmer's explicit answer to its yes/no question: confirmed true saves the irrigation, false discards it. Never call it on your own initiative.",
     inputSchema: z.object({
-      runId: z.string().describe("runId returned by record_irrigation."),
+      runId: z.string().describe("runId returned by recordIrrigation."),
       confirmed: z.boolean(),
     }),
     outputSchema: ConfirmOutput,
