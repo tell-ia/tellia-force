@@ -16,6 +16,11 @@
 - 2026-10-17 Task 4 check found a bug: with no date in its prompt, Jean invented one
   (`get_farm_advice {date: 2024-06-13}`). Fix: the phone tools' `date` says "leave it out for today",
   the prompt says "never guess a date". Pushed; 3/3 VAPI chat runs call with no date and answer right.
+- 2026-10-17 Task 4: end to end on the running API: PUT 2026-07-15 → advice asOf 2026-07-15
+  (3 fields to irrigate), chat thread `member-1-2026-07-15`, tunnel OK, future date 400; VAPI
+  chat API: Jean says 15 July and the 3 fields. Android rebuilt: chip "Wed 15 Jul 2026", sheet
+  opens, "Wet summer" switches the app to 15 Jul 2021 (nothing urgent). Date reset to real.
+  API 311 passed, web 58, shared OK.
 
 ## In progress
 

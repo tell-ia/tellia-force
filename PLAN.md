@@ -31,4 +31,4 @@ irrigations on a past demo date is allowed (it writes real rows dated that day).
 - [x] 1. Backend clock + `/settings/date` + shared contract + tests.
 - [x] 2. Web: `DateProvider`, date sheet, chips, remount on change, remove hard-coded dates, tests.
 - [x] 3. VAPI prompt uses the tool's `today`; `vapi:setup` closes open SMS sessions; docs. Run it.
-- [ ] 4. End-to-end check (API, chat, VAPI tool result) and rebuild the Android app.
+- [x] 4. End-to-end check (API, chat, VAPI tool result) and rebuild the Android app.
