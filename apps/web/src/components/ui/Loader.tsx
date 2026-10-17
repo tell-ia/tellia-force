@@ -3,7 +3,6 @@ import { font, v } from "../../theme/tokens";
 
 // A little agri-flavoured loader: a bobbing water droplet + rotating one-liners.
 const MESSAGES = [
-  "Forecasting cloud tears…",
   "Counting water buckets…",
   "Asking the soil how it feels…",
   "Chasing degree-days…",
@@ -11,6 +10,19 @@ const MESSAGES = [
   "Balancing the water books…",
   "Consulting the clouds…",
   "Waking up the maize…",
+  "Forecasting cloud tears…",
+  "Negotiating with the rain…",
+  "Getting to the root of the problem…",
+  "Checking if the rain got the memo…",
+  "Auditing the water cycle…",
+  "Interviewing thirsty plants…",
+  "Convincing the clouds to cooperate…",
+  "Cross-examining evapotranspiration…",
+  "The maize demands more water…",
+  "The rain department is on lunch break…",
+  "The soil has filed a formal complaint…",
+  "Counting clouds, recounting clouds…",
+  "Predicting the clouds' mood swings…",
 ];
 
 export function Loader({ label }: { label?: string }) {
