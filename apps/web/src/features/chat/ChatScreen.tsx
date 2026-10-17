@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { Mic, Send } from "lucide-react";
+import { Loader2, Mic, Send, Square } from "lucide-react";
 import { useFarm } from "../../app/FarmContext";
 import { createChatTransport, getChatHistory } from "../../lib/api/chat";
 import { font, v } from "../../theme/tokens";
 import { Label } from "../../components/ui/primitives";
 import { Markdown } from "../../components/Markdown";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
-const MIC_PHRASE = "Should I water my fields today?"; // voice capture is mocked → sends this text
+import { useVoiceInput } from "./useVoiceInput";
+
+/** Starter questions above the message box: a tap fills the box, the farmer sends. */
+const SUGGESTIONS = [
+  "Should I water my fields today?",
+  "Which field needs water first?",
+  "Will it rain this week?",
+  "What did I irrigate this week?",
+];
 
 export function ChatScreen() {
   const { farm } = useFarm();
@@ -46,7 +54,7 @@ function LiveChat() {
   return (
     <ChatLayout
       onSend={reply}
-      onMic={() => reply(MIC_PHRASE)}
+      suggestions={SUGGESTIONS}
       disabled={busy}
       banner={offline ? "Can't reach the advisor — check the connection." : error ? `Error: ${error.message}` : null}
     >
@@ -113,18 +121,26 @@ function TextBubble({ role, text }: { role: "assistant" | "farmer"; text: string
 function ChatLayout({
   children,
   onSend,
-  onMic,
+  suggestions = [],
   disabled,
   banner,
 }: {
   children: React.ReactNode;
   onSend?: (t: string) => void;
-  onMic?: () => void;
+  suggestions?: string[];
   disabled?: boolean;
   banner?: string | null;
 }) {
   const [input, setInput] = useState("");
+  const voice = useVoiceInput(setInput);
+  const voiceOn = voice.status !== "idle";
+  const inputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // While speaking, show the newest words, not the start of a long sentence.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (voiceOn && el) el.scrollLeft = el.scrollWidth;
+  }, [voiceOn, input]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   });
@@ -140,8 +156,26 @@ function ChatLayout({
         {children}
         <div ref={endRef} />
       </div>
-      {banner && (
-        <div style={{ fontSize: 12, color: v("ink2"), background: v("sunk"), padding: "8px 14px", textAlign: "center" }}>{banner}</div>
+      {(banner || voice.error) && (
+        <div style={{ fontSize: 12, color: v("ink2"), background: v("sunk"), padding: "8px 14px", textAlign: "center" }}>{voice.error ?? banner}</div>
+      )}
+      {onSend && !input.trim() && !voiceOn && suggestions.length > 0 && (
+        <div role="list" aria-label="Suggested questions" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "8px 12px 0", scrollbarWidth: "none" }}>
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="listitem"
+              onClick={() => {
+                setInput(s);
+                inputRef.current?.focus();
+              }}
+              style={chip}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       )}
       <form
         onSubmit={(e) => {
@@ -151,23 +185,61 @@ function ChatLayout({
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", borderTop: `1px solid ${v("line")}`, background: v("surface") }}
       >
         <input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={onSend ? "Message" : "Switch to Live to chat"}
+          placeholder={voiceOn ? "Listening…" : onSend ? "Message" : "Switch to Live to chat"}
           disabled={!onSend}
+          readOnly={voiceOn}
+          aria-live={voiceOn ? "polite" : undefined}
           style={{ flex: 1, height: 44, borderRadius: 22, border: `1px solid ${v("line")}`, padding: "0 16px", background: v("bg"), color: v("ink"), fontSize: 15 }}
         />
-        {input.trim() ? (
+        {input.trim() && !voiceOn ? (
           <button type="submit" aria-label="Send" disabled={disabled} style={iconBtn}>
             <Send size={20} />
           </button>
         ) : (
-          <button type="button" aria-label="Hold to speak" onClick={onMic} disabled={!onMic || disabled} style={iconBtn}>
-            <Mic size={20} />
-          </button>
+          <MicButton status={voice.status} disabled={!onSend} onStart={voice.start} onStop={voice.stop} />
         )}
       </form>
     </>
+  );
+}
+
+/** Tap to talk, tap again to stop. Pulses while it listens. */
+function MicButton({
+  status,
+  disabled,
+  onStart,
+  onStop,
+}: {
+  status: ReturnType<typeof useVoiceInput>["status"];
+  disabled?: boolean;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  const listening = status === "listening";
+  const waiting = status === "connecting" || status === "finishing";
+  return (
+    <button
+      type="button"
+      aria-label={status === "idle" ? "Speak" : listening ? "Stop and keep the text" : status === "connecting" ? "Cancel" : "Finishing"}
+      aria-pressed={status !== "idle"}
+      onClick={status === "idle" ? onStart : onStop}
+      disabled={disabled || status === "finishing"}
+      style={{ ...iconBtn, position: "relative", background: listening ? v("act") : v("brand") }}
+    >
+      {listening && (
+        <span data-tf-anim aria-hidden style={{ position: "absolute", inset: 0, borderRadius: 22, background: v("act"), animation: "tf-ripple 1.4s ease-out infinite" }} />
+      )}
+      {waiting ? (
+        <Loader2 size={20} aria-hidden className="animate-spin" />
+      ) : listening ? (
+        <Square size={16} fill="currentColor" aria-hidden style={{ position: "relative" }} />
+      ) : (
+        <Mic size={20} aria-hidden />
+      )}
+    </button>
   );
 }
 
@@ -185,9 +257,10 @@ function Empty() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: v("ink2"), textAlign: "center", padding: 24 }}>
       <div style={{ fontFamily: font.display, fontWeight: 600, fontSize: 20, color: v("ink") }}>Ask the advisor</div>
-      <div style={{ fontSize: 13, maxWidth: 260 }}>“Should I water The Valley?” · tap the mic to try it.</div>
+      <div style={{ fontSize: 13, maxWidth: 260 }}>Pick a question below, type, or tap the mic and speak.</div>
     </div>
   );
 }
 
+const chip: React.CSSProperties = { flex: "none", minHeight: 44, borderRadius: 22, border: `1px solid ${v("line")}`, background: v("bg"), color: v("ink"), padding: "0 14px", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" };
 const iconBtn: React.CSSProperties = { width: 44, height: 44, flex: "none", borderRadius: 22, border: 0, background: v("brand"), color: v("bg"), display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" };
