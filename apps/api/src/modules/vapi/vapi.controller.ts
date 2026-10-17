@@ -26,6 +26,9 @@ const BodySchema = z.object({
     })).optional(),
     call: z.object({ customer: CustomerSchema }).optional(),
     customer: CustomerSchema,
+    // SMS: the conversation (VAPI "chat" / "session") carries the texter's number, not `call`.
+    chat: z.object({ sessionId: z.string().optional(), customer: CustomerSchema }).optional(),
+    session: z.object({ id: z.string().optional(), customer: CustomerSchema }).optional(),
   }),
 });
 type ToolCall = NonNullable<z.infer<typeof BodySchema>["message"]["toolCallList"]>[number];
@@ -41,6 +44,8 @@ export function createVapiController(deps: {
   secret: string | undefined;
   /** The member whose phone (E.164) this is, or null. */
   memberByPhone(phone: string): Promise<number | null>;
+  /** The texter's number from a VAPI SMS conversation id (needs VAPI_PRIVATE_KEY), or null. */
+  sessionNumber?(sessionId: string): Promise<string | null>;
 }) {
   const { registry } = deps;
   const app = new Hono();
@@ -81,7 +86,17 @@ export function createVapiController(deps: {
     const { message } = body.data;
     // Other server messages (status updates, reports...) need no answer.
     if (message.type !== "tool-calls") return c.json({});
-    const caller = await callerFor(message.call?.customer?.number ?? message.customer?.number);
+    const sessionId = message.session?.id ?? message.chat?.sessionId;
+    let phone = message.call?.customer?.number ?? message.customer?.number ??
+      message.chat?.customer?.number ?? message.session?.customer?.number;
+    // An SMS tool call may come without the number: ask VAPI for the conversation's customer.
+    if (!phone && sessionId && deps.sessionNumber) {
+      phone = (await deps.sessionNumber(sessionId).catch(() => null)) ?? undefined;
+    }
+    if (!phone) {
+      console.warn(`VAPI tool call without a caller number (session ${sessionId ?? "none"})`);
+    }
+    const caller = await callerFor(phone);
     const calls = message.toolCallList ?? [];
     return c.json({ results: await Promise.all(calls.map((call) => run(call, caller))) });
   });

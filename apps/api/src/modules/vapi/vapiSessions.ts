@@ -33,3 +33,16 @@ export async function closeOpenSmsConversations(
   for (const s of open) await call("PATCH", `/session/${s.id}`, { status: "completed" });
   return open.length;
 }
+
+/** The customer number of a VAPI SMS conversation, or null when VAPI has none. */
+export async function sessionCustomerNumber(
+  deps: { privateKey: string; fetch?: typeof fetch },
+  sessionId: string,
+): Promise<string | null> {
+  const res = await (deps.fetch ?? fetch)(`${VAPI_API}/session/${encodeURIComponent(sessionId)}`, {
+    headers: { authorization: `Bearer ${deps.privateKey}` },
+  });
+  if (!res.ok) return null;
+  const session = await res.json() as { customer?: { number?: string } };
+  return session.customer?.number ?? null;
+}

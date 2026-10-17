@@ -12,7 +12,7 @@ import { createIrrigationController } from "./modules/irrigation/irrigation.cont
 import { createClock, fileDemoDateStore } from "./modules/settings/clock";
 import { createSettingsController } from "./modules/settings/settings.controller";
 import { createVapiController, memberByPhoneIn } from "./modules/vapi/vapi.controller";
-import { closeOpenSmsConversations } from "./modules/vapi/vapiSessions";
+import { closeOpenSmsConversations, sessionCustomerNumber } from "./modules/vapi/vapiSessions";
 import { db } from "./supabase";
 
 const app = new Hono();
@@ -74,6 +74,7 @@ app.route(
     registry,
     secret: config.VAPI_WEBHOOK_SECRET,
     memberByPhone: memberByPhoneIn(db),
+    sessionNumber: vapiKey ? (id) => sessionCustomerNumber({ privateKey: vapiKey }, id) : undefined,
   }),
 );
 
