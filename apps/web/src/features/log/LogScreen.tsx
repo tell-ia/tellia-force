@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import type { FarmToday, IrrigationRecord, ParcelReport, ParcelSummary } from "@tellia/shared";
 import { deleteIrrigation, getFarmToday, getParcelReport, listIrrigations, recordIrrigation, simulateDose, type DoseSim } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
+import { useWheelScrollX } from "../../lib/useWheelScrollX";
 
 /** Debounce a fast-changing value (the dose stepper) before firing the engine call. */
 function useDebounced<T>(value: T, ms: number): T {
@@ -301,9 +302,10 @@ export function LogDateRow({ day, today, min, disabled, onChange }: { day: strin
 
 /** One chip per field of the farm, most urgent first (the advice order). */
 export function FieldChips({ parcels, selected, disabled, onPick }: { parcels: ParcelSummary[]; selected: number | null; disabled: boolean; onPick: (id: number) => void }) {
+  const row = useWheelScrollX<HTMLDivElement>();
   if (parcels.length === 0) return null;
   return (
-    <div role="group" aria-label="Field" style={{ flex: "none", display: "flex", gap: 8, overflowX: "auto", margin: "0 -16px", padding: "0 16px 2px" }}>
+    <div ref={row} role="group" aria-label="Field" style={{ flex: "none", display: "flex", gap: 8, overflowX: "auto", margin: "0 -16px", padding: "0 16px 2px", touchAction: "pan-x pan-y", userSelect: "none", cursor: "grab" }}>
       {parcels.map((p) => {
         const on = p.id === selected;
         return (
