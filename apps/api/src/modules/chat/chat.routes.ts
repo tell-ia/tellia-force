@@ -32,7 +32,8 @@ export function createChatRoutes(deps: { mastra: Mastra; registry: FarmRegistry 
     if (!memory || !thread || thread.resourceId !== resourceId) {
       return c.json({ data: { threadId, messages: [] } });
     }
-    const { messages } = await memory.recall({ threadId, resourceId });
+    // The whole thread: the agent's `lastMessages` only caps what the model sees, not the screen.
+    const { messages } = await memory.recall({ threadId, resourceId, perPage: false });
     return c.json({ data: { threadId, messages: toAISdkMessages(messages, { version: "v7" }) } });
   });
 
