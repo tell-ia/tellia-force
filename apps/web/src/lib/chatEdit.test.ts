@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { UIMessage } from "ai";
-import { canEditMessage, editedText, editHint, messagesAfter, messageText } from "./chatEdit";
+import { canCopyMessage, canEditMessage, editedText, editHint, messagesAfter, messageText } from "./chatEdit";
+import { copyText } from "./clipboard";
 
 const msg = (id: string, role: "user" | "assistant", ...parts: object[]): UIMessage =>
   ({ id, role, parts }) as UIMessage;
@@ -50,5 +51,44 @@ describe("editedText", () => {
     expect(editedText("  Which field?  ", "Will it rain?")).toBe("Which field?");
     expect(editedText("   ", "Will it rain?")).toBeNull();
     expect(editedText(" Will it rain? ", "Will it rain?")).toBeNull();
+  });
+});
+
+describe("canCopyMessage", () => {
+  it("an advisor answer with text, once it is done streaming", () => {
+    const a = msg("a", "assistant", text("Yes"));
+    expect(canCopyMessage(a, false)).toBe(true);
+    expect(canCopyMessage(a, true)).toBe(false);
+    expect(canCopyMessage(msg("a", "assistant", tool), false)).toBe(false);
+    expect(canCopyMessage(msg("u", "user", text("hi")), false)).toBe(false);
+  });
+});
+
+describe("copyText", () => {
+  it("uses the clipboard API when it works", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const legacyCopy = vi.fn();
+    expect(await copyText("hello", { writeText, legacyCopy })).toBe(true);
+    expect(writeText).toHaveBeenCalledWith("hello");
+    expect(legacyCopy).not.toHaveBeenCalled();
+  });
+  it("falls back when the API is missing", async () => {
+    const legacyCopy = vi.fn().mockReturnValue(true);
+    expect(await copyText("hello", { legacyCopy })).toBe(true);
+    expect(legacyCopy).toHaveBeenCalledWith("hello");
+  });
+  it("falls back when the API rejects", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    const legacyCopy = vi.fn().mockReturnValue(true);
+    expect(await copyText("hello", { writeText, legacyCopy })).toBe(true);
+  });
+  it("false when both paths fail, never throws", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    expect(await copyText("x", { writeText, legacyCopy: () => false })).toBe(false);
+    expect(
+      await copyText("x", { legacyCopy: () => {
+        throw new Error("boom");
+      } }),
+    ).toBe(false);
   });
 });

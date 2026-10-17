@@ -4,11 +4,12 @@ import type { UIMessage } from "ai";
 import { Loader2, Mic, PanelLeft, Send, Square, SquarePen } from "lucide-react";
 import { useFarm } from "../../app/FarmContext";
 import { createChatTransport, createThreadId, getChatHistory, listChatThreads, truncateChatThread } from "../../lib/api/chat";
-import { canEditMessage, messageText, messagesAfter } from "../../lib/chatEdit";
+import { canCopyMessage, canEditMessage, messageText, messagesAfter } from "../../lib/chatEdit";
 import { useAsync } from "../../lib/useAsync";
 import { font, v } from "../../theme/tokens";
 import { SessionsDrawer } from "./SessionsDrawer";
 import { EditButton, MessageEditor } from "./MessageEditor";
+import { CopyButton } from "./CopyButton";
 import { Label } from "../../components/ui/primitives";
 import { Markdown } from "../../components/Markdown";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
@@ -143,6 +144,7 @@ function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; 
           onReply={reply}
           answered={i < messages.length - 1}
           canEdit={canEditMessage(m, busy)}
+          copyable={canCopyMessage(m, busy && i === messages.length - 1)}
           editing={editingId === m.id}
           replaced={messagesAfter(messages, m.id)}
           onEdit={() => {
@@ -162,6 +164,7 @@ function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; 
 
 interface EditProps {
   canEdit: boolean;
+  copyable: boolean;
   editing: boolean;
   replaced: number;
   onEdit: () => void;
@@ -169,7 +172,7 @@ interface EditProps {
   onCancelEdit: () => void;
 }
 
-function MessageBlock({ message, onReply, answered, canEdit, editing, replaced, onEdit, onSubmitEdit, onCancelEdit }: { message: UIMessage; onReply: (t: string) => void; answered: boolean } & EditProps) {
+function MessageBlock({ message, onReply, answered, canEdit, copyable, editing, replaced, onEdit, onSubmitEdit, onCancelEdit }: { message: UIMessage; onReply: (t: string) => void; answered: boolean } & EditProps) {
   const role = message.role === "user" ? "farmer" : "assistant";
   return (
     <Block role={role}>
@@ -186,6 +189,7 @@ function MessageBlock({ message, onReply, answered, canEdit, editing, replaced, 
         }
         return null;
       })}
+      {copyable && <CopyButton text={messageText(message)} />}
       {!editing && canEditMessage(message, false) && <EditButton disabled={!canEdit} onClick={onEdit} />}
     </Block>
   );

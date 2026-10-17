@@ -35,3 +35,8 @@ export function editedText(draft: string, original: string): string | null {
   const t = draft.trim();
   return t && t !== original.trim() ? t : null;
 }
+
+/** An assistant message gets a copy button once it has text and is not still streaming. */
+export function canCopyMessage(message: UIMessage, streaming: boolean): boolean {
+  return message.role === "assistant" && !streaming && messageText(message) !== "";
+}
