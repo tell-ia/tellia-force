@@ -1,4 +1,12 @@
-import type { BalancePoint, DayBalance, FieldReport, ParcelReport, Reserve } from "@tellia/shared";
+import type { BalancePoint, CropPhase, DayBalance, FieldReport, ParcelReport, Reserve } from "@tellia/shared";
+
+/** A soil_analysis row's texture + OM, joined by field in the api layer. */
+export interface SoilSample {
+  sand_pct: number | null;
+  silt_pct: number | null;
+  clay_pct: number | null;
+  organic_matter_pct: number | null;
+}
 
 // Pure domain→view mappers + the small computations the screens need. Tested in
 // parcel.test.ts on the demo numbers. No rendering, no side effects.
@@ -94,15 +102,42 @@ function toBalancePoint(d: DayBalance, asOf: string): BalancePoint {
   };
 }
 
+const PHASES: readonly CropPhase[] = ["ini", "dev", "mid", "late", "mature"];
+const PHASE_LABEL: Record<CropPhase, string> = {
+  ini: "Emergence",
+  dev: "Growth",
+  mid: "Flowering",
+  late: "Grain fill",
+  mature: "Mature",
+};
+const phaseSteps = (cur: CropPhase) =>
+  PHASES.map((p) => ({ label: PHASE_LABEL[p], weight: 1, current: p === cur }));
+const phaseProgress = (cur: CropPhase) => (PHASES.indexOf(cur) + 0.5) / PHASES.length;
+
+function weekday(iso: string): string {
+  const p = iso.split("-").map(Number);
+  return WEEKDAYS[new Date(Date.UTC(p[0] ?? 0, (p[1] ?? 1) - 1, p[2] ?? 1)).getUTCDay()] ?? "";
+}
+
+function stageNote(stage: { sensitive: boolean; floweringDate: string | null }): string {
+  const parts: string[] = [];
+  if (stage.floweringDate) parts.push(`Flowering reached ${stage.floweringDate}.`);
+  parts.push(
+    stage.sensitive
+      ? "Yield-sensitive window — avoid water stress."
+      : "Outside the most sensitive window.",
+  );
+  return parts.join(" ");
+}
+
 /**
  * Engine FieldReport → ParcelReport. The v2 report carries the detail (series,
- * season, soil, stage) so this is a full live report: recommendation + reserve +
- * water-balance series + season totals. Sections the report omits stay undefined
- * and the UI hides them.
+ * season, soil, stage); joined with a soil sample + crop base temperature it is a
+ * full live report. Sections without data stay undefined and the UI hides them.
  */
 export function fieldReportToParcelReport(
   r: FieldReport,
-  opts: { farmId: number; areaHa?: number },
+  opts: { farmId: number; areaHa?: number; gddBase?: number; soil?: SoilSample | null },
 ): ParcelReport {
   const efficiency =
     r.irrigateMm > 0 && r.irrigateGrossMm > 0
@@ -131,6 +166,7 @@ export function fieldReportToParcelReport(
   };
 
   if (r.series?.length) report.series = r.series.map((d) => toBalancePoint(d, r.asOf));
+
   if (r.season) {
     report.seasonBalance = {
       rainMm: round1(r.season.rainMm),
@@ -141,5 +177,53 @@ export function fieldReportToParcelReport(
       cropDays: r.season.daysSinceSowing,
     };
   }
+
+  if (r.stage) {
+    const todayEtc = r.series?.find((d) => d.date === r.asOf)?.etc;
+    const tomorrowEtc = r.series?.find((d) => d.date > r.asOf)?.etc;
+    report.cropStage = {
+      label: r.stageLabel ?? PHASE_LABEL[r.stage.phase],
+      daysSinceSowing: r.season?.daysSinceSowing ?? 0,
+      gdd: Math.round(r.stage.gddSinceSowing),
+      gddBase: opts.gddBase ?? 0,
+      useTodayMm: round1(todayEtc ?? 0),
+      useTomorrowMm: round1(tomorrowEtc ?? 0),
+      note: stageNote(r.stage),
+      progress: phaseProgress(r.stage.phase),
+      steps: phaseSteps(r.stage.phase),
+    };
+  }
+
+  const s = opts.soil;
+  if (s && s.sand_pct != null) {
+    const sandPct = Math.round(s.sand_pct);
+    const clayPct = Math.round(s.clay_pct ?? 0);
+    const siltPct = Math.round(s.silt_pct ?? Math.max(0, 100 - sandPct - clayPct));
+    const usableMm = Math.round(r.soil?.tawMm ?? r.tawMm);
+    report.soil = {
+      texture: r.soil?.textureClass ?? "—",
+      sandPct,
+      siltPct,
+      clayPct,
+      omPct: round1(s.organic_matter_pct ?? 0),
+      usableMm,
+      rootDepthM: r.rootDepthM ?? 0,
+      note: `${usableMm} mm usable${r.rootDepthM ? ` over ${r.rootDepthM} m of roots` : ""}.`,
+    };
+  }
+
+  const forecast = (r.series ?? []).filter((d) => d.date > r.asOf).slice(0, 5);
+  if (forecast.length) {
+    const cap = report.reserve.capacityMm;
+    report.nextDays = forecast.map((d) => {
+      const pctNoWater = Math.round(((d.taw - d.depletion) / d.taw) * 100);
+      return {
+        day: `${weekday(d.date)} ${dayOfMonth(d.date)}`,
+        pctNoWater,
+        pctWatered: wateredPct(pctNoWater, r.irrigateMm, cap),
+      };
+    });
+  }
+
   return report;
 }

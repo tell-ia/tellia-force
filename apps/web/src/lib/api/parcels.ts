@@ -38,12 +38,21 @@ export async function getFarmToday(farm: FarmSummary): Promise<FarmToday> {
 // exists. Falls back to the rich fixture for the demo parcels / offline.
 export async function getParcelReport(parcelId: number): Promise<ParcelReport> {
   try {
-    const [report, fields] = await Promise.all([
+    const [report, fields, crops, soils] = await Promise.all([
       http.get(`/irrigation/fields/${parcelId}/report`, FieldReportSchema),
       list("field", { limit: 100 }),
+      list("crop_ref", { limit: 100 }),
+      list("soil_analysis", { limit: 100 }),
     ]);
     const field = fields.data.find((f) => f.id === parcelId);
-    return fieldReportToParcelReport(report, { farmId: field?.farm_id ?? 0, areaHa: field?.area_ha });
+    const gddBase = crops.data.find((c) => c.crop_code === report.cropCode)?.gdd_base_c;
+    const soil = soils.data.find((s) => s.field_id === parcelId) ?? null;
+    return fieldReportToParcelReport(report, {
+      farmId: field?.farm_id ?? 0,
+      areaHa: field?.area_ha,
+      gddBase: gddBase ?? undefined,
+      soil,
+    });
   } catch {
     const fixture = REPORT_BY_PARCEL[parcelId];
     if (!fixture) throw new Error(`No data for parcel ${parcelId}`);

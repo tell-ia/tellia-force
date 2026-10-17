@@ -140,7 +140,7 @@ export const SeasonBalanceSchema = z.object({
 
 export const NextDaySchema = z.object({
   day: z.string(), // "Thu 14"
-  tempMax: z.number().int(),
+  tempMax: z.number().int().optional(), // omitted when the series carries no temperature
   pctNoWater: z.number().int(),
   pctWatered: z.number().int(),
 });

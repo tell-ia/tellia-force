@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown } from "lucide-react";
-import type { BalancePoint, CropTimeline, Reserve, SeasonBalance, Soil } from "@tellia/shared";
+import type { BalancePoint, CropTimeline, NextDay, Reserve, SeasonBalance, Soil } from "@tellia/shared";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, StatTile } from "../../components/ui/primitives";
 
@@ -160,7 +160,7 @@ export function CropStageTimeline({ cropStage }: { cropStage: CropTimeline }) {
 
 // ---- Next 5 days ----------------------------------------------------------
 
-export function NextDaysTable({ days }: { days: { day: string; tempMax: number; pctNoWater: number; pctWatered: number }[] }) {
+export function NextDaysTable({ days }: { days: NextDay[] }) {
   const cols = "54px 34px minmax(0, 1fr) 52px";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -179,7 +179,7 @@ export function NextDaysTable({ days }: { days: { day: string; tempMax: number; 
         return (
           <div key={d.day} style={{ display: "grid", gridTemplateColumns: cols, gap: "0 10px", alignItems: "center", minHeight: 34, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
             <span style={{ fontWeight: 600 }}>{d.day}</span>
-            <span style={{ textAlign: "right", color: v("ink2") }}>{d.tempMax}°</span>
+            <span style={{ textAlign: "right", color: v("ink2") }}>{d.tempMax != null ? `${d.tempMax}°` : ""}</span>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ position: "relative", flex: 1, height: 8, borderRadius: 4, background: v("sunk") }}>
                 <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 4, width: `${d.pctNoWater}%`, background: low ? v("act") : v("water") }} />
