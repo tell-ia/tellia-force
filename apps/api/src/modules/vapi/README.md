@@ -1,7 +1,9 @@
 # VAPI phone assistant
 
-A farmer calls the VAPI number and talks (English) with the assistant "Jean".
-VAPI runs the voice and the LLM; every number comes from our engine through tools.
+A farmer calls the VAPI number and talks (English) with the assistant "Jean". VAPI runs the voice
+and the LLM; every number comes from our engine through tools. Jean helps with irrigation, and also
+answers about the fields, the farm journal, crop protection products, and the farm's sales, prices,
+subsidies and accounts.
 
 ```
 phone → VAPI (speech, gpt-4.1, voice) → POST /vapi/tools → irrigation service → Supabase
@@ -10,16 +12,33 @@ phone → VAPI (speech, gpt-4.1, voice) → POST /vapi/tools → irrigation serv
 ## How a tool call works
 
 - VAPI posts `{ message: { type: "tool-calls", toolCallList, call } }` to `/vapi/tools`.
-- The header `x-vapi-secret` must equal `VAPI_WEBHOOK_SECRET`, or the answer is `401`.
-  With no secret set, every request is refused.
-- The caller is `call.customer.number` matched against `member.phone`.
-  Unknown numbers and web calls get the default farm, **read-only**: `record_irrigation` is
-  refused. Put your phone on a member (E.164, like `+33612345678`) to record.
+- The header `x-vapi-secret` must equal `VAPI_WEBHOOK_SECRET`, or the answer is `401`. With no
+  secret set, every request is refused.
+- The caller is `call.customer.number` matched against `member.phone`. Unknown numbers and web calls
+  get the default farm, **read-only**: `record_irrigation` and `correct_irrigation` are refused. Put
+  your phone on a member (E.164, like `+33612345678`) to record or correct.
 - The answer is always `200` with `{ results: [{ toolCallId, result | error }] }`. `result` is a
   one-line JSON string and always has `today`.
 
-Tools (`vapi.tools.ts`): `resolve_field`, `get_farm_advice`, `get_field_report`, `get_weather`,
-`get_irrigation_history`, `simulate_scenario`, `record_irrigation` (source `phone_call`).
+12 tools (`vapi.tools.ts`), the same use cases as the chat tools, with short flat results:
+
+| Tool                     | What it does                                                                              |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `resolve_field`          | find fields by name or crop                                                               |
+| `get_farm_advice`        | ranked irrigation advice for every field                                                  |
+| `get_field_report`       | irrigation advice for one field                                                           |
+| `get_weather`            | weather around a day                                                                      |
+| `get_irrigation_history` | confirmed irrigations of a field, with their `operationId`                                |
+| `simulate_scenario`      | what-if (rain, drought, flood, frost, hail, an irrigation); nothing is saved              |
+| `get_field_details`      | the field, its crop today, irrigation system and latest soil analysis                     |
+| `get_field_journal`      | what was done on a field or the farm, 10 entries at most, totals for the period           |
+| `check_product_use`      | can this product go on this field's crop (E-Phy, France only); every warning              |
+| `lookup_farm_data`       | sales, market prices, subsidies, accounts, regional averages; 10 rows at most             |
+| `record_irrigation`      | **write**: save an irrigation (source `phone_call`), after the farmer's clear yes         |
+| `correct_irrigation`     | **write**: change the day or mm of a recorded irrigation, or delete it, after a clear yes |
+
+The phone has no `confirmIrrigation` step: Jean reads back the irrigation or the change, asks "Shall
+I save it?" / "Shall I change it?", and calls the write tool only after a clear yes.
 
 ## Run it locally
 
@@ -28,8 +47,9 @@ Tools (`vapi.tools.ts`): `resolve_field`, `get_farm_advice`, `get_field_report`,
 2. Start the API: `cd apps/api && deno task dev`.
 3. Start the tunnel: copy `frpc.example.toml` to `frpc.toml`, set your name and the API port,
    `export FRP_TOKEN=...` (ask the team), then `pnpm tunnel` from the repo root.
-4. Push the config to VAPI: `cd apps/api && deno task vapi:setup` (`--dry-run` to preview).
-   Re-run it after changing a tool, the prompt, or the URL. It never deletes anything.
+4. Push the config to VAPI: `cd apps/api && deno task vapi:setup` (`--dry-run` to preview: it should
+   list 12 tools). Re-run it after changing a tool, the prompt, or the URL. It never deletes
+   anything. AI agents run only `--dry-run`; a human pushes.
 
 The VAPI wallet needs credits, or calls fail with `insufficient_credits`.
 

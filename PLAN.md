@@ -146,7 +146,7 @@ year?, cropCode?, limit? }` (limit ≤ 50, default 20).
       updated / deleted. Cards read the shared types. Add a small vitest render test
       (`react-dom/server`) per card: sample output and empty output must not crash.
       Checks: `cd apps/web && pnpm check-types && pnpm test`, `cd packages/shared && pnpm check-types && pnpm test`.
-- [ ] 6. Docs + live tests: `chat/README.md` tool table, `apps/api/CLAUDE.md` (13 tools),
+- [x] 6. Docs + live tests: `chat/README.md` tool table, `apps/api/CLAUDE.md` (13 tools),
       `vapi/README.md`. Live tests: one turn per new tool (the right tool is called; numbers in the
       reply come from the tool), plus a correction flow (correct → "Oui" → confirmIrrigation →
       updated). Run them. `deno task vapi:setup --dry-run` must list 12 phone tools.
