@@ -697,10 +697,15 @@ export function createIrrigationService(
       const qWords = words(query);
       const asOf = deps.today();
       const out: (FieldMatch & { score: number })[] = [];
-      for (const field of await data.listFields()) {
+      // Crops of every field in parallel: one by one, a farm's ~20 lookups took ~1.5 s.
+      const fields = await Promise.all(
+        (await data.listFields()).map(async (field) => {
+          const season = await data.getSeasonAt(field.id, asOf);
+          return { field, ref: season ? await data.getCropRef(season.cropCode) : null };
+        }),
+      );
+      for (const { field, ref } of fields) {
         const name = normalize(field.name);
-        const season = await data.getSeasonAt(field.id, asOf);
-        const ref = season ? await data.getCropRef(season.cropCode) : null;
         // Any language the farmer may use: "maïs", "maíz", "mais", "maize"...
         const crops = ref
           ? [...new Set(Object.values(ref.names).concat(ref.nameEn))].map(normalize)
