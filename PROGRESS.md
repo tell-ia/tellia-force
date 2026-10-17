@@ -13,6 +13,9 @@
 - 2026-10-17 Task 3: Jean's prompt takes today from the tool results (never the real date);
   `vapi:setup` closes open SMS conversations on Jean's numbers. Docs: api CLAUDE.md, chat and vapi
   READMEs, .env.example. `vapi:setup` run by the agent (approved): Jean updated, 1 SMS conversation closed.
+- 2026-10-17 Task 4 check found a bug: with no date in its prompt, Jean invented one
+  (`get_farm_advice {date: 2024-06-13}`). Fix: the phone tools' `date` says "leave it out for today",
+  the prompt says "never guess a date". Pushed; 3/3 VAPI chat runs call with no date and answer right.
 
 ## In progress
 
