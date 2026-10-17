@@ -11,6 +11,7 @@ import {
   reservePct,
   wateredPct,
   cropLine,
+  formDose,
 } from "./parcel";
 
 describe("crop line", () => {
@@ -18,6 +19,19 @@ describe("crop line", () => {
     expect(cropLine("Maïs grain", "Flowering")).toBe("Maïs grain · Flowering");
     expect(cropLine("Maïs grain", null)).toBe("Maïs grain");
     expect(cropLine("—", null)).toBe("No crop growing");
+  });
+});
+
+describe("Log screen dose", () => {
+  it("untouched: the advised dose, so it follows a new advice (35 mm when nothing is advised)", () => {
+    expect(formDose(null, 30)).toBe(30);
+    expect(formDose(null, 25)).toBe(25); // the report reloaded after a delete: new advice
+    expect(formDose(null, 0)).toBe(35);
+  });
+
+  it("set with the stepper: the user's dose stays, whatever the advice", () => {
+    expect(formDose(40, 30)).toBe(40);
+    expect(formDose(40, 25)).toBe(40);
   });
 });
 

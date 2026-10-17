@@ -17,7 +17,7 @@ function useDebounced<T>(value: T, ms: number): T {
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
 import { addDays, formatDay, shortDay, weekday } from "../../lib/dates";
-import { cropLine } from "../../lib/mappers/parcel";
+import { cropLine, formDose } from "../../lib/mappers/parcel";
 import { navigate } from "../../app/router";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, SectionCard } from "../../components/ui/primitives";
@@ -50,7 +50,8 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const advisedGross = Math.round(data?.recommendation.grossMm ?? 0);
   const advisedNet = Math.round(data?.recommendation.netMm ?? advisedGross * eff);
 
-  // `amount` = what was applied AT THE GUN (gross). Defaults to the advised dose.
+  // `amount` = what was applied AT THE GUN (gross), as set with the stepper. null = untouched: the
+  // form shows the advised dose, and follows it when the report reloads (after a delete).
   const [amount, setAmount] = useState<number | null>(null);
   // The saved irrigation (real row in the DB), or null. Undo deletes it.
   const [saved, setSaved] = useState<IrrigationRecord | null>(null);
@@ -74,14 +75,14 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   // A fresh form when a field's report first shows (not when it reloads after a delete).
   useEffect(() => {
     if (data) {
-      setAmount(advisedGross || 35);
+      setAmount(null);
       setSaved(null);
       setSaveError(null);
       setDay(null);
     }
   }, [data?.id]);
 
-  const gross = amount ?? advisedGross;
+  const gross = formDose(amount, advisedGross);
   const net = Math.round(gross * eff); // what actually reaches the soil
   const delta = gross - advisedGross; // vs the advised dose
   const asOf = data?.asOf ?? demoToday;
@@ -173,7 +174,7 @@ export function LogScreen({ fieldId }: { fieldId?: number }) {
   const chips = <FieldChips parcels={parcels} selected={parcelId} disabled={busy} onPick={setPicked} />;
 
   // The loader while this field's report is not there yet (a reload after a delete keeps the screen).
-  if (!data || data.id !== parcelId || amount === null) {
+  if (!data || data.id !== parcelId) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "12px 16px 20px" }}>
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, padding: "4px 4px 0" }}>
