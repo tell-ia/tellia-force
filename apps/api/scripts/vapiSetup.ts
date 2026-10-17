@@ -4,6 +4,7 @@
 //
 //   deno task vapi:setup             # apply (needs VAPI_* in .env, see .env.example)
 //   deno task vapi:setup --dry-run   # read VAPI, print what would change, write nothing
+import { createClient } from "@supabase/supabase-js";
 import { parseEnv } from "@tellia/shared/env";
 import { z } from "zod";
 import { VAPI_SECRET_HEADER } from "../src/modules/vapi/vapi.controller";
@@ -15,6 +16,8 @@ const env = parseEnv(
     VAPI_WEBHOOK_SECRET: z.string().min(16),
     VAPI_SERVER_URL: z.url(),
     VAPI_PHONE_NUMBER: z.string().min(1),
+    SUPABASE_URL: z.url(),
+    SUPABASE_SECRET_KEY: z.string().min(1),
   }),
   Deno.env.toObject(),
 );
@@ -102,7 +105,16 @@ for (const fn of vapiFunctions()) {
   console.log(`tool ${fn.name}: ${found ? "updated" : "created"} (${tool.id})`);
 }
 
-// 2. Assistant. The transcriber is the one of VAPI's English demo assistant.
+// 2. Assistant. The transcriber is the one of VAPI's English demo assistant, told the field
+// names of every farm (read only): heard in English, "Le Puits" came back as "Le Puy".
+const db = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+const { data: fieldRows, error: fieldError } = await db.from("field").select("name");
+if (fieldError) throw new Error(`Supabase field names: ${fieldError.message}`);
+const fieldNames = [...new Set(fieldRows.map((f) => f.name as string))].sort();
+console.log(`transcriber vocabulary: ${fieldNames.length} field names`);
+
 const assistantBody = {
   name: ASSISTANT_NAME,
   firstMessage: "Hi, this is your irrigation assistant. What can I check for you today?",
@@ -115,7 +127,22 @@ const assistantBody = {
   },
   // Female VAPI voice. Other female voices with version 2: Clara, Layla, Savannah.
   voice: { provider: "vapi", voiceId: "Emma", version: "2" },
-  transcriber: { provider: "soniox", model: "stt-rt-v5", language: "en" },
+  // English calls on a French line: "fr" is a soft hint (not strict) so French names keep their
+  // French spelling. customVocabulary is Soniox context.terms, contextGeneral context.general.
+  transcriber: {
+    provider: "soniox",
+    model: "stt-rt-v5",
+    languages: ["en", "fr"],
+    languageHintsStrict: false,
+    customVocabulary: fieldNames,
+    contextGeneral: [
+      { key: "domain", value: "Farm irrigation" },
+      {
+        key: "topic",
+        value: "A farmer asks about their fields by name (French, Spanish or Italian)",
+      },
+    ],
+  },
   // VAPI plays an office ambience on phone calls by default: keep the line silent.
   backgroundSound: "off",
   // Krisp denoising: removes the caller's background noise (tractor, wind) before transcription.
@@ -147,7 +174,10 @@ const jeanIds = new Set([assistant.id, existingAssistant?.id]);
 const jeanPhones = new Set(
   phones.filter((p) => p.id === phone.id || jeanIds.has(p.assistantId)).map((p) => p.id),
 );
-const listed = await vapi<VapiSession[] | { results?: VapiSession[] }>("GET", "/session?limit=1000");
+const listed = await vapi<VapiSession[] | { results?: VapiSession[] }>(
+  "GET",
+  "/session?limit=1000",
+);
 const open = (Array.isArray(listed) ? listed : listed.results ?? [])
   .filter((s) => s.status === "active" && s.phoneNumberId && jeanPhones.has(s.phoneNumberId));
 for (const s of open) await vapi("PATCH", `/session/${s.id}`, { status: "completed" });
