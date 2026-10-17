@@ -224,6 +224,28 @@ export const MemberPhoneSchema = z.object({
 });
 export type MemberPhone = z.infer<typeof MemberPhoneSchema>;
 
+// --- Demo date -----------------------------------------------------------
+
+/** First day with weather in the DB: the earliest demo date. */
+export const DEMO_DATE_MIN = "2015-01-01";
+
+/**
+ * The project's "today" (GET/PUT /settings/date). One date for everyone: app, chat, calls, SMS.
+ * `today` = `demoDate` when set, else the server default (DEMO_DATE env or the real date).
+ */
+export const DemoDateStateSchema = z.object({
+  today: IsoDateSchema,
+  realToday: IsoDateSchema,
+  demoDate: IsoDateSchema.nullable(),
+  min: IsoDateSchema,
+  max: IsoDateSchema,
+});
+export type DemoDateState = z.infer<typeof DemoDateStateSchema>;
+
+/** `date: null` goes back to the server default. */
+export const SetDemoDateBodySchema = z.object({ date: IsoDateSchema.nullable() });
+export type SetDemoDateBody = z.infer<typeof SetDemoDateBodySchema>;
+
 /** Phase 3 renders real AI SDK v7 tool parts; this is the dev-playground shape. */
 export const ChatRoleSchema = z.enum(["assistant", "farmer"]);
 export const ChatMessageSchema = z.object({

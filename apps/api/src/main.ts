@@ -9,7 +9,8 @@ import { members } from "./modules/members/members.controller";
 import { createSupabaseFarmDirectory } from "./modules/irrigation/data/supabaseFarmData";
 import { createFarmRegistry } from "./modules/irrigation/farmRegistry";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
-import { todayIn } from "./modules/irrigation/engine/util";
+import { createClock, fileDemoDateStore } from "./modules/settings/clock";
+import { createSettingsController } from "./modules/settings/settings.controller";
 import { createVapiController, memberByPhoneIn } from "./modules/vapi/vapi.controller";
 import { db } from "./supabase";
 
@@ -35,11 +36,20 @@ app.route("/data", data);
 // Set a member's phone (VAPI persona hack — see members.controller.ts).
 app.route("/members", members);
 
+// The project's "today": the demo date picked in the app (kept in data/, git-ignored), else
+// DEMO_DATE, else the real date. Everything below reads it through registry.today().
+const clock = createClock({
+  timezone: config.TIMEZONE,
+  fallback: config.DEMO_DATE,
+  store: fileDemoDateStore("./data/demo-date.json"),
+});
+app.route("/settings", createSettingsController(clock));
+
 // Irrigation advisor, fast path (no LLM): used by the web UI and VAPI tool webhooks.
 // Several farms share the DB: each request works on the caller's farm (x-member-id header).
 const registry = createFarmRegistry({
   directory: createSupabaseFarmDirectory(db),
-  today: () => config.DEMO_DATE ?? todayIn(config.TIMEZONE),
+  today: () => clock.today(),
 });
 app.route("/irrigation", createIrrigationController(registry));
 
