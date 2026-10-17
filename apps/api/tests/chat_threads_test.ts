@@ -145,3 +145,13 @@ Deno.test("threads: CORS allows x-thread-id", opts, async () => {
   });
   assert((res.headers.get("access-control-allow-headers") ?? "").toLowerCase().includes("x-thread-id"));
 });
+
+Deno.test("threads: history returns the whole thread, not the agent's lastMessages window", opts, async () => {
+  const { app } = await makeTestChatApp({ model: scriptedModel([]) });
+  // 7 turns = 14 messages: more than the advisor's lastMessages (10), which only caps the
+  // model's context, never what the farmer can scroll back to.
+  for (let i = 0; i < 7; i++) await send(app, 1, A1);
+  const { data } = await (await get(app, "/chat/history", 1, A1)).json();
+  assertEquals(data.messages.length, 14);
+  assertEquals(data.messages[0].role, "user");
+});
