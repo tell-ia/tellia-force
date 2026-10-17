@@ -57,6 +57,7 @@ export function toFarmToday(advice: FarmAdvice, farm: FarmSummary, fields: Field
         status: statusOf(r),
         badgeLabel: badgeOf(r),
         netMm: acting ? r.irrigateMm : null,
+        grossMm: acting ? r.irrigateGrossMm : null,
         reservePct: acting ? 100 - r.depletionPct : null,
         thresholdLabel: acting ? eveLabel(r.asOf, r.daysUntilIrrigation) : null,
         refillNote: acting ? (refillPlan(r.depletionMm, r.irrigateMm)?.note ?? null) : null,

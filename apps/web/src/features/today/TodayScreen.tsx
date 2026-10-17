@@ -107,7 +107,7 @@ function ActionCard({ p }: { p: ParcelSummary }) {
       </div>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 52, lineHeight: 0.9, color: v("act") }}>{p.netMm}</span>
+          <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 52, lineHeight: 0.9, color: v("act") }}>{p.grossMm ?? p.netMm}</span>
           <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 22, color: v("act") }}>mm</span>
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, paddingBottom: 4 }}>
@@ -124,7 +124,7 @@ function ActionCard({ p }: { p: ParcelSummary }) {
       {p.refillNote && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: v("act"), fontWeight: 600 }}>
           <span style={{ fontSize: 14 }}>↻</span>
-          {p.netMm} mm now, {p.refillNote}
+          {p.grossMm ?? p.netMm} mm now, {p.refillNote}
         </div>
       )}
     </button>

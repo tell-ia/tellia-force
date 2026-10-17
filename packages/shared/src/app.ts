@@ -50,6 +50,7 @@ export const ParcelSummarySchema = z.object({
   badgeLabel: z.string(), // "Irrigate by Fri" / "OK · 3 more days"
   // present when status === "action":
   netMm: z.number().nullable(),
+  grossMm: z.number().nullable().optional(), // what to pump at the gun
   reservePct: z.number().int().nullable(),
   thresholdLabel: z.string().nullable(),
   /** Big-deficit fields: "then ~N more passes to refill". */

@@ -23,10 +23,10 @@ export function RecommendationCard({ rec }: { rec: Recommendation }) {
         <div style={{ display: "flex", flexDirection: "column" }}>
           <span style={{ fontFamily: font.display, fontWeight: 500, fontSize: 22, lineHeight: 1 }}>Apply</span>
           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 104, lineHeight: 0.86, letterSpacing: "-0.02em" }}>{rec.netMm}</span>
+            <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 104, lineHeight: 0.86, letterSpacing: "-0.02em" }}>{rec.grossMm}</span>
             <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 36 }}>mm</span>
           </span>
-          <span style={{ fontSize: 14, color: hero.ink2, marginTop: 4 }}>net to the soil · ≈ {rec.grossMm} mm gross at the reel gun</span>
+          <span style={{ fontSize: 14, color: hero.ink2, marginTop: 4 }}>at the reel gun · ≈ {rec.netMm} mm reaches the soil</span>
         </div>
         <div style={{ fontSize: 15, lineHeight: 1.5, maxWidth: 320 }}>{rec.reason}</div>
         {rec.secondPass && (
