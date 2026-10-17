@@ -23,6 +23,7 @@ const MESSAGES = [
   "The soil has filed a formal complaint…",
   "Counting clouds, recounting clouds…",
   "Predicting the clouds' mood swings…",
+  "One cloud, two clouds, three… zZzZ…"
 ];
 
 export function Loader({ label }: { label?: string }) {
