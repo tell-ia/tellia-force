@@ -9,6 +9,7 @@ import { Label } from "../../components/ui/primitives";
 import { Markdown } from "../../components/Markdown";
 import { WidgetRenderer, type ToolState } from "./WidgetRenderer";
 import { useVoiceInput } from "./useVoiceInput";
+import { useDragScroll } from "../../hooks/useDragScroll";
 
 /** Starter questions above the message box: a tap fills the box, the farmer sends. */
 const SUGGESTIONS = [
@@ -160,22 +161,13 @@ function ChatLayout({
         <div style={{ fontSize: 12, color: v("ink2"), background: v("sunk"), padding: "8px 14px", textAlign: "center" }}>{voice.error ?? banner}</div>
       )}
       {onSend && !input.trim() && !voiceOn && suggestions.length > 0 && (
-        <div role="list" aria-label="Suggested questions" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "8px 12px 0", scrollbarWidth: "none" }}>
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              type="button"
-              role="listitem"
-              onClick={() => {
-                setInput(s);
-                inputRef.current?.focus();
-              }}
-              style={chip}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+        <SuggestionChips
+          suggestions={suggestions}
+          onPick={(s) => {
+            setInput(s);
+            inputRef.current?.focus();
+          }}
+        />
       )}
       <form
         onSubmit={(e) => {
@@ -203,6 +195,26 @@ function ChatLayout({
         )}
       </form>
     </>
+  );
+}
+
+/** One sideways-scrolling row: swipe, wheel or drag. The edges fade where more chips hide. */
+function SuggestionChips({ suggestions, onPick }: { suggestions: string[]; onPick: (s: string) => void }) {
+  const { ref, edges } = useDragScroll<HTMLDivElement>();
+  const fade = `linear-gradient(to right, ${edges.start ? "transparent" : "#000"}, #000 24px, #000 calc(100% - 24px), ${edges.end ? "transparent" : "#000"})`;
+  return (
+    <div
+      ref={ref}
+      role="list"
+      aria-label="Suggested questions"
+      style={{ display: "flex", gap: 8, overflowX: "auto", overscrollBehaviorX: "contain", padding: "8px 12px 0", scrollbarWidth: "none", userSelect: "none", cursor: "grab", maskImage: fade, WebkitMaskImage: fade }}
+    >
+      {suggestions.map((s) => (
+        <button key={s} type="button" role="listitem" onClick={() => onPick(s)} style={chip}>
+          {s}
+        </button>
+      ))}
+    </div>
   );
 }
 
