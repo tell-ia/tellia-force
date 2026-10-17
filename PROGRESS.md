@@ -8,6 +8,7 @@
 - 2026-10-17 Task 2: `checkProductUse` (phone `check_product_use`), `ProductCheck` in `@tellia/shared/farm`, `FarmData.listProducts` / `listProductUses` / `listJournalProductNames` + twin + E-Phy fixtures, `productCheck.service.ts`, routing lines, tests. Offline suite: 261 passed.
 - 2026-10-17 Task 3: `correctIrrigation` (phone `correct_irrigation`), workflow `correct-irrigation`, `confirmIrrigation` resumes record or correction runs (status saved | cancelled | updated | deleted), `IrrigationCorrection` / `IrrigationConfirmation` in `@tellia/shared/farm`, `FarmData.updateIrrigation` + twin, service preview / update / delete, routing lines, tests. Offline suite: 284 passed.
 - 2026-10-17 Task 4: `lookupFarmData` (phone `lookup_farm_data`), `FarmLookup` in `@tellia/shared/farm`, `FarmData.listCropRefs` / `listSales` / `listMarketPrices` / `listSubsidies` / `listFarmEconomics` / `listRegionalBenchmarks` + twin + fixtures for both farms, `farmLookup.service.ts`, routing lines, tests. Offline suite: 301 passed.
+- 2026-10-17 Task 5: chat cards in `WidgetRenderer.tsx` for `getFieldDetails`, `getFieldJournal`, `checkProductUse`, `lookupFarmData`, `correctIrrigation` (Oui/Non card) and `confirmIrrigation` (saved / updated / deleted / cancelled), labels, `WidgetRenderer.test.tsx` (renderToString: samples checked against the shared schemas, empty and broken outputs). Web: 23 tests passed. Shared: 2 passed. API offline suite: 301 passed.
 
 ## In progress
 
@@ -59,6 +60,7 @@
 - Lookup data: the Supabase FarmData reads `regional_benchmark` by the farm row's `nuts3_id`
   (the `Farm` type is unchanged). `listCropRefs` is cached and throws on failure (never "unknown
   crop" because of a failed read). The phone gets at most 10 rows, without codes or buyer ids.
+- UI cards (Task 5): cards read the output through the shared types made loose (`Loose<T>`: every field optional or null) with runtime checks on arrays and leaf values, so a missing or wrong field never crashes the chat. No number is computed in the UI except display formatting (0-1 share shown as %). The lookup card shows at most 8 rows; the server summary covers all rows. Planned journal rows: dashed outline, no fill, "Planned" tag.
 
 ## Blockers
 - Needs human review, does not block the plan: the LibSQL native addon (`@libsql/client`

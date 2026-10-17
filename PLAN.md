@@ -141,7 +141,7 @@ year?, cropCode?, limit? }` (limit ≤ 50, default 20).
       routing lines, offline tests (update, delete, decline, foreign member refused, other farm's
       operation refused, unknown phone caller refused).
 - [x] 4. Tool E (`lookupFarmData`), same layers and tests (farm scoping, forecast flag, summary).
-- [ ] 5. UI cards in `apps/web/src/features/chat/WidgetRenderer.tsx`: a card per new key, labels,
+- [x] 5. UI cards in `apps/web/src/features/chat/WidgetRenderer.tsx`: a card per new key, labels,
       `correctIrrigation` reuses the Oui/Non confirmation card, `confirmIrrigation` badge shows
       updated / deleted. Cards read the shared types. Add a small vitest render test
       (`react-dom/server`) per card: sample output and empty output must not crash.
