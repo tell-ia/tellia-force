@@ -1,4 +1,4 @@
-import type { BalancePoint, CropPhase, DayBalance, FieldReport, ParcelReport, RefillPlanSeries, Reserve } from "@tellia/shared";
+import type { BalancePoint, CropPhase, DayBalance, FieldReport, IrrigationRecord, ParcelReport, RefillPlanSeries, Reserve } from "@tellia/shared";
 
 /** A soil_analysis row's texture + OM, joined by field in the api layer. */
 export interface SoilSample {
@@ -52,6 +52,15 @@ export function eveLabel(asOf: string, daysUntil: number | null): string {
  */
 export const wateredPct = (noWaterPct: number, netMm: number, capacityMm: number): number =>
   Math.min(100, Math.round(noWaterPct + (netMm / capacityMm) * 100));
+
+/**
+ * Gross mm logged on `date` (confirmed and planned waterings, like the engine counts), or
+ * null when nothing was logged that day. The advice already counts it; the card says so.
+ */
+export function wateredOnMm(records: readonly IrrigationRecord[], date: string): number | null {
+  const day = records.filter((r) => r.date === date && r.status !== "draft");
+  return day.length ? day.reduce((s, r) => s + r.mm, 0) : null;
+}
 
 /** Part of the day's reserve % that is that day's rain; the rest was already in the soil. */
 export const rainPct = (rainMm: number, tawMm: number, noWaterPct: number): number =>
