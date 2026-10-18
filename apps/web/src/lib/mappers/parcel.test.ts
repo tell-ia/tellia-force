@@ -13,6 +13,7 @@ import {
   cropLine,
   formDose,
   wateredOnMm,
+  reserveDay,
   heroDose,
 } from "./parcel";
 
@@ -160,5 +161,24 @@ describe("hero dose with today's watering", () => {
   });
   it("watered today, next one later: keeps the date headline", () => {
     expect(heroDose(rec("plan_irrigation", 40, "Irrigate by Fri 15"), 20).headline).toBe("Irrigate by Fri 15");
+  });
+});
+
+describe("the reserve's day: this morning → tonight, as the chart counts it", () => {
+  const p = (date: string, reserveMm: number, irrigation = 0, rain = 0) =>
+    ({ date, dayLabel: date.slice(8), rain, irrigation, cropUse: 4.2, reserveMm, forecast: date > "2022-07-13" });
+  const series = [p("2022-07-12", 45.4), p("2022-07-13", 56.2, 15), p("2022-07-14", 66.7, 15)];
+
+  it("45 this morning + 15 from the gun − 4 drunk by the crop = 56 tonight (the chart's dot)", () => {
+    expect(reserveDay(series, "2022-07-13", 45)).toEqual({ morningMm: 45, gunMm: 15, rainMm: 0, cropMm: 4, tonightMm: 56 });
+  });
+  it("rain counts in; the parts always add up to tonight", () => {
+    const d = reserveDay([p("2022-07-12", 60), p("2022-07-13", 61.4, 0, 6)], "2022-07-13", 60)!;
+    expect(d).toEqual({ morningMm: 60, gunMm: 0, rainMm: 6, cropMm: 5, tonightMm: 61 });
+    expect(d.morningMm + d.gunMm + d.rainMm - d.cropMm).toBe(d.tonightMm);
+  });
+  it("no day before in the series: this morning is the report's reserve; null without today", () => {
+    expect(reserveDay([p("2022-07-13", 56.2, 15)], "2022-07-13", 45)?.morningMm).toBe(45);
+    expect(reserveDay(series, "2022-07-20", 45)).toBeNull();
   });
 });

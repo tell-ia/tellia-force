@@ -13,7 +13,7 @@ import { font, v } from "../../theme/tokens";
 import { InfoHint, Label, SectionCard } from "../../components/ui/primitives";
 import { DateButton } from "../../components/DateSheet";
 import { dayRange } from "../../lib/dates";
-import { wateredOnMm } from "../../lib/mappers/parcel";
+import { reserveDay, wateredOnMm } from "../../lib/mappers/parcel";
 import { Loader } from "../../components/ui/Loader";
 import { RecommendationCard } from "./RecommendationCard";
 import { IrrigationLog } from "./IrrigationLog";
@@ -21,6 +21,7 @@ import {
   BalanceLegend,
   CropStageTimeline,
   NextDaysTable,
+  ReserveDayGauge,
   ReserveGauge,
   SeasonBalanceCard,
   SoilCard,
@@ -30,6 +31,27 @@ import {
 function fmtDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+}
+
+/** "half" for 0.5: the part of the field the gun covers today, in words. */
+function shareWords(share: number): string {
+  if (Math.abs(share - 0.5) < 0.05) return "half";
+  if (Math.abs(share - 1 / 3) < 0.04) return "a third of";
+  if (Math.abs(share - 2 / 3) < 0.04) return "two thirds of";
+  if (Math.abs(share - 0.25) < 0.04) return "a quarter of";
+  if (Math.abs(share - 0.75) < 0.04) return "three quarters of";
+  return `${Math.round(share * 100)} % of`;
+}
+
+/** A legend item: a colour (or the crop's hatch) and a short label. */
+function Swatch({ color, hatched, label }: { color?: string; hatched?: boolean; label: string }) {
+  const bg = hatched ? `repeating-linear-gradient(45deg, ${v("ink")} 0 1.5px, ${v("sunk")} 1.5px 4px)` : color;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+      <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 2, background: bg }} />
+      {label}
+    </span>
+  );
 }
 
 /** The "?" hint pinned to a card's top-right corner (the card must be position:relative). */
@@ -72,6 +94,10 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
         ? todayWater([{ passIndex: 0, startHour: 8, endHour: 18, grossMm: ownPass.grossMm }], eff)
         : null;
   }
+  // Tonight's reserve and how it gets there, from the series the water-balance chart plots
+  // (the rotation's when there is a plan), so the card and the chart show the same value.
+  const daySeries = outcome?.series?.length ? outcome.series : data?.series;
+  const day = data && data.id === parcelId && daySeries ? reserveDay(daySeries, data.asOf, data.reserve.availableMm) : null;
 
   // "See the log" (#/parcel/:id#log) lands on the irrigation log (once per parcel, not on a reload).
   useEffect(() => {
@@ -122,32 +148,54 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
           <RecommendationCard rec={data.recommendation} wateredTodayMm={wateredOnMm(log.data ?? [], data.asOf)} />
 
           <SectionCard style={{ gap: 14, position: "relative" }}>
-            <CornerHint text="The bar is the water the soil holds right now. The hatched part is what the crop will drink before the stress line — past that line it closes up and loses yield." />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10, paddingRight: 28 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <Label>Soil water reserve</Label>
-                <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                  <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 48, lineHeight: 0.95 }}>{data.reserve.availableMm}</span>
-                  <span style={{ fontSize: 15, color: v("ink2") }}>of {data.reserve.capacityMm} mm</span>
-                  {water && <span style={{ fontSize: 15, fontWeight: 700, color: v("water") }}>+{water.soilMm} today</span>}
-                </span>
-              </div>
-              <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 26, color: v("water") }}>{data.reserve.pct}%</span>
-            </div>
-            <ReserveGauge reserve={data.reserve} incoming={water} />
-            {water && (
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: v("ink2"), lineHeight: 1.5 }}>
-                <span aria-hidden="true" style={{ flex: "none", width: 10, height: 10, marginTop: 5, borderRadius: 2, background: v("water") }} />
-                <span>
-                  Today the gun puts {water.stripMm} mm on {water.share >= 0.95 ? "the whole field" : `${Math.round(water.share * 100)} % of the field`}:{" "}
-                  <b style={{ color: v("water") }}>+{water.soilMm} mm reaches the soil</b>
-                  {water.lostMm > 0 ? `, ${water.lostMm} mm is lost to wind and evaporation (dashed).` : "."}
-                </span>
-              </div>
+            {day ? (
+              <>
+                <CornerHint text="Tonight's soil water, the same value as the chart's dot for today: this morning's reserve, plus what the gun and rain add today, minus what the crop drinks (hatched). Below the comfort line the crop closes its stomata and loses yield." />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10, paddingRight: 28 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <Label>Soil water · tonight</Label>
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                      <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 48, lineHeight: 0.95 }}>{day.tonightMm}</span>
+                      <span style={{ fontSize: 15, color: v("ink2") }}>of {data.reserve.capacityMm} mm</span>
+                    </span>
+                  </div>
+                  <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 26, color: v("water") }}>{Math.round((day.tonightMm / data.reserve.capacityMm) * 100)}%</span>
+                </div>
+                <ReserveDayGauge reserve={data.reserve} day={day} />
+                {/* Short legend: the bar's parts, adding up to tonight. */}
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 12px", fontSize: 13, color: v("ink2") }}>
+                  <Swatch color={day.tonightMm < data.reserve.thresholdMm ? v("act") : v("brand")} label={`${day.morningMm} morning`} />
+                  {day.gunMm > 0 && <Swatch color={v("water")} label={`+${day.gunMm} gun`} />}
+                  {day.rainMm > 0 && <Swatch color={v("rain")} label={`+${day.rainMm} rain`} />}
+                  {day.cropMm > 0 && <Swatch hatched label={`−${day.cropMm} crop`} />}
+                  <b style={{ color: v("ink") }}>= {day.tonightMm} tonight</b>
+                </div>
+                {water && (
+                  <div style={{ fontSize: 12, color: v("ink2"), lineHeight: 1.5 }}>
+                    Gun: {water.stripMm} mm on {water.share >= 0.95 ? "the whole field" : `${shareWords(water.share)} the field`}
+                    {water.lostMm > 0 ? ` · ${water.lostMm} mm lost to wind` : ""}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <CornerHint text="The bar is the water the soil holds right now. The hatched part is what the crop will drink before the stress line — past that line it closes up and loses yield." />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10, paddingRight: 28 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <Label>Soil water reserve</Label>
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                      <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 48, lineHeight: 0.95 }}>{data.reserve.availableMm}</span>
+                      <span style={{ fontSize: 15, color: v("ink2") }}>of {data.reserve.capacityMm} mm</span>
+                    </span>
+                  </div>
+                  <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 26, color: v("water") }}>{data.reserve.pct}%</span>
+                </div>
+                <ReserveGauge reserve={data.reserve} />
+                <div style={{ fontSize: 13, color: v("ink2"), lineHeight: 1.5 }}>
+                  Hatched: what the crop will use by {data.reserve.thresholdLabel} (≈ {data.reserve.usedByThresholdMm} mm). Below the line the crop closes its stomata and loses yield.
+                </div>
+              </>
             )}
-            <div style={{ fontSize: 13, color: v("ink2"), lineHeight: 1.5 }}>
-              Hatched: what the crop will use by {data.reserve.thresholdLabel} (≈ {data.reserve.usedByThresholdMm} mm). Below the line the crop closes its stomata and loses yield.
-            </div>
           </SectionCard>
 
           {(() => {

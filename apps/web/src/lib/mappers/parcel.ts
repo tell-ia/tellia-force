@@ -87,6 +87,32 @@ export function heroDose(rec: Recommendation, wateredTodayMm: number | null): He
   };
 }
 
+/** The soil reserve's day, in whole mm that add up: morning + gun + rain − crop = tonight. */
+export interface ReserveDay {
+  morningMm: number;
+  gunMm: number;
+  rainMm: number;
+  cropMm: number;
+  tonightMm: number;
+}
+
+/**
+ * Today's reserve from the same day-by-day series the water-balance chart plots, so the card and
+ * the chart show one value: tonight = the chart's dot for today. This morning = yesterday's end
+ * of day (else `morningFallback`, the report's reserve). The crop's share is what closes the sum
+ * (the engine's water use, plus any drainage), so the parts always add up to tonight.
+ */
+export function reserveDay(series: readonly BalancePoint[], asOf: string, morningFallback: number): ReserveDay | null {
+  const today = series.find((d) => d.date === asOf);
+  if (!today) return null;
+  const before = series.filter((d) => d.date < asOf).at(-1);
+  const morningMm = Math.round(before?.reserveMm ?? morningFallback);
+  const gunMm = Math.round(today.irrigation);
+  const rainMm = Math.round(today.rain);
+  const tonightMm = Math.round(today.reserveMm);
+  return { morningMm, gunMm, rainMm, cropMm: Math.max(0, morningMm + gunMm + rainMm - tonightMm), tonightMm };
+}
+
 /** Part of the day's reserve % that is that day's rain; the rest was already in the soil. */
 export const rainPct = (rainMm: number, tawMm: number, noWaterPct: number): number =>
   Math.max(0, Math.min(noWaterPct, Math.round((rainMm / tawMm) * 100)));
