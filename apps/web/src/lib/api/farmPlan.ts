@@ -253,12 +253,17 @@ export async function buildFarmPlan(
     onePass.length * (eq.moveMinutes / 60);
 
   interface Recovery { reachable: boolean; days: number; cycles: number }
+  /** mm/day a field climbs after the crop drinks (≤ 0 = the rotation can't out-run ETc). */
+  const climbPerDay = (p: { dailyUse: number; netPass: number }, nGuns: number) => {
+    const cycleDays = rotationHours / Math.max(1, nGuns) / 24;
+    const deliveryPerDay = cycleDays > 0 ? p.netPass / cycleDays : 0; // mm/day this field gets
+    return deliveryPerDay - p.dailyUse;
+  };
   const recover = (fid: number, nGuns: number): Recovery => {
     const p = projById.get(fid);
     if (!p || p.deficit <= 0) return { reachable: true, days: 0, cycles: 0 };
     const cycleDays = rotationHours / Math.max(1, nGuns) / 24;
-    const deliveryPerDay = cycleDays > 0 ? p.netPass / cycleDays : 0; // mm/day this field gets
-    const surplus = deliveryPerDay - p.dailyUse; // mm/day it climbs after the crop drinks
+    const surplus = climbPerDay(p, nGuns);
     if (surplus <= 0) return { reachable: false, days: 0, cycles: 0 }; // can't out-run ETc
     const days = p.deficit / surplus;
     return { reachable: true, days: Math.ceil(days), cycles: Math.max(1, Math.ceil(days / cycleDays)) };
@@ -328,6 +333,16 @@ export async function buildFarmPlan(
     GRID_CAP,
     Math.max(12, Math.ceil(Math.max(0, ...out.map((o) => o.endHour)) / 24), maxComfort + 1),
   );
+
+  // Per field and grid day: mm still below comfort once that day is over, on the same
+  // projection as comfortDay (so it reaches 0 on the last amber day). The dose alone is
+  // always the gun's max pass; this is what shows the field closing its gap.
+  for (const o of fieldOutcomes) {
+    const p = projById.get(o.fieldId);
+    if (!p) continue;
+    const climb = climbPerDay(p, guns.length);
+    o.gapMm = Array.from({ length: horizonDays }, (_, d) => Math.max(0, Math.ceil(p.deficit - climb * (d + 1))));
+  }
 
   return FarmIrrigationPlanSchema.parse({
     farmId: farm.id,

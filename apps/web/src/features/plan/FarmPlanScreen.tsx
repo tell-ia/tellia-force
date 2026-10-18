@@ -176,6 +176,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
       id,
       name: o?.fieldName ?? plan.runs.find((r) => r.fieldId === id)?.fieldName ?? "",
       comfortDay: o?.comfortDay ?? null, // projected day it climbs back above comfort (null = never)
+      gapMm: o?.gapMm ?? [], // projected mm still below comfort after each day
     };
   });
   const DAYW = 42; // fixed width per day — the grid scrolls sideways, cells stay equal
@@ -218,13 +219,17 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
                 const bg = below ? (run ? v("act") : v("actSoft")) : (run ? v("brand") : v("okSoft"));
                 const dose = run ? Math.max(...runs.map((r) => r.grossMm)) : null;
                 const guns = [...new Set(runs.map((r) => r.gunIndex + 1))];
+                // Every pass is the gun's max dose, so the dose alone never changes: under it,
+                // what the field still lacks after that day shows it closing in on comfort.
+                const gap = dose != null ? (f.gapMm[d] ?? 0) : 0;
                 return (
                   <div key={d} style={{ width: DAYW, flex: "none", display: "flex", justifyContent: "center" }}>
                     <div
-                      title={run ? runs.map((r) => `${r.fieldName} · Gun ${r.gunIndex + 1} · ${r.grossMm} mm`).join("\n") : ""}
+                      title={run ? runs.map((r) => `${r.fieldName} · Gun ${r.gunIndex + 1} · ${r.grossMm} mm`).join("\n") + (gap > 0 ? `\n${gap} mm still below comfort after today` : "") : ""}
                       style={{ width: CELL, height: 38, borderRadius: 5, background: bg, outline: d === 0 ? `2px solid ${v("ink")}` : "none", outlineOffset: -2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1, color: run ? "#fff" : v("ink2") }}
                     >
                       {dose != null && <span style={{ fontSize: 13, fontWeight: 700 }}>{dose}</span>}
+                      {gap > 0 && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 1 }}>−{gap}</span>}
                       {dose != null && ng > 1 && <span style={{ fontSize: 8, fontWeight: 600, opacity: 0.85 }}>{guns.map((g) => `G${g}`).join("+")}</span>}
                     </div>
                   </div>
@@ -238,7 +243,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 11, color: v("ink2"), padding: "0 12px", marginTop: 2 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("brand") }} />Back to comfort</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("act") }} />Below comfort</span>
-        <span>number = mm{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
+        <span>number = mm pumped · −n = mm still below comfort after that day{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
       </div>
     </section>
   );
