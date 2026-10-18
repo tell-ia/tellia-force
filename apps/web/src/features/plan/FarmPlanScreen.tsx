@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { ArrowLeft, Check, TriangleAlert } from "lucide-react";
 import { type FarmEquipment, type FarmIrrigationPlan, type FarmPlanRun } from "@tellia/shared";
 import { buildFarmPlan } from "../../lib/api";
-import { fieldShareOnDay, shareLabel } from "../../lib/mappers/farmPlan";
+import { continuesNextDay, fieldShareOnDay, runLabel, shareLabel } from "../../lib/mappers/farmPlan";
 import { useAsync } from "../../lib/useAsync";
 import { useWaterVersion } from "../../lib/useWaterVersion";
 import { useFarm } from "../../app/FarmContext";
@@ -237,24 +237,29 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
                 const bg = below ? (run ? v("act") : v("actSoft")) : (run ? v("brand") : v("okSoft"));
                 const dose = run ? Math.max(...runs.map((r) => r.grossMm)) : null;
                 const guns = [...new Set(runs.map((r) => r.gunIndex + 1))];
-                // A big field takes several runs: "½" = the gun waters half of it that day.
-                const share = run ? shareLabel(fieldShareOnDay(plan.runs.filter((r) => r.fieldId === f.id), d)) : null;
+                // A big field takes several runs (one strip each) for one pass: "1/2" then "2/2" are
+                // the two halves of the SAME dose, and the cells of a pass are joined.
+                const fieldRuns = plan.runs.filter((r) => r.fieldId === f.id);
+                const runTag = run ? runLabel(fieldRuns, d) : null;
+                const joined = run && continuesNextDay(fieldRuns, d);
+                const share = run ? shareLabel(fieldShareOnDay(fieldRuns, d)) : null;
+                const runsOf = (pass: number) => fieldRuns.filter((r) => r.passIndex === pass).length;
                 const tip = [
-                  ...runs.map((r) => `Gun ${r.gunIndex + 1} · ${clock(r.startHour, d)}–${clock(r.endHour, d)} · ${r.areaHa} ha at ${r.grossMm} mm`),
+                  ...runs.map((r) =>
+                    `Pass ${r.passIndex + 1}${runsOf(r.passIndex) > 1 ? ` · run ${r.runIndex + 1} of ${runsOf(r.passIndex)}` : ""} · Gun ${r.gunIndex + 1} · ` +
+                    `${clock(r.startHour, d)}–${clock(r.endHour, d)} · ${r.areaHa} ha at ${r.grossMm} mm`),
+                  ...(share ? [`${share} of the field watered today`] : []),
                   ...(f.gapMm[d] ? [`${f.gapMm[d]} mm below comfort at the end of the day`] : []),
                 ].join("\n");
                 return (
-                  <div key={d} style={{ width: DAYW, flex: "none", display: "flex", justifyContent: "center" }}>
+                  <div key={d} style={{ position: "relative", width: DAYW, flex: "none", display: "flex", justifyContent: "center" }}>
+                    {joined && <span aria-hidden="true" style={{ position: "absolute", zIndex: 1, top: 21, right: -4, width: 8, height: 12, borderRadius: 2, background: bg }} />}
                     <div
                       title={tip}
                       style={{ width: CELL, height: 54, borderRadius: 7, background: bg, outline: d === 0 ? `2px solid ${v("ink")}` : "none", outlineOffset: -2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1, color: run ? "#fff" : v("ink2") }}
                     >
-                      {dose != null && (
-                        <span style={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                          <span style={{ fontSize: 13, fontWeight: 700 }}>{dose}</span>
-                          {share && <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.9 }}>{share}</span>}
-                        </span>
-                      )}
+                      {dose != null && <span style={{ fontSize: 13, fontWeight: 700 }}>{dose}</span>}
+                      {runTag && <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.9, marginTop: 2 }}>{runTag}</span>}
                       {f.gapMm[d] ? <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>−{f.gapMm[d]}</span> : null}
                       {dose != null && ng > 1 && <span style={{ fontSize: 8, fontWeight: 600, opacity: 0.85, marginTop: 1 }}>{guns.map((g) => `G${g}`).join("+")}</span>}
                     </div>
@@ -269,7 +274,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 11, color: v("ink2"), padding: "0 12px", marginTop: 2 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("brand") }} />Back to comfort</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("act") }} />Below comfort</span>
-        <span>number = mm pumped · ½ = part of the field watered that day · −n = mm below comfort at the end of the day{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
+        <span>number = mm pumped · 1/2 → 2/2 = the two halves of the field for one dose (joined) · −n = mm below comfort at the end of the day{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
       </div>
     </section>
   );

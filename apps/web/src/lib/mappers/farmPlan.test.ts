@@ -55,6 +55,32 @@ describe("comfort gap per day: the re-simulated reserve, then the projection", (
   });
 });
 
+// Imported here, beside the tests that use it.
+import { continuesNextDay, runLabel } from "./farmPlan";
+
+describe("which run of a pass the gun does on a day", () => {
+  const r = (passIndex: number, runIndex: number, startHour: number, endHour: number) => ({ passIndex, runIndex, startHour, endHour, grossMm: 40 });
+  // Le Petit Clos, 1 gun: pass 1 = halves on Wed and Thu, pass 2 = halves on Fri and Sat.
+  const clos = [r(0, 0, 11, 23.6), r(0, 1, 32, 44.6), r(1, 0, 56, 68.6), r(1, 1, 80, 92.6)];
+  // Le Puits: run 1 on Sun daytime, run 2 from Sun 21:00 to Mon 08:30.
+  const puits = [r(0, 0, 104.4, 115.9), r(0, 1, 116.9, 128.5)];
+
+  it("1/2 then 2/2 for the halves of one pass; a new pass starts at 1/2 again", () => {
+    expect([0, 1, 2, 3].map((d) => runLabel(clos, d))).toEqual(["1/2", "2/2", "1/2", "2/2"]);
+    expect(runLabel(clos, 4)).toBeNull();
+  });
+  it("two runs of a pass on one day read 1–2/2; a one-run pass has no label", () => {
+    expect(runLabel(puits, 4)).toBe("1–2/2");
+    expect(runLabel(puits, 5)).toBe("2/2");
+    expect(runLabel([r(0, 0, 10, 20)], 0)).toBeNull();
+  });
+  it("a pass that carries on into the next day is joined to it, a new pass is not", () => {
+    expect([0, 1, 2, 3].map((d) => continuesNextDay(clos, d))).toEqual([true, false, true, false]);
+    expect(continuesNextDay(puits, 4)).toBe(true);
+    expect(continuesNextDay(puits, 5)).toBe(false);
+  });
+});
+
 describe("share of the field the gun waters on a day", () => {
   const r = (passIndex: number, startHour: number, endHour: number) => ({ passIndex, startHour, endHour, grossMm: 40 });
   it("half a two-run field today, the other half tomorrow", () => {
