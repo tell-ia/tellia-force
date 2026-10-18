@@ -11,7 +11,7 @@ import { clientEnv } from "../../env";
 // never hits Supabase directly. Every response is parsed with the SHARED schema,
 // so the front fails loud if the backend/DB drifts from the contract.
 
-// Table reads are seeded data that the app never writes: share each one for a minute, so the
+// Table reads are seeded data the app hardly writes (forgetTable after a write): share each one for a minute, so the
 // farm list, the day and every parcel report do not fetch /data/field again and again.
 const TABLE_TTL_MS = 60_000;
 const tables = new Map<string, { at: number; value: Promise<unknown> }>();
@@ -25,6 +25,11 @@ function getJSON(path: string): Promise<unknown> {
     if (tables.get(path)?.value === value) tables.delete(path);
   });
   return value;
+}
+
+/** Drop a table's shared reads after the app wrote to it (e.g. field outlines uploaded). */
+export function forgetTable(table: TableName): void {
+  for (const path of [...tables.keys()]) if (path.startsWith(`/data/${table}`)) tables.delete(path);
 }
 
 async function fetchJSON(path: string): Promise<unknown> {

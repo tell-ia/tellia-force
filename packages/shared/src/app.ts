@@ -277,6 +277,29 @@ export const MemberPhoneSchema = z.object({
 });
 export type MemberPhone = z.infer<typeof MemberPhoneSchema>;
 
+// --- Field outlines (shapefile upload on the Fields screen) -----------------
+
+/** A field outline as GeoJSON, [lon, lat] in WGS84 (what the upload sends after reprojecting). */
+const Position = z.tuple([z.number(), z.number()]).rest(z.number());
+const PolygonCoords = z.array(z.array(Position).min(4)).min(1);
+export const FieldGeometrySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("Polygon"), coordinates: PolygonCoords }),
+  z.object({ type: z.literal("MultiPolygon"), coordinates: z.array(PolygonCoords).min(1) }),
+]);
+export type FieldGeometry = z.infer<typeof FieldGeometrySchema>;
+
+/** Uploaded outlines, already matched to the farm's fields by the app. */
+export const SetFieldShapesBodySchema = z.object({
+  farmId: z.number().int(),
+  shapes: z.array(z.object({ fieldId: z.number().int(), geometry: FieldGeometrySchema })).min(1).max(200),
+});
+export type SetFieldShapesBody = z.infer<typeof SetFieldShapesBodySchema>;
+
+export const SetFieldShapesResultSchema = z.object({
+  updated: z.array(z.number().int()), // field ids whose outline was replaced
+});
+export type SetFieldShapesResult = z.infer<typeof SetFieldShapesResultSchema>;
+
 /** POST /notify/brief-sms: today's brief (the Today screen's advice) sent by SMS through VAPI. */
 export const SendBriefSmsBodySchema = z.object({
   phone: z.string().trim().min(3).max(24),
