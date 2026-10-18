@@ -102,3 +102,27 @@ export function shareLabel(share: number): string | null {
   if (share < 0.2) return "<¼";
   return FRACTIONS.reduce((best, f) => (Math.abs(share - f[0]) < Math.abs(share - best[0]) ? f : best))[1];
 }
+
+/** What the gun gives a field today (field-average mm), for the reserve bar. */
+export interface TodayWater {
+  /** Dose on the strip being watered (gross, at the gun). */
+  stripMm: number;
+  /** Part of the field watered today (0..1). */
+  share: number;
+  /** Pumped, averaged over the whole field. */
+  pumpedMm: number;
+  /** What reaches the soil (pumped × efficiency). */
+  soilMm: number;
+  /** Lost on the way: wind drift and evaporation. */
+  lostMm: number;
+}
+
+/** Today's water from the field's scheduled runs; null when the gun isn't on it today. */
+export function todayWater(runs: readonly RunWater[], efficiency: number): TodayWater | null {
+  const share = Math.min(1, fieldShareOnDay(runs, 0));
+  if (share <= 0) return null;
+  const stripMm = Math.max(...runs.filter((r) => r.startHour < 24 && r.endHour > 0).map((r) => r.grossMm));
+  const pumped = stripMm * share;
+  const soil = pumped * efficiency;
+  return { stripMm, share: round1(share * 100) / 100, pumpedMm: Math.round(pumped), soilMm: Math.round(soil), lostMm: Math.round(pumped) - Math.round(soil) };
+}
