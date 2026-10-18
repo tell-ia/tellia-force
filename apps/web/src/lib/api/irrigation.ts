@@ -19,9 +19,13 @@ export async function recordIrrigation(input: RecordIrrigationInput): Promise<Ir
   return saved;
 }
 
-/** A watering counts in the farm's advice and in every report: drop the cached ones. */
-function waterChanged(): void {
-  invalidateQueries(["farmToday:", "parcel:"]);
+/** The cached answers a watering changes: the farm's advice and every field report. */
+export const WATER_KEYS = ["farmToday:", "parcel:"];
+
+/** A watering counts in the farm's advice and in every report: drop the cached ones. Also
+ *  called by the chat after it saves, corrects or deletes one. */
+export function waterChanged(): void {
+  invalidateQueries(WATER_KEYS);
 }
 
 // LIVE: GET /irrigation/operations. Confirmed irrigations of a field up to today, newest

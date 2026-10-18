@@ -3,7 +3,7 @@ export { API_MODE, mockDelay, setApiToday, setMemberId } from "./core";
 export { farmsQuery, listFarms } from "./farms";
 export { farmTodayQuery, getFarmToday, getParcelReport, parcelReportQuery } from "./parcels";
 export { getSeasonHeatmap, mergeHeatDays, type SeasonHeatmap, type HeatDay } from "./heatmap";
-export { deleteIrrigation, listIrrigations, recordIrrigation, type RecordIrrigationInput } from "./irrigation";
+export { deleteIrrigation, listIrrigations, recordIrrigation, waterChanged, type RecordIrrigationInput } from "./irrigation";
 export { simulateDose, type DoseSim } from "./simulate";
 export { buildFarmPlan } from "./farmPlan";
 export { fetchRpgParcels, type RpgParcel } from "./rpg";

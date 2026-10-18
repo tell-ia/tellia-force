@@ -3,6 +3,7 @@ import { ArrowLeft, Check, TriangleAlert } from "lucide-react";
 import { type FarmEquipment, type FarmIrrigationPlan, type FarmPlanRun } from "@tellia/shared";
 import { buildFarmPlan } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
+import { useWaterVersion } from "../../lib/useWaterVersion";
 import { useFarm } from "../../app/FarmContext";
 import { useEquipment } from "../../app/EquipmentContext";
 import { navigate } from "../../app/router";
@@ -63,9 +64,10 @@ export function FarmPlanScreen() {
     ? { ...base, gunModelIds: Array.from({ length: count }, (_, i) => base.gunModelIds[i] ?? base.gunModelIds[0] ?? "medium") }
     : null;
 
+  const water = useWaterVersion(); // a new watering changes the plan
   const { data: plan, loading } = useAsync<FarmIrrigationPlan | null>(
     () => (farm && equipment ? buildFarmPlan(farm, equipment) : Promise.resolve(null)),
-    [farm?.id, count],
+    [farm?.id, count, water],
   );
   const setGunCount = (n: number) => setGunOverride(n);
   const gunCount = count;

@@ -5,6 +5,8 @@ import { Loader2, Mic, PanelLeft, Send, Square, SquarePen } from "lucide-react";
 import { useFarm } from "../../app/FarmContext";
 import { createChatTransport, createThreadId, getChatHistory, listChatThreads, truncateChatThread } from "../../lib/api/chat";
 import { canCopyMessage, canEditMessage, messageText, messagesAfter } from "../../lib/chatEdit";
+import { changesWater } from "../../lib/chatWatering";
+import { waterChanged } from "../../lib/api/irrigation";
 import { useAsync } from "../../lib/useAsync";
 import { font, v } from "../../theme/tokens";
 import { SessionsDrawer } from "./SessionsDrawer";
@@ -83,7 +85,14 @@ function LiveChat({ threadId, onThread, onReplied }: { threadId: string | null; 
   // replaces a null choice once the history is in.
   const threadRef = useRef(threadId);
   const transport = useMemo(() => createChatTransport(() => threadRef.current), []);
-  const { messages, sendMessage, status, error, setMessages } = useChat({ transport });
+  // A watering the chat saved, corrected or deleted counts in the advice, the reports and the
+  // farm plan: drop the cached ones like a watering logged in the app does.
+  const { messages, sendMessage, status, error, setMessages } = useChat({
+    transport,
+    onFinish: ({ message }) => {
+      if (changesWater(message)) waterChanged();
+    },
+  });
   const [offline, setOffline] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
