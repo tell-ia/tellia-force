@@ -13,6 +13,7 @@ import {
 } from "@tellia/shared";
 import { getFarmToday, getParcelReport } from "./parcels";
 import { simulateFieldEvents } from "./plan";
+import { waterEventsByDay } from "../mappers/farmPlan";
 import { list } from "./data";
 
 const MS = 86_400_000;
@@ -185,17 +186,9 @@ export async function buildFarmPlan(
         const fieldRuns = runs.filter((o) => o.fieldId === fid);
         const name = fieldRuns[0]?.fieldName ?? `Field ${fid}`;
         const threshold = passes.find((p) => p.fieldId === fid)?.thresholdMm ?? 0;
-        // One event per pass: the day all its runs finish, at the pass dose.
-        const byPass = new Map<number, { endDay: number; gross: number }>();
-        for (const r of fieldRuns) {
-          const endDay = Math.floor(r.endHour / 24);
-          const e = byPass.get(r.passIndex);
-          if (!e) byPass.set(r.passIndex, { endDay, gross: r.grossMm });
-          else byPass.set(r.passIndex, { endDay: Math.max(e.endDay, endDay), gross: Math.max(e.gross, r.grossMm) });
-        }
-        const events = [...byPass.values()]
-          .map((e) => ({ date: addDaysIso(asOf, e.endDay), grossMm: e.gross }))
-          .sort((a, b) => a.date.localeCompare(b.date));
+        // The water lands on the days the gun pumps it, run by run (not all on the day a
+        // pass's last run ends): a field the card says to water now starts climbing today.
+        const events = waterEventsByDay(fieldRuns, asOf);
         const series = (await simulateFieldEvents(fid, asOf, events)) ?? [];
         // A field is "stressed" (late) when the rotation DOESN'T bring it home: it ends the
         // forecast still below comfort. Many fields start the day already below comfort
