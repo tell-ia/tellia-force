@@ -91,6 +91,40 @@ export function fieldShareOnDay(runs: readonly RunWater[], day: number): number 
   return share;
 }
 
+/** A scheduled run with its place in the pass (run 0 = the first strip of the field). */
+export interface PassRun extends RunWater {
+  runIndex: number;
+}
+
+const onDay = (r: RunWater, day: number) => r.startHour < (day + 1) * 24 && r.endHour > day * 24;
+
+/**
+ * Which run of its pass the gun does on grid `day`: "1/2" = the first of the 2 runs (strips) one
+ * pass needs, "2/2" the second — the same dose finishing the field, not another one. "1–2/2" when
+ * a day holds two runs of a pass; null for a pass done in one run (the whole field at once).
+ */
+export function runLabel(runs: readonly PassRun[], day: number): string | null {
+  const runsInPass = new Map<number, number>();
+  for (const r of runs) runsInPass.set(r.passIndex, (runsInPass.get(r.passIndex) ?? 0) + 1);
+  const byPass = new Map<number, number[]>();
+  for (const r of runs) if (onDay(r, day)) byPass.set(r.passIndex, [...(byPass.get(r.passIndex) ?? []), r.runIndex + 1]);
+  const labels = [...byPass.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .filter(([pass]) => runsInPass.get(pass)! > 1)
+    .map(([pass, ks]) => {
+      const lo = Math.min(...ks);
+      const hi = Math.max(...ks);
+      return `${lo === hi ? lo : `${lo}–${hi}`}/${runsInPass.get(pass)}`;
+    });
+  return labels.length ? labels.join(" ") : null;
+}
+
+/** True when a pass watered on `day` is still going on `day + 1` (the calendar joins the two cells). */
+export function continuesNextDay(runs: readonly RunWater[], day: number): boolean {
+  const today = new Set(runs.filter((r) => onDay(r, day)).map((r) => r.passIndex));
+  return runs.some((r) => today.has(r.passIndex) && onDay(r, day + 1));
+}
+
 const FRACTIONS: [number, string][] = [[1 / 4, "¼"], [1 / 3, "⅓"], [1 / 2, "½"], [2 / 3, "⅔"], [3 / 4, "¾"]];
 
 /**
