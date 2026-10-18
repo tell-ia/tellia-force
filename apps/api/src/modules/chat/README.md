@@ -38,12 +38,12 @@ conversation: it never computes numbers.
 | `tool-simulateScenario`     | what-if: baseline vs scenario and the comparison summary     | `ScenarioResult`                                                                                               |
 | `tool-getWeather`           | weather strip, 3 days before to 3 days after                 | `{ fieldId, days: WeatherDay[] }`                                                                              |
 | `tool-getIrrigationHistory` | confirmed irrigations, newest first                          | `{ fieldId, records: IrrigationRecord[] }`                                                                     |
-| `tool-recordIrrigation`     | **confirmation card** with Oui / Non buttons                 | `{ runId, status: "awaiting_confirmation", summary, fieldName, date, mm }`                                     |
+| `tool-recordIrrigation`     | **confirmation card** with Yes / No buttons                 | `{ runId, status: "awaiting_confirmation", summary, fieldName, date, mm }`                                     |
 | `tool-confirmIrrigation`    | saved / updated / deleted / cancelled badge                  | `IrrigationConfirmation` `{ status: "saved" \| "updated" \| "deleted" \| "cancelled", record? }`               |
 | `tool-getFieldDetails`      | one field: area, crop today, irrigation system, soil         | `FieldDetails` `{ field, crop, irrigationSystem, soil }`                                                       |
 | `tool-getFieldJournal`      | journal entries (planned ones marked) and the totals         | `FieldJournal` `{ fieldId, fieldName, type, from, to, entries, totals, truncated }`                            |
 | `tool-checkProductUse`      | product verdict: uses, applications left, pre-harvest check  | `ProductCheck` `{ status, product, matches, authorised, uses, usage, applicationsLeft, ... }`                  |
-| `tool-correctIrrigation`    | **confirmation card** with Oui / Non buttons, before → after | `IrrigationCorrection` `{ runId, status: "awaiting_confirmation", summary, fieldName, action, before, after }` |
+| `tool-correctIrrigation`    | **confirmation card** with Yes / No buttons, before → after | `IrrigationCorrection` `{ runId, status: "awaiting_confirmation", summary, fieldName, action, before, after }` |
 | `tool-lookupFarmData`       | one table: rows (at most 8 shown) and the server summary     | `FarmLookup` `{ table, synthetic, note, year, cropCode, rows, count, truncated, summary }`                     |
 
 What the 5 farm tools answer (every number and total is computed by the server):
@@ -74,8 +74,8 @@ What the 5 farm tools answer (every number and total is computed by the server):
   (`regional_benchmark` is real statistics, `false`).
 
 **Confirmation card.** `tool-recordIrrigation` and `tool-correctIrrigation` mean nothing is saved or
-changed yet. Show `summary` with Oui and Non buttons. A button simply sends the user message `Oui`
-or `Non` through `useChat`; the assistant then calls `confirmIrrigation`, which finishes either kind
+changed yet. Show `summary` with Yes and No buttons. A button simply sends the user message `Yes`
+or `No` through `useChat`; the assistant then calls `confirmIrrigation`, which finishes either kind
 of run: `saved` (new irrigation), `updated` or `deleted` (correction), `cancelled` (the farmer said
 no). Only confirmed irrigations count in the advice. A declined draft is deleted; a declined
 correction changes nothing.

@@ -355,9 +355,9 @@ describe("chat cards for the new tools", () => {
     expect(benchmark).toContain("42 %");
   });
 
-  it("correctIrrigation reuses the Oui / Non confirmation card", () => {
+  it("correctIrrigation reuses the Yes / No confirmation card", () => {
     const html = render("correctIrrigation", correction);
-    for (const text of ["Confirm correction", "25 mm on 2026-10-16", "Oui", "Non"]) expect(html).toContain(text);
+    for (const text of ["Confirm correction", "25 mm on 2026-10-16", "Yes", "No"]) expect(html).toContain(text);
     const del = render("correctIrrigation", { ...correction, action: "delete", after: null, summary: undefined });
     expect(del).toContain("Confirm deletion");
     expect(del).toContain("delete 2026-10-16 30 mm");

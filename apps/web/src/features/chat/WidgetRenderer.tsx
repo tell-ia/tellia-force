@@ -55,7 +55,7 @@ export function WidgetRenderer({
   state: ToolState;
   output?: unknown;
   onReply?: (text: string) => void;
-  /** A later message exists: a Oui/Non card is already answered and stays locked. */
+  /** A later message exists: a Yes/No card is already answered and stays locked. */
   answered?: boolean;
 }) {
   if (state === "input-streaming" || state === "input-available") return <Skeleton />;
@@ -183,29 +183,29 @@ function AdviceCard({ reports }: { reports: unknown[] }) {
   );
 }
 
-/** Yes/no question of a write tool: "Oui" / "Non" are sent as the farmer's reply. */
-// Oui / Non: one tap, then both buttons lock and the picked one keeps a check. Cards answered
+/** Yes/no question of a write tool: "Yes" / "No" are sent as the farmer's reply. */
+// Yes / No: one tap, then both buttons lock and the picked one keeps a check. Cards answered
 // earlier in the conversation (a later message exists) are locked too.
 function ConfirmCard({ title, summary, onReply, answered = false }: { title: string; summary: string; onReply?: (t: string) => void; answered?: boolean }) {
-  const [picked, setPicked] = useState<"Oui" | "Non" | null>(null);
+  const [picked, setPicked] = useState<"Yes" | "No" | null>(null);
   const locked = picked !== null || answered;
-  const pick = (answer: "Oui" | "Non") => {
+  const pick = (answer: "Yes" | "No") => {
     if (locked) return;
     setPicked(answer);
     onReply?.(answer);
   };
-  const badge = picked === "Oui" ? "Yes sent" : picked === "Non" ? "No sent" : answered ? "Answered" : "Awaiting";
-  const dim = (answer: "Oui" | "Non") => (locked && picked !== answer ? 0.4 : 1);
+  const badge = picked === "Yes" ? "Yes sent" : picked === "No" ? "No sent" : answered ? "Answered" : "Awaiting";
+  const dim = (answer: "Yes" | "No") => (locked && picked !== answer ? 0.4 : 1);
   return (
     <Card tone={locked ? undefined : "act"}>
       <Head title={title} tone={locked ? "ok" : "act"} badge={badge} />
       {summary && <p style={pStyle}>{summary}</p>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <button type="button" disabled={locked} aria-pressed={picked === "Oui"} onClick={() => pick("Oui")} style={{ ...btn, background: v("brand"), color: v("bg"), opacity: dim("Oui"), cursor: locked ? "default" : "pointer" }}>
-          <Check size={16} strokeWidth={2.5} /> Oui{picked === "Oui" ? " ✓" : ""}
+        <button type="button" disabled={locked} aria-pressed={picked === "Yes"} onClick={() => pick("Yes")} style={{ ...btn, background: v("brand"), color: v("bg"), opacity: dim("Yes"), cursor: locked ? "default" : "pointer" }}>
+          <Check size={16} strokeWidth={2.5} /> Yes{picked === "Yes" ? " ✓" : ""}
         </button>
-        <button type="button" disabled={locked} aria-pressed={picked === "Non"} onClick={() => pick("Non")} style={{ ...btn, background: v("surface"), color: v("ink"), border: `1px solid ${v("line")}`, opacity: dim("Non"), cursor: locked ? "default" : "pointer" }}>
-          <X size={16} strokeWidth={2.5} /> Non{picked === "Non" ? " ✓" : ""}
+        <button type="button" disabled={locked} aria-pressed={picked === "No"} onClick={() => pick("No")} style={{ ...btn, background: v("surface"), color: v("ink"), border: `1px solid ${v("line")}`, opacity: dim("No"), cursor: locked ? "default" : "pointer" }}>
+          <X size={16} strokeWidth={2.5} /> No{picked === "No" ? " ✓" : ""}
         </button>
       </div>
     </Card>
