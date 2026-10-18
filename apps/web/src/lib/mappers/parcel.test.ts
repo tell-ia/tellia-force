@@ -13,6 +13,7 @@ import {
   cropLine,
   formDose,
   wateredOnMm,
+  heroDose,
 } from "./parcel";
 
 describe("crop line", () => {
@@ -137,5 +138,27 @@ describe("watered on a day", () => {
   it("null when nothing was logged that day", () => {
     expect(wateredOnMm([rec("2022-07-12", 40)], "2022-07-13")).toBeNull();
     expect(wateredOnMm([], "2022-07-13")).toBeNull();
+  });
+});
+
+describe("hero dose with today's watering", () => {
+  const rec = (decision: string, grossMm: number, headline = "Irrigate now") =>
+    ({ decision, headline, grossMm, netMm: Math.round(grossMm * 0.75), efficiency: 0.75, reason: "", secondPass: null });
+
+  it("nothing logged today: the advice as it is", () => {
+    expect(heroDose(rec("irrigate_today", 40), null)).toEqual({ mode: "plain", headline: "Irrigate now", label: "Apply", mm: 40 });
+  });
+  it("watered today and nothing more needed: what went on", () => {
+    expect(heroDose(rec("no_irrigation", 0, "No water needed"), 40)).toEqual({
+      mode: "done", headline: "Watered today", label: "Applied today", mm: 40, reachedMm: 30,
+    });
+  });
+  it("watered today and more needed now: a top-up on top of what went on", () => {
+    expect(heroDose(rec("irrigate_today", 40), 40)).toEqual({
+      mode: "topUp", headline: "Top up now", label: "Apply another", mm: 40, appliedMm: 40, reachedMm: 30,
+    });
+  });
+  it("watered today, next one later: keeps the date headline", () => {
+    expect(heroDose(rec("plan_irrigation", 40, "Irrigate by Fri 15"), 20).headline).toBe("Irrigate by Fri 15");
   });
 });

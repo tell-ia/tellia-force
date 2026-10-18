@@ -1,14 +1,14 @@
 import { ArrowRight, Check, Clock } from "lucide-react";
 import type { Recommendation } from "@tellia/shared";
+import { heroDose } from "../../lib/mappers/parcel";
 import { font, hero, radius } from "../../theme/tokens";
 
 const HERO_INK = "#234534"; // text on the cream buttons/pills over the hero
 
 /** `wateredTodayMm`: gross mm logged today (null = none). The advice already counts it. */
 export function RecommendationCard({ rec, wateredTodayMm = null }: { rec: Recommendation; wateredTodayMm?: number | null }) {
-  // Watered today and nothing more to apply: the hero is what went on, not "Apply 0 mm".
-  const doneToday = wateredTodayMm != null && rec.grossMm === 0;
-  const reachesMm = (gross: number) => Math.round(gross * (rec.efficiency || 1));
+  const dose = heroDose(rec, wateredTodayMm);
+  const doneToday = dose.mode === "done";
   return (
     <section
       aria-label="Recommendation"
@@ -21,24 +21,29 @@ export function RecommendationCard({ rec, wateredTodayMm = null }: { rec: Recomm
       <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 14 }}>
         <span style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 7, background: hero.ink, color: HERO_INK, borderRadius: radius.pill, padding: "5px 12px", fontSize: 12, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>
           {doneToday ? <Check size={12} strokeWidth={2.5} /> : <Clock size={12} strokeWidth={2.5} />}
-          {doneToday ? "Watered today" : rec.headline}
+          {dose.headline}
         </span>
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={{ fontFamily: font.display, fontWeight: 500, fontSize: 22, lineHeight: 1 }}>{doneToday ? "Applied today" : "Apply"}</span>
+          <span style={{ fontFamily: font.display, fontWeight: 500, fontSize: 22, lineHeight: 1 }}>{dose.label}</span>
           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 104, lineHeight: 0.86, letterSpacing: "-0.02em" }}>{doneToday ? wateredTodayMm : rec.grossMm}</span>
+            <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 104, lineHeight: 0.86, letterSpacing: "-0.02em" }}>{dose.mm}</span>
             <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 36 }}>mm</span>
           </span>
           <span style={{ fontSize: 14, color: hero.ink2, marginTop: 4 }}>
-            {doneToday
-              ? `at the reel gun · ≈ ${reachesMm(wateredTodayMm)} mm reached the soil · nothing more to apply today`
+            {dose.mode === "done"
+              ? `at the reel gun · ≈ ${dose.reachedMm} mm reached the soil · nothing more to apply today`
               : `at the reel gun · ≈ ${rec.netMm} mm reaches the soil`}
           </span>
         </div>
-        {wateredTodayMm != null && !doneToday && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: hero.ink2, borderTop: `1px solid ${hero.line}`, paddingTop: 12 }}>
-            <Check size={16} />
-            <span>Already applied {wateredTodayMm} mm today: this dose comes on top of it.</span>
+        {dose.mode === "topUp" && (
+          <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: 10, background: hero.waterBg, borderRadius: 12, padding: "10px 12px" }}>
+            <span style={{ flex: "none", width: 22, height: 22, borderRadius: 11, background: hero.water, color: HERO_INK, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+              <Check size={14} strokeWidth={3} />
+            </span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2, lineHeight: 1.35 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: hero.water }}>Already applied {dose.appliedMm} mm today</span>
+              <span style={{ fontSize: 13, color: hero.ink2 }}>≈ {dose.reachedMm} mm reached the soil. The {dose.mm} mm above comes on top of it.</span>
+            </span>
           </div>
         )}
         {rec.secondPass && (
