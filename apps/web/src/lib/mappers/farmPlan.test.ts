@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comfortGaps, fieldShareOnDay, firstComfortDay, shareLabel, waterEventsByDay } from "./farmPlan";
+import { comfortGaps, fieldShareOnDay, firstComfortDay, shareLabel, todayWater, waterEventsByDay } from "./farmPlan";
 
 const run = (passIndex: number, startHour: number, endHour: number, grossMm = 40) => ({ passIndex, startHour, endHour, grossMm });
 
@@ -97,5 +97,19 @@ describe("share of the field the gun waters on a day", () => {
     expect(shareLabel(0.63)).toBe("⅔"); // a run that goes past midnight
     expect(shareLabel(0.75)).toBe("¾");
     expect(shareLabel(0.05)).toBe("<¼");
+  });
+});
+
+describe("today's water for the reserve bar", () => {
+  const r = (passIndex: number, startHour: number, endHour: number, grossMm = 40) => ({ passIndex, startHour, endHour, grossMm });
+  it("half a two-run field today: 40 mm on the strip → +15 mm for the field, 5 mm lost", () => {
+    expect(todayWater([r(0, 11, 23.6), r(0, 32, 44.6)], 0.75)).toEqual({ stripMm: 40, share: 0.5, pumpedMm: 20, soilMm: 15, lostMm: 5 });
+  });
+  it("the whole field in one run", () => {
+    expect(todayWater([r(0, 10, 20, 30)], 0.8)).toEqual({ stripMm: 30, share: 1, pumpedMm: 30, soilMm: 24, lostMm: 6 });
+  });
+  it("null when the gun isn't on the field today", () => {
+    expect(todayWater([r(0, 32, 44)], 0.75)).toBeNull();
+    expect(todayWater([], 0.75)).toBeNull();
   });
 });

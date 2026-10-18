@@ -16,10 +16,15 @@ function fmtShortDay(iso: string): string {
 
 // ---- Soil water reserve gauge --------------------------------------------
 
-export function ReserveGauge({ reserve }: { reserve: Reserve }) {
+/** `incoming`: today's watering, field-average mm — what reaches the soil and what is lost. */
+export function ReserveGauge({ reserve, incoming = null }: { reserve: Reserve; incoming?: { soilMm: number; lostMm: number } | null }) {
   const W = 326;
   const cap = reserve.capacityMm;
   const todayX = (reserve.availableMm / cap) * W;
+  // Today's water stacked on the reserve: what the soil receives (solid), then what is pumped
+  // but lost on the way (dashed ghost), clipped at full.
+  const soilW = incoming ? Math.min(W - todayX, (incoming.soilMm / cap) * W) : 0;
+  const lostW = incoming ? Math.min(W - todayX - soilW, (incoming.lostMm / cap) * W) : 0;
   const thresholdX = (reserve.thresholdMm / cap) * W;
   const usedW = (reserve.usedByThresholdMm / cap) * W;
   const belowComfort = reserve.availableMm < reserve.thresholdMm;
@@ -41,7 +46,12 @@ export function ReserveGauge({ reserve }: { reserve: Reserve }) {
         <rect x="0" y="20" width={todayX} height="30" fill={fill} />
         {/* what the crop will use by the threshold date */}
         {usedW > 0 && <rect x={todayX - usedW} y="20" width={usedW} height="30" fill="url(#tfHatch)" opacity={0.5} />}
+        {soilW > 0 && <rect x={todayX} y="20" width={soilW} height="30" fill={v("water")} />}
+        {lostW > 0 && <rect x={todayX + soilW + 1} y="21" width={Math.max(0, lostW - 2)} height="28" rx="3" fill="none" stroke={v("ink2")} strokeWidth={1.2} strokeDasharray="3 2" opacity={0.8} />}
       </g>
+      {incoming && soilW >= 24 && (
+        <text x={todayX + soilW / 2} y="39" textAnchor="middle" fill={v("surface")} fontSize="11" fontWeight={700}>+{incoming.soilMm}</text>
+      )}
       <line x1={thresholdX} y1="12" x2={thresholdX} y2="58" stroke={v("ink")} strokeWidth={2} />
       <text x={thresholdX} y="11" textAnchor="middle" fill={v("ink")} fontSize="11" fontWeight={600}>Comfort {reserve.thresholdMm} mm</text>
       {showToday && (
