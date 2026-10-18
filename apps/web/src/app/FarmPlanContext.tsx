@@ -2,6 +2,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { FarmIrrigationPlan } from "@tellia/shared";
 import { buildFarmPlan } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
+import { useWaterVersion } from "../lib/useWaterVersion";
 import { useFarm } from "./FarmContext";
 import { useDemoDate } from "./DateContext";
 import { useEquipment } from "./EquipmentContext";
@@ -22,11 +23,13 @@ export function FarmPlanProvider({ children }: { children: ReactNode }) {
   const { today } = useDemoDate();
   const { equipmentFor } = useEquipment();
   const eq = farm ? equipmentFor(farm.id) : null;
+  // A watering logged anywhere (Log, parcel undo, chat) changes the fields' water: rebuild.
+  const water = useWaterVersion();
   const key = farm && eq ? `${farm.id}|${today}|${eq.gunModelIds.join("-")}|${eq.pumpM3h}|${eq.moveMinutes}` : "none";
 
   const { data, loading } = useAsync<FarmIrrigationPlan | null>(
     () => (farm && eq ? buildFarmPlan(farm, eq) : Promise.resolve(null)),
-    [key],
+    [key, water],
   );
 
   return <Ctx.Provider value={{ plan: data ?? null, loading }}>{children}</Ctx.Provider>;
