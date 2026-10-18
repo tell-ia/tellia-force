@@ -1,4 +1,4 @@
-import type { BalancePoint, CropPhase, DayBalance, FieldReport, IrrigationRecord, ParcelReport, RefillPlanSeries, Reserve } from "@tellia/shared";
+import type { BalancePoint, CropPhase, DayBalance, FieldReport, IrrigationRecord, ParcelReport, Recommendation, RefillPlanSeries, Reserve } from "@tellia/shared";
 
 /** A soil_analysis row's texture + OM, joined by field in the api layer. */
 export interface SoilSample {
@@ -60,6 +60,31 @@ export const wateredPct = (noWaterPct: number, netMm: number, capacityMm: number
 export function wateredOnMm(records: readonly IrrigationRecord[], date: string): number | null {
   const day = records.filter((r) => r.date === date && r.status !== "draft");
   return day.length ? day.reduce((s, r) => s + r.mm, 0) : null;
+}
+
+/** What the hero card says, given the gross mm logged today (null = none; the advice counts it). */
+export type HeroDose =
+  | { mode: "plain"; headline: string; label: string; mm: number }
+  | { mode: "done"; headline: string; label: string; mm: number; reachedMm: number }
+  | { mode: "topUp"; headline: string; label: string; mm: number; appliedMm: number; reachedMm: number };
+
+/**
+ * Watered today and nothing more needed: the card shows what went on, not "Apply 0 mm". Watered
+ * today and still short: the dose is a top-up on top of it ("Irrigate now" → "Top up now"; a
+ * later date stays as it is).
+ */
+export function heroDose(rec: Recommendation, wateredTodayMm: number | null): HeroDose {
+  if (wateredTodayMm == null) return { mode: "plain", headline: rec.headline, label: "Apply", mm: rec.grossMm };
+  const reachedMm = Math.round(wateredTodayMm * (rec.efficiency || 1));
+  if (rec.grossMm === 0) return { mode: "done", headline: "Watered today", label: "Applied today", mm: wateredTodayMm, reachedMm };
+  return {
+    mode: "topUp",
+    headline: rec.decision === "irrigate_today" ? "Top up now" : rec.headline,
+    label: "Apply another",
+    mm: rec.grossMm,
+    appliedMm: wateredTodayMm,
+    reachedMm,
+  };
 }
 
 /** Part of the day's reserve % that is that day's rain; the rest was already in the soil. */

@@ -54,6 +54,9 @@ export const hero = {
   ink: "#F6F3E8",
   ink2: "#D9E6DC",
   line: "rgba(246, 243, 232, 0.25)",
+  // Water already applied today: a light teal that reads on the green, and its tint.
+  water: "#8EE0D1",
+  waterBg: "rgba(95, 191, 175, 0.2)",
   // MOCK asset: prototype /_blob/c43002414e533f7232b62715fbeda75b — added in Phase 2.
   texture: "/assets/hero-texture.jpg",
 } as const;
