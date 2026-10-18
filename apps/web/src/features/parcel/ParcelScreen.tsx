@@ -12,6 +12,7 @@ import { font, v } from "../../theme/tokens";
 import { InfoHint, Label, SectionCard } from "../../components/ui/primitives";
 import { DateButton } from "../../components/DateSheet";
 import { dayRange } from "../../lib/dates";
+import { wateredOnMm } from "../../lib/mappers/parcel";
 import { Loader } from "../../components/ui/Loader";
 import { RecommendationCard } from "./RecommendationCard";
 import { IrrigationLog } from "./IrrigationLog";
@@ -103,7 +104,7 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
             </div>
           </div>
 
-          <RecommendationCard rec={data.recommendation} />
+          <RecommendationCard rec={data.recommendation} wateredTodayMm={wateredOnMm(log.data ?? [], data.asOf)} />
 
           <SectionCard style={{ gap: 14, position: "relative" }}>
             <CornerHint text="The bar is the water the soil holds right now. The hatched part is what the crop will drink before the stress line — past that line it closes up and loses yield." />

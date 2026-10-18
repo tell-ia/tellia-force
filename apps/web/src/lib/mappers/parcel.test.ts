@@ -12,6 +12,7 @@ import {
   wateredPct,
   cropLine,
   formDose,
+  wateredOnMm,
 } from "./parcel";
 
 describe("crop line", () => {
@@ -124,5 +125,17 @@ describe("irrigation date and passes", () => {
     expect(refillPassesNote({ depletionMm: 75, irrigateMm: 30 })).toBe(
       "then ~2 more passes to refill (75 mm deficit)",
     );
+  });
+});
+
+describe("watered on a day", () => {
+  const rec = (date: string, mm: number, status = "confirmed") => ({ operationId: 1, fieldId: 7, date, mm, status });
+  it("sums that day's waterings, ignores other days and drafts", () => {
+    const log = [rec("2022-07-13", 40), rec("2022-07-13", 20, "planned"), rec("2022-07-12", 40), rec("2022-07-13", 30, "draft")];
+    expect(wateredOnMm(log, "2022-07-13")).toBe(60);
+  });
+  it("null when nothing was logged that day", () => {
+    expect(wateredOnMm([rec("2022-07-12", 40)], "2022-07-13")).toBeNull();
+    expect(wateredOnMm([], "2022-07-13")).toBeNull();
   });
 });
