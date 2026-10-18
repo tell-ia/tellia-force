@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { AlertTriangle, ChevronDown } from "lucide-react";
 import type { BalancePoint, CropTimeline, NextDay, RefillPlanSeries, Reserve, SeasonBalance, Soil } from "@tellia/shared";
+import type { ReserveDay } from "../../lib/mappers/parcel";
 import { font, radius, v } from "../../theme/tokens";
 import { Label, StatTile } from "../../components/ui/primitives";
 
@@ -16,15 +17,62 @@ function fmtShortDay(iso: string): string {
 
 // ---- Soil water reserve gauge --------------------------------------------
 
-/** `incoming`: today's watering, field-average mm — what reaches the soil and what is lost. */
-export function ReserveGauge({ reserve, incoming = null }: { reserve: Reserve; incoming?: { soilMm: number; lostMm: number } | null }) {
+/**
+ * The reserve's day as one stacked bar, ending on tonight's value (the water-balance chart's dot
+ * for today): this morning, + the gun, + rain, then the crop's share hatched off the top. The
+ * tonight marker sits where the hatch starts.
+ */
+export function ReserveDayGauge({ reserve, day }: { reserve: Reserve; day: ReserveDay }) {
+  const W = 326;
+  const cap = reserve.capacityMm;
+  const x = (mm: number) => (Math.max(0, Math.min(cap, mm)) / cap) * W;
+  const morningX = x(day.morningMm);
+  const gunX = x(day.morningMm + day.gunMm);
+  const topX = x(day.morningMm + day.gunMm + day.rainMm);
+  const tonightX = x(day.tonightMm);
+  const thresholdX = x(reserve.thresholdMm);
+  const below = day.tonightMm < reserve.thresholdMm;
+  // "Tonight" goes above the bar unless the comfort label is there; then below, beside the −n.
+  const tonightTop = Math.abs(tonightX - thresholdX) >= 80;
+  const cropLabelX = Math.min(W - 12, Math.max(tonightX + 14, (tonightX + topX) / 2));
+  return (
+    <svg viewBox="0 0 326 76" width="100%" role="img" aria-label={`${day.morningMm} mm this morning, plus ${day.gunMm} from the gun${day.rainMm ? ` and ${day.rainMm} rain` : ""}, minus ${day.cropMm} drunk by the crop: ${day.tonightMm} mm tonight of ${cap}; comfort ${reserve.thresholdMm} mm`} style={{ display: "block", fontFamily: font.body }}>
+      <defs>
+        <pattern id="tfCrop" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="5" height="5" fill={v("sunk")} />
+          <line x1="0" y1="0" x2="0" y2="5" stroke={v("ink")} strokeWidth={1.6} opacity={0.75} />
+        </pattern>
+        <clipPath id="tfDayTank"><rect x="0" y="22" width="326" height="30" rx="8" /></clipPath>
+      </defs>
+      <g clipPath="url(#tfDayTank)">
+        <rect x="0" y="22" width="326" height="30" fill={v("sunk")} />
+        <rect x="0" y="22" width={morningX} height="30" fill={below ? v("act") : v("brand")} />
+        {gunX > morningX && <rect x={morningX} y="22" width={gunX - morningX} height="30" fill={v("water")} />}
+        {topX > gunX && <rect x={gunX} y="22" width={topX - gunX} height="30" fill={v("rain")} />}
+        {topX > tonightX && <rect x={tonightX} y="22" width={topX - tonightX} height="30" fill="url(#tfCrop)" />}
+      </g>
+      {gunX - morningX >= 24 && (
+        <text x={(morningX + Math.min(gunX, tonightX)) / 2} y="41" textAnchor="middle" fill={v("surface")} fontSize="11" fontWeight={700}>+{day.gunMm}</text>
+      )}
+      {/* comfort line */}
+      <line x1={thresholdX} y1="14" x2={thresholdX} y2="60" stroke={v("ink")} strokeWidth={2} />
+      <text x={thresholdX} y="11" textAnchor="middle" fill={v("ink")} fontSize="11" fontWeight={600}>Comfort {reserve.thresholdMm}</text>
+      {/* tonight marker */}
+      <path d={`M${tonightX - 5},${tonightTop ? 14 : 60} L${tonightX + 5},${tonightTop ? 14 : 60} L${tonightX},${tonightTop ? 20 : 54} Z`} fill={below ? v("act") : v("brand")} />
+      <text x={tonightX} y={tonightTop ? 11 : 72} textAnchor={tonightTop ? "middle" : "end"} dx={tonightTop ? 0 : -8} fill={below ? v("act") : v("brand")} fontSize="11" fontWeight={700}>Tonight {day.tonightMm}</text>
+      {day.cropMm > 0 && (
+        <text x={cropLabelX} y="72" textAnchor="middle" fill={v("ink")} fontSize="11" fontWeight={700}>−{day.cropMm}</text>
+      )}
+      {tonightTop && <text x="0" y="72" fill={v("ink2")} fontSize="11">0</text>}
+      <text x="326" y="72" textAnchor="end" fill={v("ink2")} fontSize="11">{cap}</text>
+    </svg>
+  );
+}
+
+export function ReserveGauge({ reserve }: { reserve: Reserve }) {
   const W = 326;
   const cap = reserve.capacityMm;
   const todayX = (reserve.availableMm / cap) * W;
-  // Today's water stacked on the reserve: what the soil receives (solid), then what is pumped
-  // but lost on the way (dashed ghost), clipped at full.
-  const soilW = incoming ? Math.min(W - todayX, (incoming.soilMm / cap) * W) : 0;
-  const lostW = incoming ? Math.min(W - todayX - soilW, (incoming.lostMm / cap) * W) : 0;
   const thresholdX = (reserve.thresholdMm / cap) * W;
   const usedW = (reserve.usedByThresholdMm / cap) * W;
   const belowComfort = reserve.availableMm < reserve.thresholdMm;
@@ -46,12 +94,7 @@ export function ReserveGauge({ reserve, incoming = null }: { reserve: Reserve; i
         <rect x="0" y="20" width={todayX} height="30" fill={fill} />
         {/* what the crop will use by the threshold date */}
         {usedW > 0 && <rect x={todayX - usedW} y="20" width={usedW} height="30" fill="url(#tfHatch)" opacity={0.5} />}
-        {soilW > 0 && <rect x={todayX} y="20" width={soilW} height="30" fill={v("water")} />}
-        {lostW > 0 && <rect x={todayX + soilW + 1} y="21" width={Math.max(0, lostW - 2)} height="28" rx="3" fill="none" stroke={v("ink2")} strokeWidth={1.2} strokeDasharray="3 2" opacity={0.8} />}
       </g>
-      {incoming && soilW >= 24 && (
-        <text x={todayX + soilW / 2} y="39" textAnchor="middle" fill={v("surface")} fontSize="11" fontWeight={700}>+{incoming.soilMm}</text>
-      )}
       <line x1={thresholdX} y1="12" x2={thresholdX} y2="58" stroke={v("ink")} strokeWidth={2} />
       <text x={thresholdX} y="11" textAnchor="middle" fill={v("ink")} fontSize="11" fontWeight={600}>Comfort {reserve.thresholdMm} mm</text>
       {showToday && (
