@@ -6,7 +6,8 @@ import { useAsync } from "../../lib/useAsync";
 import { useQuery } from "../../lib/useQuery";
 import { useFarm } from "../../app/FarmContext";
 import { useDemoDate } from "../../app/DateContext";
-import { useFieldOutcome } from "../../app/FarmPlanContext";
+import { useFarmPlan, useFieldOutcome } from "../../app/FarmPlanContext";
+import { todayWater, type TodayWater } from "../../lib/mappers/farmPlan";
 import { navigate } from "../../app/router";
 import { font, v } from "../../theme/tokens";
 import { InfoHint, Label, SectionCard } from "../../components/ui/primitives";
@@ -51,12 +52,26 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
   const { today } = useDemoDate();
   const { data, loading, error } = useQuery<ParcelReport>(parcelReportQuery(parcelId, today));
   const outcome = useFieldOutcome(parcelId); // the field's forecast under the farm rotation plan
+  const { plan: farmPlan } = useFarmPlan();
   const log = useAsync<IrrigationRecord[]>(() => listIrrigations(parcelId), [parcelId, version]);
   const removeWatering = async (operationId: number) => {
     await deleteIrrigation(operationId);
     setVersion((n) => n + 1);
   };
   const logRef = useRef<HTMLDivElement>(null);
+
+  // Today's water on top of the reserve, as the chart counts it: the rotation's runs on this
+  // field today (else the field's own plan, if it waters today). Field-average mm.
+  let water: TodayWater | null = null;
+  if (data && data.id === parcelId) {
+    const eff = data.recommendation.efficiency || 1;
+    const ownPass = data.plan?.passes.find((p) => p.date === data.asOf);
+    water = outcome
+      ? todayWater(farmPlan?.runs.filter((r) => r.fieldId === parcelId) ?? [], eff)
+      : ownPass
+        ? todayWater([{ passIndex: 0, startHour: 8, endHour: 18, grossMm: ownPass.grossMm }], eff)
+        : null;
+  }
 
   // "See the log" (#/parcel/:id#log) lands on the irrigation log (once per parcel, not on a reload).
   useEffect(() => {
@@ -114,11 +129,22 @@ export function ParcelScreen({ parcelId, anchor }: { parcelId: number; anchor?: 
                 <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                   <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 48, lineHeight: 0.95 }}>{data.reserve.availableMm}</span>
                   <span style={{ fontSize: 15, color: v("ink2") }}>of {data.reserve.capacityMm} mm</span>
+                  {water && <span style={{ fontSize: 15, fontWeight: 700, color: v("water") }}>+{water.soilMm} today</span>}
                 </span>
               </div>
               <span style={{ fontFamily: font.display, fontWeight: 600, fontSize: 26, color: v("water") }}>{data.reserve.pct}%</span>
             </div>
-            <ReserveGauge reserve={data.reserve} />
+            <ReserveGauge reserve={data.reserve} incoming={water} />
+            {water && (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: v("ink2"), lineHeight: 1.5 }}>
+                <span aria-hidden="true" style={{ flex: "none", width: 10, height: 10, marginTop: 5, borderRadius: 2, background: v("water") }} />
+                <span>
+                  Today the gun puts {water.stripMm} mm on {water.share >= 0.95 ? "the whole field" : `${Math.round(water.share * 100)} % of the field`}:{" "}
+                  <b style={{ color: v("water") }}>+{water.soilMm} mm reaches the soil</b>
+                  {water.lostMm > 0 ? `, ${water.lostMm} mm is lost to wind and evaporation (dashed).` : "."}
+                </span>
+              </div>
+            )}
             <div style={{ fontSize: 13, color: v("ink2"), lineHeight: 1.5 }}>
               Hatched: what the crop will use by {data.reserve.thresholdLabel} (≈ {data.reserve.usedByThresholdMm} mm). Below the line the crop closes its stomata and loses yield.
             </div>
