@@ -10,5 +10,5 @@ export { fetchRpgParcels, type RpgParcel } from "./rpg";
 export { sendBriefSms, setMemberPhone } from "./members";
 export { demoDateQuery, getDemoDate, setDemoDate } from "./settings";
 export { list } from "./data";
-export { setFieldShapes } from "./fields";
+export { removeFieldShapes, setFieldShapes } from "./fields";
 export { fetchQuery, getQuery, invalidateQueries, isFresh, onInvalidate, peek, prefetch, setQueryData, type Query } from "./cache";

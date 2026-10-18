@@ -1,15 +1,17 @@
 import { useRef, useState } from "react";
-import { FileUp, Sparkles } from "lucide-react";
+import { Download, FileUp, Sparkles } from "lucide-react";
+import { useFarm } from "../../app/FarmContext";
 import { font, v } from "../../theme/tokens";
 import { readFieldFile, type ImportedOutline } from "./fieldImport";
 
 // Example exports for the demo farms (apps/web/public/samples/fields, built by
 // scripts/make_field_shapefiles.py): each one's own field outlines, in its country's projection.
-const SAMPLE_BY_FARM: Record<number, string> = {
-  1: "trois-chenes_parcelles.zip",
-  2: "los-olmos_recintos.zip",
-  3: "ca-dei-pioppi_appezzamenti.zip",
-};
+const SAMPLES: { farmId: number; file: string; projection: string }[] = [
+  { farmId: 1, file: "trois-chenes_parcelles.zip", projection: "Lambert-93" },
+  { farmId: 2, file: "los-olmos_recintos.zip", projection: "UTM 30N" },
+  { farmId: 3, file: "ca-dei-pioppi_appezzamenti.zip", projection: "WGS84" },
+];
+const sampleUrl = (file: string) => `${import.meta.env.BASE_URL}samples/fields/${file}`;
 
 export interface ReadFile {
   fileName: string;
@@ -21,7 +23,9 @@ export function ImportFieldsSheet({ farmId, onRead, onClose }: { farmId: number;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sample = SAMPLE_BY_FARM[farmId];
+  const { farms } = useFarm();
+  // This farm's example first: the others match none of its fields (handy to show the skip).
+  const samples = [...SAMPLES].sort((a, b) => Number(b.farmId === farmId) - Number(a.farmId === farmId));
 
   const read = async (fileName: string, bytes: () => Promise<ArrayBuffer>) => {
     setBusy(true);
@@ -40,10 +44,9 @@ export function ImportFieldsSheet({ farmId, onRead, onClose }: { farmId: number;
     if (input.current) input.current.value = ""; // picking the same file again still fires
   };
 
-  const useSample = () => {
-    if (!sample) return;
-    void read(sample, async () => {
-      const res = await fetch(`${import.meta.env.BASE_URL}samples/fields/${sample}`);
+  const useSample = (file: string) => {
+    void read(file, async () => {
+      const res = await fetch(sampleUrl(file));
       if (!res.ok) throw new Error("The example file is missing from this build.");
       return res.arrayBuffer();
     });
@@ -65,17 +68,29 @@ export function ImportFieldsSheet({ farmId, onRead, onClose }: { farmId: number;
         <button type="button" disabled={busy} onClick={() => input.current?.click()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 52, borderRadius: 14, border: 0, background: v("brand"), color: v("bg"), fontWeight: 600, fontSize: 15, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
           <FileUp size={18} /> {busy ? "Reading…" : "Choose a file"}
         </button>
-        {sample && (
-          <button type="button" disabled={busy} onClick={useSample} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 48, borderRadius: 14, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, fontSize: 14, cursor: busy ? "default" : "pointer" }}>
-            <Sparkles size={16} /> Try the example file
-            <span style={{ fontWeight: 400, color: v("ink2"), fontSize: 12 }}>{sample}</span>
-          </button>
-        )}
-        {sample && (
-          <a href={`${import.meta.env.BASE_URL}samples/fields/${sample}`} download style={{ alignSelf: "center", fontSize: 12, color: v("ink2") }}>
-            Download the example
-          </a>
-        )}
+        <div role="group" aria-label="Example files" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: v("ink2") }}>
+            <Sparkles size={13} /> Or try an example
+          </span>
+          {samples.map((x) => {
+            const mine = x.farmId === farmId;
+            const farmName = farms.find((f) => f.id === x.farmId)?.name ?? `Farm ${x.farmId}`;
+            return (
+              <div key={x.file} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+                <button type="button" disabled={busy} onClick={() => useSample(x.file)} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2, minHeight: 52, padding: "6px 12px", borderRadius: 12, border: mine ? `2px solid ${v("brand")}` : `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), cursor: busy ? "default" : "pointer", textAlign: "left" }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>
+                    {farmName}
+                    {mine && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: v("brand") }}>this farm</span>}
+                  </span>
+                  <span style={{ fontSize: 12, color: v("ink2"), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{x.file} · {x.projection}</span>
+                </button>
+                <a href={sampleUrl(x.file)} download aria-label={`Download ${x.file}`} style={{ flex: "none", width: 48, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 12, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink2") }}>
+                  <Download size={16} />
+                </a>
+              </div>
+            );
+          })}
+        </div>
         {error && <span role="alert" style={{ fontSize: 13, color: v("act"), lineHeight: 1.4 }}>{error}</span>}
       </div>
     </div>
