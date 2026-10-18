@@ -13,7 +13,7 @@ import {
 } from "@tellia/shared";
 import { getFarmToday, getParcelReport } from "./parcels";
 import { simulateFieldEvents } from "./plan";
-import { waterEventsByDay } from "../mappers/farmPlan";
+import { comfortGaps, firstComfortDay, waterEventsByDay } from "../mappers/farmPlan";
 import { list } from "./data";
 
 const MS = 86_400_000;
@@ -290,15 +290,20 @@ export async function buildFarmPlan(
   }
   const suggestedGuns = targetN ?? floorN ?? fieldCount;
 
-  // Per field at the actual gun count: the projected day it climbs back above comfort
-  // (0 = already comfortable, null = the rotation can't out-run its crop use at all). The
-  // grid colours each day by this: amber while still below comfort, green from that day on.
-  const comfortDayById = new Map<number, number | null>();
+  // Per field at the actual gun count, day by day: mm still below comfort at the end of each
+  // day. From the reserve re-simulated on this schedule's real run days and weather (so it
+  // follows the gun count, and dips again on days the gun is elsewhere), then the projection
+  // past the forecast. The grid colours and labels each day by it; the comfort day is the
+  // first day that ends above comfort (null = not within the look-ahead at this gun count).
+  const LOOK_AHEAD = 90;
+  const gapsById = new Map<number, number[]>();
   for (const o of fieldOutcomes) {
-    const r = recover(o.fieldId, guns.length);
-    const day = r.reachable ? r.days : null;
-    o.comfortDay = day;
-    comfortDayById.set(o.fieldId, day);
+    const p = projById.get(o.fieldId);
+    const threshold = passes.find((x) => x.fieldId === o.fieldId)?.thresholdMm ?? 0;
+    const climb = p ? climbPerDay(p, guns.length) : 0;
+    const gaps = comfortGaps(o.series, asOf, threshold, LOOK_AHEAD, p?.deficit ?? 0, climb);
+    gapsById.set(o.fieldId, gaps);
+    o.comfortDay = firstComfortDay(gaps);
   }
   // A field is "late" overall when the rotation never brings it home (null recovery).
   const stressedIds = new Set(needyIds.filter((id) => !recover(id, guns.length).reachable));
@@ -314,7 +319,10 @@ export async function buildFarmPlan(
   }
 
   const here = farmRecovery(guns.length);
-  const comfortInDays = here.comfortInDays;
+  // The farm is back to comfort when its last field is, on the same day-by-day gaps as the grid.
+  const comfortInDays = fieldOutcomes.some((o) => o.comfortDay === null)
+    ? null
+    : Math.max(0, ...fieldOutcomes.map((o) => o.comfortDay ?? 0));
   const cyclesToComfort = here.cyclesToComfort;
 
   // The grid runs far enough to show each field climb back to comfort (amber → green),
@@ -327,15 +335,7 @@ export async function buildFarmPlan(
     Math.max(12, Math.ceil(Math.max(0, ...out.map((o) => o.endHour)) / 24), maxComfort + 1),
   );
 
-  // Per field and grid day: mm still below comfort once that day is over, on the same
-  // projection as comfortDay (so it reaches 0 on the last amber day). The dose alone is
-  // always the gun's max pass; this is what shows the field closing its gap.
-  for (const o of fieldOutcomes) {
-    const p = projById.get(o.fieldId);
-    if (!p) continue;
-    const climb = climbPerDay(p, guns.length);
-    o.gapMm = Array.from({ length: horizonDays }, (_, d) => Math.max(0, Math.ceil(p.deficit - climb * (d + 1))));
-  }
+  for (const o of fieldOutcomes) o.gapMm = gapsById.get(o.fieldId)?.slice(0, horizonDays) ?? [];
 
   return FarmIrrigationPlanSchema.parse({
     farmId: farm.id,

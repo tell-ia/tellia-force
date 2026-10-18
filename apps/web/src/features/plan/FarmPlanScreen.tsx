@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { ArrowLeft, Check, TriangleAlert } from "lucide-react";
 import { type FarmEquipment, type FarmIrrigationPlan, type FarmPlanRun } from "@tellia/shared";
 import { buildFarmPlan } from "../../lib/api";
+import { fieldShareOnDay, shareLabel } from "../../lib/mappers/farmPlan";
 import { useAsync } from "../../lib/useAsync";
 import { useWaterVersion } from "../../lib/useWaterVersion";
 import { useFarm } from "../../app/FarmContext";
@@ -17,6 +18,14 @@ const addDays = (iso: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 };
+/** "11:00" for an hour from asOf, relative to grid day `d`; "24:00+" past that day's midnight. */
+const clock = (h: number, d: number) => {
+  const local = h - d * 24;
+  if (local <= 0) return "00:00";
+  if (local >= 24) return "24:00";
+  return `${String(Math.floor(local)).padStart(2, "0")}:${String(Math.round((local % 1) * 60) % 60).padStart(2, "0")}`;
+};
+
 const fmtH = (asOf: string, h: number) => {
   const day = Math.floor(h / 24);
   const hh = Math.floor(h % 24);
@@ -218,25 +227,35 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
                 const dayStart = d * 24;
                 const dayEnd = dayStart + 24;
                 const runs = plan.runs.filter((r) => r.fieldId === f.id && r.startHour < dayEnd && r.endHour > dayStart);
-                // The row is a recovery bar: amber while still below comfort, green from the
-                // projected comfort day on (null = never recovers at this gun count). Watering
-                // days are solid with the dose; other days a soft tint of the same state.
-                const below = f.comfortDay === null || d < f.comfortDay;
+                // Each day is coloured by where the field ends it: amber while below comfort,
+                // green above (re-simulated on this schedule's run days and weather, so a field
+                // can turn amber again on days the gun is elsewhere). Watering days are solid
+                // with the dose; other days a soft tint of the same state.
+                const gap = f.gapMm[d] ?? (f.comfortDay === null || d < f.comfortDay ? 1 : 0);
+                const below = gap > 0;
                 const run = runs.length > 0;
                 const bg = below ? (run ? v("act") : v("actSoft")) : (run ? v("brand") : v("okSoft"));
                 const dose = run ? Math.max(...runs.map((r) => r.grossMm)) : null;
                 const guns = [...new Set(runs.map((r) => r.gunIndex + 1))];
-                // Every pass is the gun's max dose, so the dose alone never changes: under it,
-                // what the field still lacks after that day shows it closing in on comfort.
-                const gap = dose != null ? (f.gapMm[d] ?? 0) : 0;
+                // A big field takes several runs: "½" = the gun waters half of it that day.
+                const share = run ? shareLabel(fieldShareOnDay(plan.runs.filter((r) => r.fieldId === f.id), d)) : null;
+                const tip = [
+                  ...runs.map((r) => `Gun ${r.gunIndex + 1} · ${clock(r.startHour, d)}–${clock(r.endHour, d)} · ${r.areaHa} ha at ${r.grossMm} mm`),
+                  ...(f.gapMm[d] ? [`${f.gapMm[d]} mm below comfort at the end of the day`] : []),
+                ].join("\n");
                 return (
                   <div key={d} style={{ width: DAYW, flex: "none", display: "flex", justifyContent: "center" }}>
                     <div
-                      title={run ? runs.map((r) => `${r.fieldName} · Gun ${r.gunIndex + 1} · ${r.grossMm} mm`).join("\n") + (gap > 0 ? `\n${gap} mm still below comfort after today` : "") : ""}
+                      title={tip}
                       style={{ width: CELL, height: 54, borderRadius: 7, background: bg, outline: d === 0 ? `2px solid ${v("ink")}` : "none", outlineOffset: -2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1, color: run ? "#fff" : v("ink2") }}
                     >
-                      {dose != null && <span style={{ fontSize: 13, fontWeight: 700 }}>{dose}</span>}
-                      {gap > 0 && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>−{gap}</span>}
+                      {dose != null && (
+                        <span style={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700 }}>{dose}</span>
+                          {share && <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.9 }}>{share}</span>}
+                        </span>
+                      )}
+                      {f.gapMm[d] ? <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>−{f.gapMm[d]}</span> : null}
                       {dose != null && ng > 1 && <span style={{ fontSize: 8, fontWeight: 600, opacity: 0.85, marginTop: 1 }}>{guns.map((g) => `G${g}`).join("+")}</span>}
                     </div>
                   </div>
@@ -250,7 +269,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 11, color: v("ink2"), padding: "0 12px", marginTop: 2 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("brand") }} />Back to comfort</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("act") }} />Below comfort</span>
-        <span>number = mm pumped · −n = mm still below comfort after that day{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
+        <span>number = mm pumped · ½ = part of the field watered that day · −n = mm below comfort at the end of the day{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
       </div>
     </section>
   );
@@ -259,10 +278,11 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
 function RunRow({ r, plan, moveFrom }: { r: FarmPlanRun; plan: FarmIrrigationPlan; moveFrom: string | null }) {
   const hours = Math.round(r.endHour - r.startHour);
   const m3 = Math.round(r.areaHa * r.grossMm * 10);
-  // This run happens while the field is still below comfort (amber) or once it's recovered
-  // (green), by the field's projected comfort day.
-  const comfortDay = plan.fields.find((f) => f.fieldId === r.fieldId)?.comfortDay ?? null;
-  const below = comfortDay === null || Math.floor(r.startHour / 24) < comfortDay;
+  // This run happens while the field is below comfort (amber) or above it (green): where the
+  // field stands at the end of the day the run starts, as on the calendar.
+  const o = plan.fields.find((f) => f.fieldId === r.fieldId);
+  const day = Math.floor(r.startHour / 24);
+  const below = o?.gapMm?.[day] != null ? o.gapMm[day]! > 0 : (o?.comfortDay ?? null) === null || day < o!.comfortDay!;
   return (
     <>
     {moveFrom && (
