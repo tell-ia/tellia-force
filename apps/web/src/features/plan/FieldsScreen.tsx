@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, Undo2, Upload } from "lucide-react";
 import type { FarmToday } from "@tellia/shared";
-import { irrigationHours, polygonAreaHa, reelGunModel, runsForField } from "@tellia/shared";
-import { fetchRpgParcels, getFarmToday, list, setFieldShapes } from "../../lib/api";
+import { irrigationHours, polygonAreaHa, reelGunModel, runsForField, UploadedFieldShapeSchema } from "@tellia/shared";
+import { fetchRpgParcels, getFarmToday, list, removeFieldShapes, setFieldShapes } from "../../lib/api";
 import { matchOutlines, type ImportPlan } from "./fieldImport";
 import { ImportFieldsSheet, type ReadFile } from "./ImportFieldsSheet";
 import { useAsync } from "../../lib/useAsync";
@@ -26,13 +26,13 @@ interface FieldRow {
   ring: [number, number][] | null; // outer ring [lon,lat]
   centroid: [number, number] | null; // [lon,lat]
   crop: string;
+  uploaded: { fileName: string; uploadedAt: string } | null; // outline from the farmer's file
   preview?: boolean; // outline from a file being reviewed, not saved yet
 }
 
-/** The dataset's placeholder shapes are axis-aligned boxes; an uploaded outline never is. */
-function isSchematicBox(ring: [number, number][] | null): boolean {
-  if (!ring || ring.length < 3 || ring.length > 5) return false;
-  return new Set(ring.map((p) => p[0])).size <= 2 && new Set(ring.map((p) => p[1])).size <= 2;
+function uploadOf(shape: unknown): FieldRow["uploaded"] {
+  const up = UploadedFieldShapeSchema.safeParse(shape);
+  return up.success ? { fileName: up.data.properties.fileName, uploadedAt: up.data.properties.uploadedAt } : null;
 }
 
 function outerRing(shape: unknown): [number, number][] | null {
@@ -56,6 +56,8 @@ export function FieldsScreen() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [version, setVersion] = useState(0); // bumped after a save → reload the fields
+  const [removing, setRemoving] = useState(false);
+  const [confirmAll, setConfirmAll] = useState(false); // "Remove all" asks for a second tap
 
   const { data, loading } = useAsync<{ farmId: number; rows: FieldRow[] } | null>(
     async () => {
@@ -76,11 +78,12 @@ export function FieldsScreen() {
           ring: outerRing(f.shape_geojson),
           centroid: f.centroid_lon != null && f.centroid_lat != null ? [f.centroid_lon, f.centroid_lat] : null,
           crop: cropOf.get(f.id) ?? "",
+          uploaded: uploadOf(f.shape_geojson),
         }));
 
       // Snap each placeholder box to a real nearby RPG parcel of a similar area → real outlines.
       // Uploaded outlines are the farmer's own: kept as they are.
-      const boxes = rows.filter((r) => isSchematicBox(r.ring));
+      const boxes = rows.filter((r) => !r.uploaded && r.ring && r.ring.length > 2);
       if (boxes.length > 0) {
         const cx = boxes.reduce((s, r) => s + r.ring!.reduce((a, p) => a + p[0], 0) / r.ring!.length, 0) / boxes.length;
         const cy = boxes.reduce((s, r) => s + r.ring!.reduce((a, p) => a + p[1], 0) / r.ring!.length, 0) / boxes.length;
@@ -126,9 +129,12 @@ export function FieldsScreen() {
   }, [saved, review]);
   const selected = rows.find((r) => r.id === sel) ?? rows[0] ?? null;
 
+  const uploadedCount = saved.filter((r) => r.uploaded).length;
+
   useEffect(() => {
     setReview(null);
     setNotice(null);
+    setConfirmAll(false);
   }, [farm?.id]);
 
   const onRead = ({ fileName, outlines }: ReadFile) => {
@@ -143,6 +149,7 @@ export function FieldsScreen() {
     try {
       const { updated } = await setFieldShapes({
         farmId: farm.id,
+        fileName: review.fileName,
         shapes: review.plan.matches.map((m) => ({ fieldId: m.field.id, geometry: m.outline.geometry })),
       });
       setReview(null);
@@ -152,6 +159,22 @@ export function FieldsScreen() {
       setNotice({ ok: false, text: `Not saved: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Take uploaded outlines off: one field, or every one of the farm. Seeded ones stay.
+  const remove = async (fieldId?: number) => {
+    if (!farm || removing) return;
+    setRemoving(true);
+    setConfirmAll(false);
+    try {
+      const { restored } = await removeFieldShapes(farm.id, fieldId);
+      setNotice({ ok: true, text: `${restored.length} uploaded outline${restored.length === 1 ? "" : "s"} removed.` });
+      setVersion((n) => n + 1);
+    } catch (e) {
+      setNotice({ ok: false, text: `Not removed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -179,6 +202,17 @@ export function FieldsScreen() {
 
           {review && <ReviewCard fileName={review.fileName} plan={review.plan} saving={saving} onSave={save} onCancel={() => setReview(null)} />}
 
+          {!review && uploadedCount > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, background: v("sunk"), borderRadius: 12, padding: "6px 6px 6px 12px" }}>
+              <span style={{ flex: 1, fontSize: 13, color: v("ink2"), lineHeight: 1.35 }}>
+                {uploadedCount} outline{uploadedCount === 1 ? "" : "s"} uploaded{uniqueFile(saved) ? ` from ${uniqueFile(saved)}` : ""}
+              </span>
+              <button type="button" onClick={() => (confirmAll ? void remove() : setConfirmAll(true))} disabled={removing} style={{ minHeight: 44, padding: "0 12px", borderRadius: 10, border: `1px solid ${confirmAll ? v("act") : v("line")}`, background: confirmAll ? v("actSoft") : v("surface"), color: confirmAll ? v("act") : v("ink"), fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                <Undo2 size={15} /> {removing ? "Removing…" : confirmAll ? "Tap again to remove all" : "Remove all"}
+              </button>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {rows.map((r) => {
               const on = r.id === (selected?.id ?? null);
@@ -200,6 +234,16 @@ export function FieldsScreen() {
                 <Stat caption="Area · recorded" value={`${selected.areaHa.toFixed(2)} ha`} />
                 <Stat caption="Computed on the shape" value={selected.computedHa != null ? `${selected.computedHa.toFixed(2)} ha` : "—"} sub={deltaLabel(selected)} />
               </div>
+              {selected.uploaded && !selected.preview && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ flex: 1, fontSize: 13, color: v("ink2"), lineHeight: 1.35 }}>
+                    Outline uploaded from {selected.uploaded.fileName}, {shortDate(selected.uploaded.uploadedAt)}
+                  </span>
+                  <button type="button" onClick={() => void remove(selected.id)} disabled={removing} aria-label={`Remove the uploaded outline of ${selected.name}`} style={{ minHeight: 44, padding: "0 12px", borderRadius: 10, border: `1px solid ${v("line")}`, background: v("surface"), color: v("ink"), fontWeight: 600, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Undo2 size={15} /> Remove
+                  </button>
+                </div>
+              )}
               {selected.irrigable ? <RunStats row={selected} gun={gun} /> : (
                 <span style={{ fontSize: 14, color: v("ink2") }}>Not irrigated — not in the irrigation plan.</span>
               )}
@@ -223,10 +267,10 @@ function ReviewCard({ fileName, plan, saving, onSave, onCancel }: { fileName: st
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: v("ink2") }}>From {fileName}</span>
         <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 22, lineHeight: 1.1 }}>
-          {plan.matches.length} of your fields get their real outline
+          {plan.matches.length > 0 ? `${plan.matches.length} of your fields get their real outline` : "None of this farm's fields are in this file"}
         </span>
         <span style={{ fontSize: 13, color: v("ink2"), lineHeight: 1.45 }}>
-          Dashed on the map. {byPlace > 0 ? `${byPlace} matched by where it sits, the rest by name. ` : "Matched by name. "}
+          {plan.matches.length > 0 && (byPlace > 0 ? `Dashed on the map. ${byPlace} matched by where it sits, the rest by name. ` : "Dashed on the map. Matched by name. ")}
           {plan.unmatched.length > 0 && `${plan.unmatched.length} outline${plan.unmatched.length === 1 ? " is" : "s are"} not one of this farm's fields and will be skipped. `}
           {plan.untouched.length > 0 && `${plan.untouched.length} field${plan.untouched.length === 1 ? " keeps its" : "s keep their"} current outline.`}
         </span>
@@ -255,6 +299,17 @@ function ReviewCard({ fileName, plan, saving, onSave, onCancel }: { fileName: st
       </div>
     </section>
   );
+}
+
+/** The file every uploaded outline came from, when there is just one. */
+function uniqueFile(rows: FieldRow[]): string | null {
+  const files = new Set(rows.flatMap((r) => (r.uploaded ? [r.uploaded.fileName] : [])));
+  return files.size === 1 ? [...files][0]! : null;
+}
+
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function deltaLabel(r: FieldRow): string {

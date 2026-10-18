@@ -288,9 +288,29 @@ export const FieldGeometrySchema = z.discriminatedUnion("type", [
 ]);
 export type FieldGeometry = z.infer<typeof FieldGeometrySchema>;
 
+/**
+ * How an uploaded outline is stored in `field.shape_geojson`: a GeoJSON Feature that keeps the
+ * outline it replaced (the seeded one), so removing the upload puts that one back as it was.
+ */
+export const UploadedFieldShapeSchema = z.object({
+  type: z.literal("Feature"),
+  geometry: FieldGeometrySchema,
+  properties: z.object({
+    source: z.literal("upload"),
+    fileName: z.string(),
+    uploadedAt: z.string(), // ISO timestamp
+    original: z.object({
+      shape: z.unknown().nullable(), // shape_geojson before the first upload
+      centroid: z.tuple([z.number(), z.number()]).nullable(), // [lon, lat] before the first upload
+    }),
+  }),
+});
+export type UploadedFieldShape = z.infer<typeof UploadedFieldShapeSchema>;
+
 /** Uploaded outlines, already matched to the farm's fields by the app. */
 export const SetFieldShapesBodySchema = z.object({
   farmId: z.number().int(),
+  fileName: z.string().trim().min(1).max(200),
   shapes: z.array(z.object({ fieldId: z.number().int(), geometry: FieldGeometrySchema })).min(1).max(200),
 });
 export type SetFieldShapesBody = z.infer<typeof SetFieldShapesBodySchema>;
@@ -299,6 +319,18 @@ export const SetFieldShapesResultSchema = z.object({
   updated: z.array(z.number().int()), // field ids whose outline was replaced
 });
 export type SetFieldShapesResult = z.infer<typeof SetFieldShapesResultSchema>;
+
+/** DELETE /fields/shapes: drop uploaded outlines (one field, or every one of the farm). */
+export const RemoveFieldShapesQuerySchema = z.object({
+  farmId: z.coerce.number().int(),
+  fieldId: z.coerce.number().int().optional(),
+});
+export type RemoveFieldShapesQuery = z.infer<typeof RemoveFieldShapesQuerySchema>;
+
+export const RemoveFieldShapesResultSchema = z.object({
+  restored: z.array(z.number().int()), // field ids back on their original outline
+});
+export type RemoveFieldShapesResult = z.infer<typeof RemoveFieldShapesResultSchema>;
 
 /** POST /notify/brief-sms: today's brief (the Today screen's advice) sent by SMS through VAPI. */
 export const SendBriefSmsBodySchema = z.object({
