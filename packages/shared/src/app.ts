@@ -433,8 +433,8 @@ export const FarmFieldOutcomeSchema = z.object({
   todayGross: z.number().nullable(), // mm the gun applies here today (null = nothing today)
   todayGunIndex: z.number().int().nullable(),
   todayStartHour: z.number().nullable(), // hour-of-day the gun starts here today (null = nothing today)
-  comfortDay: z.number().int().nullable(), // projected days from asOf until back above comfort (0 = already, null = never at this gun count)
-  gapMm: z.array(z.number()).optional(), // per grid day: projected mm still below comfort at the end of that day (0 = back to comfort)
+  comfortDay: z.number().int().nullable(), // first day (from asOf) that ends above comfort: re-simulated, then projected (0 = today, null = not within the look-ahead at this gun count)
+  gapMm: z.array(z.number()).optional(), // per grid day: mm below comfort at the end of that day (0 = above), re-simulated on the plan's run days then projected
   nextDate: IsoDateSchema.nullable(), // next watering day in the plan
   series: z.array(BalancePointSchema), // reserve re-simulated on the plan's real dates
 });
