@@ -6,6 +6,7 @@ import { onError } from "./core/middleware";
 import { createMastra, mountChat } from "./modules/chat/mastra";
 import { data, TABLES } from "./modules/data/data.controller";
 import { members } from "./modules/members/members.controller";
+import { fields } from "./modules/fields/fields.controller";
 import { createSupabaseFarmDirectory } from "./modules/irrigation/data/supabaseFarmData";
 import { createFarmRegistry } from "./modules/irrigation/farmRegistry";
 import { createIrrigationController } from "./modules/irrigation/irrigation.controller";
@@ -38,6 +39,9 @@ app.route("/data", data);
 
 // Set a member's phone (VAPI persona hack — see members.controller.ts).
 app.route("/members", members);
+
+// Field outlines uploaded from the Fields screen (shapefile import).
+app.route("/fields", fields);
 
 // The project's "today": the demo date picked in the app (kept in data/, git-ignored), else
 // DEMO_DATE, else the real date. Everything below reads it through registry.today().
