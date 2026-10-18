@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { continuesNextDay, runLabel } from "./farmPlan";
 import { comfortGaps, fieldShareOnDay, firstComfortDay, shareLabel, waterEventsByDay } from "./farmPlan";
 
 const run = (passIndex: number, startHour: number, endHour: number, grossMm = 40) => ({ passIndex, startHour, endHour, grossMm });
@@ -55,6 +54,9 @@ describe("comfort gap per day: the re-simulated reserve, then the projection", (
     expect(firstComfortDay([7, 9, 11])).toBeNull();
   });
 });
+
+// Imported here, beside the tests that use it.
+import { continuesNextDay, runLabel } from "./farmPlan";
 
 describe("which run of a pass the gun does on a day", () => {
   const r = (passIndex: number, runIndex: number, startHour: number, endHour: number) => ({ passIndex, runIndex, startHour, endHour, grossMm: 40 });
