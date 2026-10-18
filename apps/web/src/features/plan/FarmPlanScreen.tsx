@@ -191,7 +191,10 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
     // flex: none — the screen is a scrolling flex column; without it the calendar gets
     // squeezed and scrolls inside itself (header cut off, inner scrollbar).
     <section style={{ flex: "none", background: v("surface"), border: `1px solid ${v("line")}`, borderRadius: radius.section, padding: "14px 0 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ overflowX: "auto", padding: "0 12px" }}>
+      {/* Sideways scroll only: some browsers draw the horizontal scrollbar over the last row,
+          which made the box scroll vertically and cut that row. The bottom padding keeps the
+          scrollbar under the rows. */}
+      <div style={{ overflowX: "auto", overflowY: "hidden", padding: "0 12px 14px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, width: LW + span * DAYW }}>
           {/* day axis */}
           <div style={{ display: "flex", alignItems: "flex-end" }}>
@@ -199,7 +202,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
             {Array.from({ length: span }).map((_, d) => {
               const dt = new Date(`${addDays(plan.asOf, d)}T00:00:00Z`);
               return (
-                <span key={d} style={{ width: DAYW, flex: "none", textAlign: "center", fontSize: 12, fontWeight: 600, color: d === 0 ? v("ink") : v("ink2"), lineHeight: 1.15 }}>
+                <span key={d} style={{ width: DAYW, flex: "none", textAlign: "center", fontSize: 10, fontWeight: 600, color: d === 0 ? v("ink") : v("ink2"), lineHeight: 1.15 }}>
                   {DOW[dt.getUTCDay()]}<br />{dt.getUTCDate()}
                 </span>
               );
@@ -208,7 +211,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
           {/* one row per field, one cell per day */}
           {fields.map((f) => (
             <div key={f.id} style={{ display: "flex", alignItems: "center" }}>
-              <span style={{ ...labelSticky, fontSize: 14, fontWeight: 700, lineHeight: 1.15, paddingRight: 6 }}>{f.name}</span>
+              <span style={{ ...labelSticky, fontSize: 12, fontWeight: 700, lineHeight: 1.15, paddingRight: 6 }}>{f.name}</span>
               {Array.from({ length: span }).map((_, d) => {
                 const dayStart = d * 24;
                 const dayEnd = dayStart + 24;
@@ -230,9 +233,9 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
                       title={run ? runs.map((r) => `${r.fieldName} · Gun ${r.gunIndex + 1} · ${r.grossMm} mm`).join("\n") + (gap > 0 ? `\n${gap} mm still below comfort after today` : "") : ""}
                       style={{ width: CELL, height: 54, borderRadius: 7, background: bg, outline: d === 0 ? `2px solid ${v("ink")}` : "none", outlineOffset: -2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1, color: run ? "#fff" : v("ink2") }}
                     >
-                      {dose != null && <span style={{ fontSize: 17, fontWeight: 700 }}>{dose}</span>}
-                      {gap > 0 && <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.9, marginTop: 3 }}>−{gap}</span>}
-                      {dose != null && ng > 1 && <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>{guns.map((g) => `G${g}`).join("+")}</span>}
+                      {dose != null && <span style={{ fontSize: 13, fontWeight: 700 }}>{dose}</span>}
+                      {gap > 0 && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>−{gap}</span>}
+                      {dose != null && ng > 1 && <span style={{ fontSize: 8, fontWeight: 600, opacity: 0.85, marginTop: 1 }}>{guns.map((g) => `G${g}`).join("+")}</span>}
                     </div>
                   </div>
                 );
@@ -242,7 +245,7 @@ function Gantt({ plan }: { plan: FarmIrrigationPlan }) {
         </div>
       </div>
       {/* legend */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 12, color: v("ink2"), padding: "0 12px", marginTop: 2 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 11, color: v("ink2"), padding: "0 12px", marginTop: 2 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("brand") }} />Back to comfort</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 14, height: 12, borderRadius: 3, background: v("act") }} />Below comfort</span>
         <span>number = mm pumped · −n = mm still below comfort after that day{ng > 1 ? " · G = reel gun" : ""} · soft = no watering · outline = today · scroll →</span>
